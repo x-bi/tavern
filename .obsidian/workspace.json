@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "model-context/stages/stage-13-角色头像上传.md",
+                "file": "model-context/stages/stage-14-modelconfig-api.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "stage-13-角色头像上传"
+              "title": "stage-14-modelconfig-api"
             }
           }
         ]
@@ -185,24 +185,25 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
+    "packages/shared/src/model-config.ts",
+    "apps/server/src/modules/models/models.service.ts",
+    "apps/server/src/modules/models/models.controller.ts",
+    "apps/server/src/modules/models/models.module.ts",
+    "apps/server/src/modules/models/model-config.types.ts",
+    "apps/server/src/modules/models/dto/query-model-configs.dto.ts",
+    "apps/server/src/modules/models/dto/update-model-config.dto.ts",
+    "apps/server/src/modules/models/dto/create-model-config.dto.ts",
+    "apps/server/src/modules/models/dto",
+    "apps/server/src/modules/models",
+    "model-context/stages/stage-13-角色头像上传.md",
     "data/tavern-lite.db-journal",
     "uploads/avatars/characters/1a801e83-fce1-4597-98fa-ed7fb6496356.png",
     "uploads/avatars/characters/22c500b8-d49d-4560-90ca-a8b9f3247c6f.png",
     "model-context/stages/stage-14-modelconfig-api.md",
     "uploads/avatars/characters/40b56634-435a-4cbb-9e3f-3178b1299447.png",
     "uploads/avatars/characters/5079f7cb-06d5-4dac-80e9-02bfc152529e.png",
-    "uploads/avatars/characters",
-    "uploads/avatars",
-    "uploads/_test/stage13-invalid.txt",
     "uploads/_test/stage13-avatar.png",
-    "uploads/_test",
     "apps/server/uploads/avatars/characters/5af1031d-e4fa-4ad9-be88-fd6b4769d4cc.png",
-    "apps/server/uploads/avatars/characters",
-    "apps/server/uploads/avatars",
-    "apps/server/uploads",
-    "uploads",
-    "apps/web/src/components/AvatarUploader.vue",
-    "model-context/stages/stage-13-角色头像上传.md",
     "model-context/stages/stage-16-模型连接测试.md",
     "model-context/stages/stage-12-角色详情页.md",
     "model-context/stages/stage-11-角色创建与编辑页.md",

@@ -7,6 +7,7 @@ import { AssetsModule } from './modules/assets/assets.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CharactersModule } from './modules/characters/characters.module';
 import { HealthModule } from './modules/health/health.module';
+import { ModelsModule } from './modules/models/models.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AssetsModule,
     AuthModule,
     CharactersModule,
+    ModelsModule,
     HealthModule
   ]
 })

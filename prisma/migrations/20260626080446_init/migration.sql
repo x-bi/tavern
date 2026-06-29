@@ -1,0 +1,6 @@
+-- CreateTable
+CREATE TABLE "PrismaConnectionCheck" (
+    "id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    "note" TEXT NOT NULL DEFAULT 'stage-4',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

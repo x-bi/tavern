@@ -1,0 +1,12 @@
+node_modules
+dist
+coverage
+data
+uploads
+.pnpm-store
+.obsidian
+model-context
+AGENTS.md
+docs/architecture.md
+pnpm-lock.yaml
+*.pdf

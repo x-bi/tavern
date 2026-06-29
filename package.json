@@ -1,0 +1,37 @@
+{
+  "name": "tavern-lite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "轻量级 AI 酒馆 / 角色对话 Web MVP",
+  "packageManager": "pnpm@11.7.0",
+  "engines": {
+    "node": ">=20.11.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @tavern/web --filter @tavern/server dev",
+    "dev:web": "pnpm --filter @tavern/web dev",
+    "dev:server": "pnpm --filter @tavern/server dev",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:seed": "node prisma/seed.cjs",
+    "check": "pnpm lint && pnpm typecheck && pnpm format:check",
+    "workspace:list": "pnpm -r list --depth -1"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.cjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@prisma/client": "^6.19.3",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.0.0",
+    "prisma": "^6.19.3",
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0"
+  }
+}

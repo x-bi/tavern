@@ -21,6 +21,18 @@ export type ModelConfigResponse = {
 
 export type ModelConfigListResponse = PageResult<ModelConfigResponse>;
 
+export type ModelConfigTestResponse = {
+  ok: boolean;
+  latencyMs: number;
+  providerName: string;
+  modelName: string;
+  baseUrl: string;
+  statusCode: number | null;
+  message: string;
+  summary: string | null;
+  testedAt: string;
+};
+
 export type ModelConfigPayload = {
   name: string;
   providerName: string;

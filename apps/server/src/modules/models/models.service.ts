@@ -1,7 +1,7 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type ModelConfig } from '@prisma/client';
-import { createCipheriv, createHash, randomBytes } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,7 +12,8 @@ import type { UpdateModelConfigDto } from './dto/update-model-config.dto';
 import type {
   ModelConfigListResponse,
   ModelConfigParams,
-  ModelConfigResponse
+  ModelConfigResponse,
+  ModelConfigTestResponse
 } from './model-config.types';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class ModelsService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
+    @Inject(ConfigService)
     private readonly configService: ConfigService
   ) {
     this.apiKeyEncryptionKey = createHash('sha256')
@@ -108,6 +110,89 @@ export class ModelsService {
 
   async getById(currentUser: CurrentUser, id: string): Promise<ModelConfigResponse> {
     return this.toResponse(await this.findOwnedActiveModelConfig(currentUser, id));
+  }
+
+  async testConnection(currentUser: CurrentUser, id: string): Promise<ModelConfigTestResponse> {
+    const modelConfig = await this.findOwnedActiveModelConfig(currentUser, id);
+    const startedAt = Date.now();
+    const apiKey = this.decryptApiKey(modelConfig.apiKeyCiphertext);
+    const baseResult = {
+      providerName: modelConfig.provider,
+      modelName: modelConfig.model,
+      baseUrl: modelConfig.baseUrl,
+      testedAt: new Date().toISOString()
+    };
+
+    if (!apiKey) {
+      return {
+        ...baseResult,
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        statusCode: null,
+        message: 'API Key 未配置，无法测试连接。',
+        summary: null
+      };
+    }
+
+    const controller = new AbortController();
+    const timeoutMs = this.getConnectionTestTimeoutMs(modelConfig);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(this.toChatCompletionsUrl(modelConfig.baseUrl), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: modelConfig.model,
+          messages: [
+            {
+              role: 'user',
+              content: 'ping'
+            }
+          ],
+          max_tokens: 1,
+          temperature: 0,
+          stream: false
+        }),
+        signal: controller.signal
+      });
+      const latencyMs = Date.now() - startedAt;
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        return {
+          ...baseResult,
+          ok: false,
+          latencyMs,
+          statusCode: response.status,
+          message: `连接失败：HTTP ${response.status}`,
+          summary: this.extractProviderSummary(responseText, apiKey)
+        };
+      }
+
+      return {
+        ...baseResult,
+        ok: true,
+        latencyMs,
+        statusCode: response.status,
+        message: '连接成功，已收到最小模型响应。',
+        summary: this.extractSuccessSummary(responseText)
+      };
+    } catch (error) {
+      return {
+        ...baseResult,
+        ok: false,
+        latencyMs: Date.now() - startedAt,
+        statusCode: null,
+        message: this.toConnectionErrorMessage(error, timeoutMs),
+        summary: null
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   async update(
@@ -305,6 +390,132 @@ export class ModelsService {
     return `v1:${iv.toString('base64')}:${authTag.toString('base64')}:${ciphertext.toString(
       'base64'
     )}`;
+  }
+
+  private decryptApiKey(value: string | null): string | null {
+    if (!value) {
+      return null;
+    }
+
+    if (!value.startsWith('v1:')) {
+      return value;
+    }
+
+    const [, ivBase64, authTagBase64, ciphertextBase64] = value.split(':');
+
+    if (!ivBase64 || !authTagBase64 || !ciphertextBase64) {
+      return null;
+    }
+
+    try {
+      const decipher = createDecipheriv(
+        'aes-256-gcm',
+        this.apiKeyEncryptionKey,
+        Buffer.from(ivBase64, 'base64')
+      );
+      decipher.setAuthTag(Buffer.from(authTagBase64, 'base64'));
+
+      return Buffer.concat([
+        decipher.update(Buffer.from(ciphertextBase64, 'base64')),
+        decipher.final()
+      ]).toString('utf8');
+    } catch {
+      return null;
+    }
+  }
+
+  private toChatCompletionsUrl(baseUrl: string): string {
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/g, '');
+
+    return normalizedBaseUrl.endsWith('/chat/completions')
+      ? normalizedBaseUrl
+      : `${normalizedBaseUrl}/chat/completions`;
+  }
+
+  private getConnectionTestTimeoutMs(modelConfig: ModelConfig): number {
+    const params = this.parseParams(modelConfig.defaultParamsJson);
+
+    return Math.min(params.timeout ?? 30000, 60000);
+  }
+
+  private extractProviderSummary(responseText: string, apiKey: string): string | null {
+    const rawSummary = this.tryExtractProviderMessage(responseText) ?? responseText;
+    const sanitizedSummary = this.sanitizeProviderText(rawSummary, apiKey);
+
+    return sanitizedSummary ? sanitizedSummary.slice(0, 500) : null;
+  }
+
+  private extractSuccessSummary(responseText: string): string | null {
+    if (!responseText) {
+      return '响应体为空，但 HTTP 状态为成功。';
+    }
+
+    try {
+      const parsed = JSON.parse(responseText) as {
+        id?: unknown;
+        model?: unknown;
+        choices?: unknown;
+      };
+      const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
+      const parts = [
+        typeof parsed.model === 'string' ? `model=${parsed.model}` : null,
+        typeof parsed.id === 'string' ? `id=${parsed.id}` : null,
+        `choices=${choices.length}`
+      ].filter(Boolean);
+
+      return parts.join(', ');
+    } catch {
+      return 'HTTP 成功，但响应体不是标准 JSON。';
+    }
+  }
+
+  private tryExtractProviderMessage(responseText: string): string | null {
+    if (!responseText) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(responseText) as {
+        error?: {
+          message?: unknown;
+          code?: unknown;
+          type?: unknown;
+        };
+        message?: unknown;
+      };
+
+      if (typeof parsed.error?.message === 'string') {
+        const parts = [
+          parsed.error.message,
+          typeof parsed.error.code === 'string' ? `code=${parsed.error.code}` : null,
+          typeof parsed.error.type === 'string' ? `type=${parsed.error.type}` : null
+        ].filter(Boolean);
+
+        return parts.join(' ');
+      }
+
+      return typeof parsed.message === 'string' ? parsed.message : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private sanitizeProviderText(value: string, apiKey: string): string {
+    return value
+      .replaceAll(apiKey, '[api-key]')
+      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [api-key]')
+      .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-****')
+      .trim();
+  }
+
+  private toConnectionErrorMessage(error: unknown, timeoutMs: number): string {
+    if (error instanceof Error && error.name === 'AbortError') {
+      return `连接超时：超过 ${timeoutMs}ms 未收到响应。`;
+    }
+
+    return error instanceof Error && error.message
+      ? `连接失败：${error.message}`
+      : '连接失败：无法访问模型服务。';
   }
 
   private maskApiKey(value: string | null): string | null {

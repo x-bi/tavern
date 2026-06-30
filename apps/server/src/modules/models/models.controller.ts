@@ -51,6 +51,12 @@ export class ModelsController {
     return this.modelsService.getById(currentUser, id);
   }
 
+  @Post(':id/test')
+  @HttpCode(HttpStatus.OK)
+  testConnection(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.modelsService.testConnection(currentUser, id);
+  }
+
   @Put(':id')
   update(
     @CurrentUser() currentUser: CurrentUserType,

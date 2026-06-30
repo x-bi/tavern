@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "model-context/stages/stage-14-modelconfig-api.md",
+                "file": "model-context/stages/stage-18-参数预设页面.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "stage-14-modelconfig-api"
+              "title": "stage-18-参数预设页面"
             }
           }
         ]
@@ -185,26 +185,29 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
-    "packages/shared/src/model-config.ts",
-    "apps/server/src/modules/models/models.service.ts",
-    "apps/server/src/modules/models/models.controller.ts",
-    "apps/server/src/modules/models/models.module.ts",
-    "apps/server/src/modules/models/model-config.types.ts",
-    "apps/server/src/modules/models/dto/query-model-configs.dto.ts",
-    "apps/server/src/modules/models/dto/update-model-config.dto.ts",
-    "apps/server/src/modules/models/dto/create-model-config.dto.ts",
-    "apps/server/src/modules/models/dto",
-    "apps/server/src/modules/models",
-    "model-context/stages/stage-13-角色头像上传.md",
     "data/tavern-lite.db-journal",
+    "apps/web/src/views/presets/PresetView.vue",
+    "apps/web/src/views/presets",
+    "apps/web/src/components/PromptPresetForm.vue",
+    "apps/web/src/stores/preset.ts",
+    "apps/web/src/api/presets.ts",
+    "model-context/stages/stage-17-promptpreset-api.md",
+    "model-context/stages/stage-16-模型连接测试.md",
+    "model-context/stages/stage-18-参数预设页面.md",
+    "packages/shared/src/prompt-preset.ts",
+    "apps/server/src/modules/presets/presets.module.ts",
+    "apps/server/src/modules/presets/presets.controller.ts",
+    "apps/server/src/modules/presets/presets.service.ts",
+    "apps/server/src/modules/presets/prompt-preset.types.ts",
+    "model-context/stages/stage-15-模型配置页面.md",
+    "model-context/stages/stage-14-modelconfig-api.md",
+    "model-context/stages/stage-13-角色头像上传.md",
     "uploads/avatars/characters/1a801e83-fce1-4597-98fa-ed7fb6496356.png",
     "uploads/avatars/characters/22c500b8-d49d-4560-90ca-a8b9f3247c6f.png",
-    "model-context/stages/stage-14-modelconfig-api.md",
     "uploads/avatars/characters/40b56634-435a-4cbb-9e3f-3178b1299447.png",
     "uploads/avatars/characters/5079f7cb-06d5-4dac-80e9-02bfc152529e.png",
     "uploads/_test/stage13-avatar.png",
     "apps/server/uploads/avatars/characters/5af1031d-e4fa-4ad9-be88-fd6b4769d4cc.png",
-    "model-context/stages/stage-16-模型连接测试.md",
     "model-context/stages/stage-12-角色详情页.md",
     "model-context/stages/stage-11-角色创建与编辑页.md",
     "model-context/stages/stage-10-角色列表页.md",
@@ -223,9 +226,6 @@
     "model-context/stages/stage-01-monorepo-初始化.md",
     "model-context/stages/stage-00-项目规则冻结与-agents-md-初始化.md",
     "data/README.md",
-    "packages/shared/README.md",
-    "apps/server/README.md",
-    "apps/web/README.md",
-    "docs/architecture.md"
+    "packages/shared/README.md"
   ]
 }

@@ -9,10 +9,10 @@ import CharacterListView from '../views/characters/CharacterListView.vue';
 import ChatView from '../views/ChatView.vue';
 import ConversationsView from '../views/ConversationsView.vue';
 import LoginView from '../views/LoginView.vue';
-import ModelsView from '../views/ModelsView.vue';
+import ModelConfigView from '../views/models/ModelConfigView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
 import PersonaView from '../views/PersonaView.vue';
-import PresetsView from '../views/PresetsView.vue';
+import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/PromptPreviewView.vue';
 import SettingsView from '../views/SettingsView.vue';
 import WorldBookView from '../views/WorldBookView.vue';
@@ -87,7 +87,7 @@ export const router = createRouter({
         {
           path: 'models',
           name: 'models',
-          component: ModelsView,
+          component: ModelConfigView,
           meta: {
             title: '模型'
           }
@@ -95,7 +95,7 @@ export const router = createRouter({
         {
           path: 'presets',
           name: 'presets',
-          component: PresetsView,
+          component: PresetView,
           meta: {
             title: '预设'
           }

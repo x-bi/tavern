@@ -5,11 +5,15 @@ import {
   NAvatar,
   NButton,
   NCard,
+  NCheckbox,
   NConfigProvider,
   NDialogProvider,
+  NDrawer,
+  NDrawerContent,
   NForm,
   NFormItem,
   NInput,
+  NInputNumber,
   NLayout,
   NLayoutContent,
   NLayoutHeader,
@@ -34,11 +38,15 @@ app.component('NAlert', NAlert);
 app.component('NAvatar', NAvatar);
 app.component('NButton', NButton);
 app.component('NCard', NCard);
+app.component('NCheckbox', NCheckbox);
 app.component('NConfigProvider', NConfigProvider);
 app.component('NDialogProvider', NDialogProvider);
+app.component('NDrawer', NDrawer);
+app.component('NDrawerContent', NDrawerContent);
 app.component('NForm', NForm);
 app.component('NFormItem', NFormItem);
 app.component('NInput', NInput);
+app.component('NInputNumber', NInputNumber);
 app.component('NLayout', NLayout);
 app.component('NLayoutContent', NLayoutContent);
 app.component('NLayoutHeader', NLayoutHeader);

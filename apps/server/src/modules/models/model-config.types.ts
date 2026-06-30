@@ -30,3 +30,15 @@ export type ModelConfigListResponse = {
   page: number;
   pageSize: number;
 };
+
+export type ModelConfigTestResponse = {
+  ok: boolean;
+  latencyMs: number;
+  providerName: string;
+  modelName: string;
+  baseUrl: string;
+  statusCode: number | null;
+  message: string;
+  summary: string | null;
+  testedAt: string;
+};

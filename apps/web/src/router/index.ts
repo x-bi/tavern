@@ -11,7 +11,7 @@ import ConversationsView from '../views/ConversationsView.vue';
 import LoginView from '../views/LoginView.vue';
 import ModelConfigView from '../views/models/ModelConfigView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
-import PersonaView from '../views/PersonaView.vue';
+import PersonaView from '../views/personas/PersonaView.vue';
 import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/PromptPreviewView.vue';
 import SettingsView from '../views/SettingsView.vue';

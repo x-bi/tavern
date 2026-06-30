@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CharactersModule } from './modules/characters/characters.module';
 import { HealthModule } from './modules/health/health.module';
 import { ModelsModule } from './modules/models/models.module';
+import { PersonasModule } from './modules/personas/personas.module';
 import { PresetsModule } from './modules/presets/presets.module';
 import { PrismaModule } from './prisma/prisma.module';
 
@@ -24,6 +25,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     CharactersModule,
     ModelsModule,
+    PersonasModule,
     PresetsModule,
     HealthModule
   ]

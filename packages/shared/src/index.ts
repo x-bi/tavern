@@ -6,6 +6,7 @@ export type {
   ModelConfigTestResponse
 } from './model-config';
 export type { PageQuery, PageResult } from './pagination';
+export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
 export type {
   PromptPresetListResponse,
   PromptPresetPayload,

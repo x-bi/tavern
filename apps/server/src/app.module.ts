@@ -6,7 +6,9 @@ import serverConfig from './config/server.config';
 import { AssetsModule } from './modules/assets/assets.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CharactersModule } from './modules/characters/characters.module';
+import { ConversationsModule } from './modules/conversations/conversations.module';
 import { HealthModule } from './modules/health/health.module';
+import { MessagesModule } from './modules/messages/messages.module';
 import { ModelsModule } from './modules/models/models.module';
 import { PersonasModule } from './modules/personas/personas.module';
 import { PresetsModule } from './modules/presets/presets.module';
@@ -24,6 +26,8 @@ import { PrismaModule } from './prisma/prisma.module';
     AssetsModule,
     AuthModule,
     CharactersModule,
+    ConversationsModule,
+    MessagesModule,
     ModelsModule,
     PersonasModule,
     PresetsModule,

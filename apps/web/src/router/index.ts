@@ -7,7 +7,7 @@ import CharacterDetailView from '../views/characters/CharacterDetailView.vue';
 import CharacterEditView from '../views/characters/CharacterEditView.vue';
 import CharacterListView from '../views/characters/CharacterListView.vue';
 import ChatView from '../views/ChatView.vue';
-import ConversationsView from '../views/ConversationsView.vue';
+import ConversationView from '../views/conversations/ConversationView.vue';
 import LoginView from '../views/LoginView.vue';
 import ModelConfigView from '../views/models/ModelConfigView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
@@ -71,7 +71,7 @@ export const router = createRouter({
         {
           path: 'conversations',
           name: 'conversations',
-          component: ConversationsView,
+          component: ConversationView,
           meta: {
             title: '会话'
           }
@@ -79,6 +79,14 @@ export const router = createRouter({
         {
           path: 'chat',
           name: 'chat',
+          component: ChatView,
+          meta: {
+            title: '聊天'
+          }
+        },
+        {
+          path: 'chat/:conversationId',
+          name: 'chat-conversation',
           component: ChatView,
           meta: {
             title: '聊天'

@@ -28,6 +28,40 @@ export type {
 export type { PageQuery, PageResult } from './pagination';
 export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
 export type {
+  BuildPromptDebugInfo,
+  BuildPromptInput,
+  BuildPromptResult,
+  ChatMessageLike,
+  PromptBuildMode,
+  PromptBuildOptions,
+  PromptBuildWarning,
+  PromptBuilderMessage,
+  PromptCharacterContext,
+  PromptConversationContext,
+  PromptInternalMessageRole,
+  PromptMessageRole,
+  PromptModelConfigContext,
+  PromptModelParameters,
+  PromptPersonaContext,
+  PromptPresetContext,
+  PromptHistoryTrimInfo,
+  PromptPreviewPayload,
+  PromptPreviewResponse,
+  PromptPreviewResult,
+  PromptProviderMessageRole,
+  PromptSection,
+  PromptSectionKind,
+  PromptSectionSource,
+  PromptTruncatedHistoryItem,
+  ProviderChatMessage,
+  WorldBookContext,
+  WorldBookEntryContext,
+  WorldBookEntryPosition,
+  WorldBookMatchedEntry,
+  WorldBookMatchResult,
+  WorldBookSkippedEntry
+} from './prompt-builder';
+export type {
   PromptPresetListResponse,
   PromptPresetPayload,
   PromptPresetResponse

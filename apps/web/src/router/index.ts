@@ -6,14 +6,14 @@ import CharacterCreateView from '../views/characters/CharacterCreateView.vue';
 import CharacterDetailView from '../views/characters/CharacterDetailView.vue';
 import CharacterEditView from '../views/characters/CharacterEditView.vue';
 import CharacterListView from '../views/characters/CharacterListView.vue';
-import ChatView from '../views/ChatView.vue';
+import ChatView from '../views/chat/ChatView.vue';
 import ConversationView from '../views/conversations/ConversationView.vue';
 import LoginView from '../views/LoginView.vue';
 import ModelConfigView from '../views/models/ModelConfigView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
 import PersonaView from '../views/personas/PersonaView.vue';
 import PresetView from '../views/presets/PresetView.vue';
-import PromptPreviewView from '../views/PromptPreviewView.vue';
+import PromptPreviewView from '../views/prompts/PromptPreviewView.vue';
 import SettingsView from '../views/SettingsView.vue';
 import WorldBookView from '../views/WorldBookView.vue';
 

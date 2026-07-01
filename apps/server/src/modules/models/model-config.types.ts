@@ -42,3 +42,12 @@ export type ModelConfigTestResponse = {
   summary: string | null;
   testedAt: string;
 };
+
+export type ModelGatewayConfig = {
+  modelConfigId: string;
+  providerName: string;
+  baseUrl: string;
+  modelName: string;
+  apiKey: string | null;
+  params: ModelConfigParams;
+};

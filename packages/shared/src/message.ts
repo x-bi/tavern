@@ -2,7 +2,13 @@ import type { PageResult } from './pagination';
 
 export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
-export type MessageStatus = 'complete' | 'edited' | 'deleted' | 'generating' | 'failed';
+export type MessageStatus =
+  | 'complete'
+  | 'edited'
+  | 'deleted'
+  | 'generating'
+  | 'failed'
+  | 'stopped';
 
 export type MessageResponse = {
   id: string;
@@ -20,14 +26,16 @@ export type MessageListResponse = PageResult<MessageResponse>;
 
 export type MessageUpdatePayload = {
   content?: string;
-  status?: Extract<MessageStatus, 'complete' | 'edited' | 'failed'>;
+  status?: Extract<MessageStatus, 'complete' | 'edited' | 'failed' | 'stopped'>;
   metadata?: Record<string, unknown> | null;
   tokenCount?: number | null;
 };
 
 export type MessageRegenerateResponse = {
-  regenerated: false;
   id: string;
-  reason: 'NOT_IMPLEMENTED';
+  conversationId: string;
+  regenerateMessageId: string;
+  replaceStrategy: 'soft-delete-target';
+  streamPath: '/chat/stream';
   message: string;
 };

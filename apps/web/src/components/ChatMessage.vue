@@ -16,9 +16,10 @@
       <footer class="chat-message__actions">
         <n-button size="tiny" quaternary @click="$emit('copy', message)">复制</n-button>
         <n-button
-          v-if="message.role === 'assistant'"
+          v-if="canRegenerate"
           size="tiny"
           quaternary
+          :disabled="regenerateDisabled"
           @click="$emit('regenerate', message)"
         >
           重新生成
@@ -35,6 +36,7 @@ import type { Message } from '../api/messages';
 
 const props = defineProps<{
   message: Message;
+  regenerateDisabled?: boolean;
 }>();
 
 defineEmits<{
@@ -73,12 +75,20 @@ const statusLabel = computed(() => {
       return '生成中';
     case 'failed':
       return '失败';
+    case 'stopped':
+      return '已停止';
     default:
       return props.message.status;
   }
 });
 
 const avatarText = computed(() => (props.message.role === 'user' ? 'U' : 'A'));
+const canRegenerate = computed(
+  () =>
+    props.message.role === 'assistant' &&
+    props.message.status !== 'generating' &&
+    props.message.status !== 'deleted'
+);
 const formattedTime = computed(() =>
   new Intl.DateTimeFormat('zh-CN', {
     month: '2-digit',

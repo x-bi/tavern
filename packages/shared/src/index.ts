@@ -1,5 +1,11 @@
 export type { ApiError, ApiResponse } from './api';
 export type {
+  ChatStreamDeltaEvent,
+  ChatStreamDoneEvent,
+  ChatStreamErrorEvent,
+  ChatStreamPayload
+} from './chat';
+export type {
   ConversationCharacterSummary,
   ConversationClearResponse,
   ConversationListResponse,
@@ -17,6 +23,19 @@ export type {
   ModelConfigResponse,
   ModelConfigTestResponse
 } from './model-config';
+export type {
+  ModelGatewayChatResult,
+  ModelGatewayConnectionTestResult,
+  ModelGatewayMessage,
+  ModelGatewayMessageRole,
+  ModelGatewayProviderOptions,
+  ModelGatewayStreamDeltaEvent,
+  ModelGatewayStreamDoneEvent,
+  ModelGatewayStreamErrorEvent,
+  ModelGatewayStreamEvent,
+  ModelGatewayStreamPingEvent,
+  ModelGatewayTokenUsage
+} from './model-gateway';
 export type {
   MessageListResponse,
   MessageRegenerateResponse,

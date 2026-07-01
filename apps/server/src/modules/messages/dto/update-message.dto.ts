@@ -8,7 +8,7 @@ export class UpdateMessageDto {
   content?: string;
 
   @IsOptional()
-  @IsIn(['complete', 'edited', 'failed'])
+  @IsIn(['complete', 'edited', 'failed', 'stopped'])
   status?: string;
 
   @IsOptional()

@@ -3,7 +3,7 @@
     <header class="page-shell__header chat-view__header">
       <div>
         <h2>聊天</h2>
-        <p>展示会话历史消息，并预留后续流式聊天接入区域。</p>
+        <p>发送用户消息后，assistant 回复会在消息列表中流式增长。</p>
       </div>
       <n-button secondary @click="goConversations">返回会话</n-button>
     </header>
@@ -18,17 +18,21 @@
       <ChatRoom
         :title="conversationTitle"
         :character-name="currentConversation?.character.name"
-        :messages="chatStore.messages"
+        :messages="chatStore.visibleMessages"
         :draft="chatStore.draft"
         :loading="chatStore.loading"
         :error="chatStore.error"
+        :send-error="chatStore.sendError"
+        :sending="chatStore.sending"
         :is-generating="chatStore.isGenerating"
+        :can-stop="chatStore.canStop"
+        :stopping="chatStore.stopping"
         @update:draft="chatStore.setDraft"
         @reload="reloadMessages"
-        @send="handleSendPlaceholder"
-        @stop="handleStopPlaceholder"
+        @send="handleSend"
+        @stop="handleStop"
         @copy="copyMessage"
-        @regenerate="handleRegeneratePlaceholder"
+        @regenerate="handleRegenerate"
         @regenerate-latest="handleLatestRegeneratePlaceholder"
       />
 
@@ -67,13 +71,15 @@
 </template>
 
 <script setup lang="ts">
+import type { ChatStreamPayload } from '@tavern/shared';
 import { computed, onMounted, watch } from 'vue';
 import { useMessage } from 'naive-ui';
 import { useRoute, useRouter } from 'vue-router';
 
-import type { Message } from '../../api/messages';
+import { regenerateMessage, type Message } from '../../api/messages';
 import ChatRoom from '../../components/ChatRoom.vue';
 import EmptyState from '../../components/EmptyState.vue';
+import { useChatStream } from '../../composables/useChatStream';
 import { useChatStore } from '../../stores/chat';
 import { useConversationStore } from '../../stores/conversation';
 
@@ -82,6 +88,8 @@ const router = useRouter();
 const message = useMessage();
 const chatStore = useChatStore();
 const conversationStore = useConversationStore();
+const chatStream = useChatStream();
+const chatStreamAbortedCode = 'CHAT_STREAM_ABORTED';
 
 const conversationId = computed(() => {
   const value = route.params.conversationId;
@@ -131,7 +139,7 @@ async function loadCurrentRoom() {
 }
 
 function reloadMessages() {
-  if (!conversationId.value) {
+  if (!conversationId.value || chatStore.isGenerating) {
     return;
   }
 
@@ -142,16 +150,121 @@ function goConversations() {
   void router.push({ name: 'conversations' });
 }
 
-function handleSendPlaceholder() {
-  message.info('发送消息会在后续流式聊天阶段接入。');
+async function handleSend() {
+  const activeConversationId = conversationId.value;
+  const userMessage = chatStore.draft.trim();
+
+  if (!activeConversationId || !userMessage || chatStore.isGenerating) {
+    return;
+  }
+
+  chatStore.beginStreaming(activeConversationId, userMessage);
+
+  await runChatStream(activeConversationId, {
+    conversationId: activeConversationId,
+    userMessage,
+    modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
+    presetId: currentConversation.value?.promptPresetId ?? undefined
+  });
 }
 
-function handleStopPlaceholder() {
-  message.info('停止生成会在后续阶段接入。');
+async function handleRegenerate(target: Message) {
+  const activeConversationId = conversationId.value;
+
+  if (!activeConversationId || chatStore.isGenerating) {
+    return;
+  }
+
+  if (target.role !== 'assistant') {
+    message.warning('只能重新生成 assistant 回复。');
+
+    return;
+  }
+
+  try {
+    const regenerate = await regenerateMessage(target.id);
+
+    if (regenerate.conversationId !== activeConversationId) {
+      message.warning('当前会话已切换，未执行重新生成。');
+
+      return;
+    }
+
+    chatStore.beginRegenerateStreaming(activeConversationId, target);
+    await runChatStream(activeConversationId, {
+      conversationId: activeConversationId,
+      regenerateMessageId: regenerate.regenerateMessageId,
+      modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
+      presetId: currentConversation.value?.promptPresetId ?? undefined
+    });
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '重新生成失败。');
+  }
 }
 
-function handleRegeneratePlaceholder() {
-  message.info('重新生成会在后续阶段接入。');
+async function runChatStream(activeConversationId: string, payload: ChatStreamPayload) {
+  let streamFailed = false;
+  let streamStopped = false;
+
+  await chatStream.startStream(payload, {
+    onDelta: (event) => {
+      if (chatStore.conversationId !== activeConversationId) {
+        return;
+      }
+
+      chatStore.appendStreamingDelta({
+        text: event.text,
+        messageId: event.messageId
+      });
+    },
+    onDone: (event) => {
+      if (chatStore.conversationId !== activeConversationId) {
+        return;
+      }
+
+      chatStore.completeStreaming(event.messageId);
+    },
+    onError: (event) => {
+      if (chatStore.conversationId !== activeConversationId) {
+        return;
+      }
+
+      if (event.code === chatStreamAbortedCode) {
+        streamStopped = true;
+        chatStore.stopStreaming(event.message);
+
+        return;
+      }
+
+      streamFailed = true;
+      chatStore.failStreaming(event.message);
+      message.error(event.message);
+    }
+  });
+
+  if (chatStore.conversationId !== activeConversationId) {
+    return;
+  }
+
+  if (!streamFailed && chatStore.isStreaming) {
+    chatStore.completeStreaming();
+  }
+
+  if (streamStopped) {
+    await waitForAbortCleanup();
+  }
+
+  await chatStore.loadMessages(activeConversationId, { page: 1, pageSize: 100, order: 'asc' });
+  chatStore.clearStreamingMessages();
+}
+
+function handleStop() {
+  if (!chatStore.requestStopStreaming()) {
+    return;
+  }
+
+  chatStream.abort();
+  message.info('已停止当前生成。');
 }
 
 function handleLatestRegeneratePlaceholder() {
@@ -165,6 +278,12 @@ async function copyMessage(target: Message) {
   } catch {
     message.warning('当前浏览器不允许直接复制，请手动选择文本。');
   }
+}
+
+function waitForAbortCleanup() {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, 250);
+  });
 }
 </script>
 

@@ -5,7 +5,9 @@
         <h3>{{ title }}</h3>
         <p>{{ subtitle }}</p>
       </div>
-      <n-button secondary :loading="loading" @click="$emit('reload')">刷新消息</n-button>
+      <n-button secondary :loading="loading" :disabled="isGenerating" @click="$emit('reload')">
+        刷新消息
+      </n-button>
     </header>
 
     <div ref="messageListRef" class="chat-room__messages" aria-label="消息列表">
@@ -16,7 +18,7 @@
       <EmptyState
         v-else-if="messages.length === 0"
         title="还没有消息"
-        description="本阶段只展示历史消息，发送和流式回复会在后续阶段接入。"
+        description="输入消息后，assistant 回复会在这里流式显示。"
       />
 
       <template v-else>
@@ -24,15 +26,29 @@
           v-for="message in messages"
           :key="message.id"
           :message="message"
+          :regenerate-disabled="isGenerating"
           @copy="$emit('copy', $event)"
           @regenerate="$emit('regenerate', $event)"
         />
       </template>
     </div>
 
+    <n-alert
+      v-if="sendError"
+      class="chat-room__send-error"
+      type="error"
+      title="发送失败"
+      :bordered="false"
+    >
+      {{ sendError }}
+    </n-alert>
+
     <ChatInput
       :model-value="draft"
+      :sending="sending"
       :is-generating="isGenerating"
+      :can-stop="canStop"
+      :stopping="stopping"
       @update:model-value="$emit('update:draft', $event)"
       @send="$emit('send')"
       @stop="$emit('stop')"
@@ -58,7 +74,11 @@ const props = defineProps<{
   draft: string;
   loading?: boolean;
   error?: string | null;
+  sendError?: string | null;
+  sending?: boolean;
   isGenerating?: boolean;
+  canStop?: boolean;
+  stopping?: boolean;
 }>();
 
 defineEmits<{
@@ -103,7 +123,7 @@ async function scrollToBottom() {
 <style scoped>
 .chat-room {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-height: min(720px, calc(100vh - 150px));
   overflow: hidden;
   border: 1px solid var(--line-subtle);
@@ -146,6 +166,10 @@ async function scrollToBottom() {
   min-height: 320px;
   overflow-y: auto;
   padding: 18px;
+}
+
+.chat-room__send-error {
+  margin: 0 12px 12px;
 }
 
 @media (max-width: 720px) {

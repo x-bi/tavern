@@ -5,6 +5,7 @@ import { validateEnv } from './config/env.validation';
 import serverConfig from './config/server.config';
 import { AssetsModule } from './modules/assets/assets.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { ChatModule } from './modules/chat/chat.module';
 import { CharactersModule } from './modules/characters/characters.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { HealthModule } from './modules/health/health.module';
@@ -27,6 +28,7 @@ import { PrismaModule } from './prisma/prisma.module';
     AssetsModule,
     AuthModule,
     CharactersModule,
+    ChatModule,
     ConversationsModule,
     MessagesModule,
     ModelsModule,

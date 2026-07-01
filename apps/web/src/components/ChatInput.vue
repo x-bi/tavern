@@ -4,7 +4,8 @@
       :value="modelValue"
       type="textarea"
       :autosize="{ minRows: 3, maxRows: 6 }"
-      placeholder="输入消息。当前阶段仅保留输入区，不发送到模型。"
+      :disabled="sending || isGenerating"
+      placeholder="输入消息"
       @update:value="$emit('update:modelValue', $event)"
       @keydown.enter.exact.prevent="$emit('send')"
     />
@@ -16,9 +17,16 @@
       </div>
 
       <div class="chat-input__submit-actions">
-        <n-button secondary :disabled="!isGenerating" @click="$emit('stop')">停止</n-button>
-        <n-button secondary @click="$emit('regenerate')">重新生成</n-button>
-        <n-button type="primary" :disabled="!modelValue.trim()" @click="$emit('send')">
+        <n-button secondary :loading="stopping" :disabled="!canStop" @click="$emit('stop')">
+          停止
+        </n-button>
+        <n-button secondary disabled @click="$emit('regenerate')">重新生成</n-button>
+        <n-button
+          type="primary"
+          :loading="sending || isGenerating"
+          :disabled="!modelValue.trim() || sending || isGenerating"
+          @click="$emit('send')"
+        >
           发送
         </n-button>
       </div>
@@ -29,7 +37,10 @@
 <script setup lang="ts">
 defineProps<{
   modelValue: string;
+  sending?: boolean;
   isGenerating?: boolean;
+  canStop?: boolean;
+  stopping?: boolean;
 }>();
 
 defineEmits<{

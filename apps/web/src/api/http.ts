@@ -9,13 +9,17 @@ export type HttpRequestOptions = {
   signal?: AbortSignal;
 };
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+
+export function toApiUrl(path: string): string {
+  return `${API_BASE_URL}${path}`;
+}
 
 export async function requestJson<T>(
   path: string,
   options: HttpRequestOptions = {}
 ): Promise<ApiResponse<T>> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(toApiUrl(path), {
     method: options.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',

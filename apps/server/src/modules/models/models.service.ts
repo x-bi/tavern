@@ -1,10 +1,17 @@
-import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, type ModelConfig } from '@prisma/client';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ModelGatewayService } from '../../services/model-gateway';
 import type { CurrentUser } from '../users/user.types';
 import type { CreateModelConfigDto } from './dto/create-model-config.dto';
 import type { QueryModelConfigsDto } from './dto/query-model-configs.dto';
@@ -13,6 +20,7 @@ import type {
   ModelConfigListResponse,
   ModelConfigParams,
   ModelConfigResponse,
+  ModelGatewayConfig,
   ModelConfigTestResponse
 } from './model-config.types';
 
@@ -24,7 +32,9 @@ export class ModelsService {
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
     @Inject(ConfigService)
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    @Inject(ModelGatewayService)
+    private readonly modelGateway: ModelGatewayService
   ) {
     this.apiKeyEncryptionKey = createHash('sha256')
       .update(this.configService.getOrThrow<string>('AUTH_TOKEN_SECRET'))
@@ -112,87 +122,56 @@ export class ModelsService {
     return this.toResponse(await this.findOwnedActiveModelConfig(currentUser, id));
   }
 
+  async getGatewayConfig(
+    currentUser: CurrentUser,
+    id: string | null | undefined
+  ): Promise<ModelGatewayConfig> {
+    const modelConfig = id
+      ? await this.findOwnedActiveModelConfig(currentUser, id)
+      : await this.findDefaultActiveModelConfig(currentUser);
+
+    if (!modelConfig.isEnabled) {
+      throw new BadRequestException({
+        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
+        message: 'Model config not found.'
+      });
+    }
+
+    return {
+      modelConfigId: modelConfig.id,
+      providerName: modelConfig.provider,
+      baseUrl: modelConfig.baseUrl,
+      modelName: modelConfig.model,
+      apiKey: this.decryptApiKey(modelConfig.apiKeyCiphertext),
+      params: this.parseParams(modelConfig.defaultParamsJson)
+    };
+  }
+
   async testConnection(currentUser: CurrentUser, id: string): Promise<ModelConfigTestResponse> {
     const modelConfig = await this.findOwnedActiveModelConfig(currentUser, id);
-    const startedAt = Date.now();
     const apiKey = this.decryptApiKey(modelConfig.apiKeyCiphertext);
-    const baseResult = {
-      providerName: modelConfig.provider,
-      modelName: modelConfig.model,
-      baseUrl: modelConfig.baseUrl,
-      testedAt: new Date().toISOString()
-    };
 
     if (!apiKey) {
       return {
-        ...baseResult,
         ok: false,
-        latencyMs: Date.now() - startedAt,
+        latencyMs: 0,
+        providerName: modelConfig.provider,
+        modelName: modelConfig.model,
+        baseUrl: modelConfig.baseUrl,
         statusCode: null,
         message: 'API Key 未配置，无法测试连接。',
-        summary: null
+        summary: null,
+        testedAt: new Date().toISOString()
       };
     }
 
-    const controller = new AbortController();
-    const timeoutMs = this.getConnectionTestTimeoutMs(modelConfig);
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-    try {
-      const response = await fetch(this.toChatCompletionsUrl(modelConfig.baseUrl), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: modelConfig.model,
-          messages: [
-            {
-              role: 'user',
-              content: 'ping'
-            }
-          ],
-          max_tokens: 1,
-          temperature: 0,
-          stream: false
-        }),
-        signal: controller.signal
-      });
-      const latencyMs = Date.now() - startedAt;
-      const responseText = await response.text();
-
-      if (!response.ok) {
-        return {
-          ...baseResult,
-          ok: false,
-          latencyMs,
-          statusCode: response.status,
-          message: `连接失败：HTTP ${response.status}`,
-          summary: this.extractProviderSummary(responseText, apiKey)
-        };
-      }
-
-      return {
-        ...baseResult,
-        ok: true,
-        latencyMs,
-        statusCode: response.status,
-        message: '连接成功，已收到最小模型响应。',
-        summary: this.extractSuccessSummary(responseText)
-      };
-    } catch (error) {
-      return {
-        ...baseResult,
-        ok: false,
-        latencyMs: Date.now() - startedAt,
-        statusCode: null,
-        message: this.toConnectionErrorMessage(error, timeoutMs),
-        summary: null
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
+    return this.modelGateway.testConnection({
+      providerName: modelConfig.provider,
+      baseUrl: modelConfig.baseUrl,
+      modelName: modelConfig.model,
+      apiKey,
+      ...this.parseParams(modelConfig.defaultParamsJson)
+    });
   }
 
   async update(
@@ -282,6 +261,26 @@ export class ModelsService {
         userId: currentUser.id,
         deletedAt: null
       }
+    });
+
+    if (!modelConfig) {
+      throw new NotFoundException({
+        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
+        message: 'Model config not found.'
+      });
+    }
+
+    return modelConfig;
+  }
+
+  private async findDefaultActiveModelConfig(currentUser: CurrentUser): Promise<ModelConfig> {
+    const modelConfig = await this.prisma.modelConfig.findFirst({
+      where: {
+        userId: currentUser.id,
+        deletedAt: null,
+        isEnabled: true
+      },
+      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }]
     });
 
     if (!modelConfig) {
@@ -422,100 +421,6 @@ export class ModelsService {
     } catch {
       return null;
     }
-  }
-
-  private toChatCompletionsUrl(baseUrl: string): string {
-    const normalizedBaseUrl = baseUrl.replace(/\/+$/g, '');
-
-    return normalizedBaseUrl.endsWith('/chat/completions')
-      ? normalizedBaseUrl
-      : `${normalizedBaseUrl}/chat/completions`;
-  }
-
-  private getConnectionTestTimeoutMs(modelConfig: ModelConfig): number {
-    const params = this.parseParams(modelConfig.defaultParamsJson);
-
-    return Math.min(params.timeout ?? 30000, 60000);
-  }
-
-  private extractProviderSummary(responseText: string, apiKey: string): string | null {
-    const rawSummary = this.tryExtractProviderMessage(responseText) ?? responseText;
-    const sanitizedSummary = this.sanitizeProviderText(rawSummary, apiKey);
-
-    return sanitizedSummary ? sanitizedSummary.slice(0, 500) : null;
-  }
-
-  private extractSuccessSummary(responseText: string): string | null {
-    if (!responseText) {
-      return '响应体为空，但 HTTP 状态为成功。';
-    }
-
-    try {
-      const parsed = JSON.parse(responseText) as {
-        id?: unknown;
-        model?: unknown;
-        choices?: unknown;
-      };
-      const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
-      const parts = [
-        typeof parsed.model === 'string' ? `model=${parsed.model}` : null,
-        typeof parsed.id === 'string' ? `id=${parsed.id}` : null,
-        `choices=${choices.length}`
-      ].filter(Boolean);
-
-      return parts.join(', ');
-    } catch {
-      return 'HTTP 成功，但响应体不是标准 JSON。';
-    }
-  }
-
-  private tryExtractProviderMessage(responseText: string): string | null {
-    if (!responseText) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(responseText) as {
-        error?: {
-          message?: unknown;
-          code?: unknown;
-          type?: unknown;
-        };
-        message?: unknown;
-      };
-
-      if (typeof parsed.error?.message === 'string') {
-        const parts = [
-          parsed.error.message,
-          typeof parsed.error.code === 'string' ? `code=${parsed.error.code}` : null,
-          typeof parsed.error.type === 'string' ? `type=${parsed.error.type}` : null
-        ].filter(Boolean);
-
-        return parts.join(' ');
-      }
-
-      return typeof parsed.message === 'string' ? parsed.message : null;
-    } catch {
-      return null;
-    }
-  }
-
-  private sanitizeProviderText(value: string, apiKey: string): string {
-    return value
-      .replaceAll(apiKey, '[api-key]')
-      .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [api-key]')
-      .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-****')
-      .trim();
-  }
-
-  private toConnectionErrorMessage(error: unknown, timeoutMs: number): string {
-    if (error instanceof Error && error.name === 'AbortError') {
-      return `连接超时：超过 ${timeoutMs}ms 未收到响应。`;
-    }
-
-    return error instanceof Error && error.message
-      ? `连接失败：${error.message}`
-      : '连接失败：无法访问模型服务。';
   }
 
   private maskApiKey(value: string | null): string | null {

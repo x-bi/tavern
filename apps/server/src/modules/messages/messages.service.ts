@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, type Message } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
@@ -100,13 +100,16 @@ export class MessagesService {
     currentUser: CurrentUser,
     id: string
   ): Promise<MessageRegenerateResponse> {
-    await this.findOwnedActiveMessage(currentUser, id);
+    const target = await this.findOwnedActiveMessage(currentUser, id);
+    await this.assertRegenerateTarget(target);
 
     return {
-      regenerated: false,
       id,
-      reason: 'NOT_IMPLEMENTED',
-      message: 'Message regenerate is reserved for a later chat generation stage.'
+      conversationId: target.conversationId,
+      regenerateMessageId: id,
+      replaceStrategy: 'soft-delete-target',
+      streamPath: '/chat/stream',
+      message: 'Use /chat/stream with regenerateMessageId to regenerate this assistant reply.'
     };
   }
 
@@ -153,6 +156,43 @@ export class MessagesService {
     }
 
     return message;
+  }
+
+  private async assertRegenerateTarget(target: Message): Promise<void> {
+    if (target.role !== 'assistant') {
+      throw new BadRequestException({
+        code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
+        message: 'Only assistant messages can be regenerated.'
+      });
+    }
+
+    const activeMessages = await this.prisma.message.findMany({
+      where: {
+        conversationId: target.conversationId,
+        deletedAt: null
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
+    });
+    const targetIndex = activeMessages.findIndex((message) => message.id === target.id);
+
+    if (targetIndex === -1 || targetIndex !== activeMessages.length - 1) {
+      throw new BadRequestException({
+        code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
+        message: 'Only the latest assistant reply can be regenerated.'
+      });
+    }
+
+    const previousUserMessage = activeMessages
+      .slice(0, targetIndex)
+      .reverse()
+      .find((message) => message.role === 'user');
+
+    if (!previousUserMessage) {
+      throw new BadRequestException({
+        code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
+        message: 'Regenerate requires a previous user message.'
+      });
+    }
   }
 
   private toResponse(message: Message): MessageResponse {

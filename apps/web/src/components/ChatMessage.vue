@@ -11,12 +11,47 @@
         </n-tag>
       </header>
 
-      <p class="chat-message__content">{{ message.content }}</p>
+      <div v-if="isEditing" class="chat-message__editor">
+        <n-input
+          v-model:value="editDraft"
+          type="textarea"
+          :autosize="{ minRows: 2, maxRows: 8 }"
+          :disabled="isSaving"
+          placeholder="编辑用户消息"
+        />
+        <p v-if="editError" class="chat-message__edit-error">{{ editError }}</p>
+        <div class="chat-message__edit-actions">
+          <n-button size="tiny" :loading="isSaving" type="primary" @click="saveEdit">保存</n-button>
+          <n-button size="tiny" quaternary :disabled="isSaving" @click="cancelEdit">取消</n-button>
+        </div>
+      </div>
+
+      <p v-else class="chat-message__content">{{ message.content }}</p>
 
       <footer class="chat-message__actions">
         <n-button size="tiny" quaternary @click="$emit('copy', message)">复制</n-button>
         <n-button
-          v-if="canRegenerate"
+          v-if="canEdit && !isEditing"
+          size="tiny"
+          quaternary
+          :disabled="operationPending || editDisabled"
+          @click="startEdit"
+        >
+          编辑
+        </n-button>
+        <n-button
+          v-if="canDelete && !isEditing"
+          size="tiny"
+          quaternary
+          type="error"
+          :loading="operationPending"
+          :disabled="deleteDisabled"
+          @click="$emit('delete', message)"
+        >
+          删除
+        </n-button>
+        <n-button
+          v-if="canRegenerate && !isEditing"
           size="tiny"
           quaternary
           :disabled="regenerateDisabled"
@@ -30,19 +65,36 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 import type { Message } from '../api/messages';
 
 const props = defineProps<{
   message: Message;
   regenerateDisabled?: boolean;
+  operationPending?: boolean;
+  editDisabled?: boolean;
+  deleteDisabled?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   copy: [message: Message];
+  edit: [
+    payload: {
+      message: Message;
+      content: string;
+      resolve: () => void;
+      reject: (error: unknown) => void;
+    }
+  ];
+  delete: [message: Message];
   regenerate: [message: Message];
 }>();
+
+const isEditing = ref(false);
+const isSaving = ref(false);
+const editDraft = ref('');
+const editError = ref<string | null>(null);
 
 const messageClass = computed(() => ({
   'chat-message--user': props.message.role === 'user',
@@ -83,11 +135,26 @@ const statusLabel = computed(() => {
 });
 
 const avatarText = computed(() => (props.message.role === 'user' ? 'U' : 'A'));
+const isLocalMessage = computed(() => Boolean(props.message.metadata?.local));
+const canEdit = computed(
+  () =>
+    props.message.role === 'user' &&
+    props.message.status !== 'deleted' &&
+    props.message.status !== 'generating' &&
+    !isLocalMessage.value
+);
+const canDelete = computed(
+  () =>
+    props.message.status !== 'deleted' &&
+    props.message.status !== 'generating' &&
+    !isLocalMessage.value
+);
 const canRegenerate = computed(
   () =>
     props.message.role === 'assistant' &&
     props.message.status !== 'generating' &&
-    props.message.status !== 'deleted'
+    props.message.status !== 'deleted' &&
+    !isLocalMessage.value
 );
 const formattedTime = computed(() =>
   new Intl.DateTimeFormat('zh-CN', {
@@ -97,6 +164,69 @@ const formattedTime = computed(() =>
     minute: '2-digit'
   }).format(new Date(props.message.createdAt))
 );
+
+watch(
+  () => props.message.id,
+  () => {
+    isEditing.value = false;
+    isSaving.value = false;
+    editError.value = null;
+    editDraft.value = '';
+  }
+);
+
+function startEdit() {
+  if (!canEdit.value || props.editDisabled || props.operationPending) {
+    return;
+  }
+
+  editDraft.value = props.message.content;
+  editError.value = null;
+  isEditing.value = true;
+}
+
+function cancelEdit() {
+  if (isSaving.value) {
+    return;
+  }
+
+  isEditing.value = false;
+  editError.value = null;
+  editDraft.value = '';
+}
+
+function saveEdit() {
+  const content = editDraft.value.trim();
+
+  if (!content) {
+    editError.value = '消息内容不能为空。';
+
+    return;
+  }
+
+  if (content === props.message.content) {
+    cancelEdit();
+
+    return;
+  }
+
+  isSaving.value = true;
+  editError.value = null;
+
+  emit('edit', {
+    message: props.message,
+    content,
+    resolve: () => {
+      isSaving.value = false;
+      isEditing.value = false;
+      editDraft.value = '';
+    },
+    reject: (error) => {
+      isSaving.value = false;
+      editError.value = error instanceof Error ? error.message : '消息保存失败。';
+    }
+  });
+}
 </script>
 
 <style scoped>
@@ -178,6 +308,23 @@ const formattedTime = computed(() =>
   line-height: 1.7;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.chat-message__editor {
+  display: grid;
+  gap: 8px;
+}
+
+.chat-message__edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chat-message__edit-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 12px;
 }
 
 .chat-message__actions {

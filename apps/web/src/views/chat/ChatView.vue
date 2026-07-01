@@ -27,11 +27,14 @@
         :is-generating="chatStore.isGenerating"
         :can-stop="chatStore.canStop"
         :stopping="chatStore.stopping"
+        :mutating-message-ids="chatStore.mutatingMessageIds"
         @update:draft="chatStore.setDraft"
         @reload="reloadMessages"
         @send="handleSend"
         @stop="handleStop"
         @copy="copyMessage"
+        @edit="handleEdit"
+        @delete="confirmDelete"
         @regenerate="handleRegenerate"
         @regenerate-latest="handleLatestRegeneratePlaceholder"
       />
@@ -73,7 +76,7 @@
 <script setup lang="ts">
 import type { ChatStreamPayload } from '@tavern/shared';
 import { computed, onMounted, watch } from 'vue';
-import { useMessage } from 'naive-ui';
+import { useDialog, useMessage } from 'naive-ui';
 import { useRoute, useRouter } from 'vue-router';
 
 import { regenerateMessage, type Message } from '../../api/messages';
@@ -85,6 +88,7 @@ import { useConversationStore } from '../../stores/conversation';
 
 const route = useRoute();
 const router = useRouter();
+const dialog = useDialog();
 const message = useMessage();
 const chatStore = useChatStore();
 const conversationStore = useConversationStore();
@@ -202,6 +206,61 @@ async function handleRegenerate(target: Message) {
   }
 }
 
+async function handleEdit(payload: {
+  message: Message;
+  content: string;
+  resolve: () => void;
+  reject: (error: unknown) => void;
+}) {
+  if (chatStore.isGenerating) {
+    const error = new Error('生成中不能编辑消息。');
+    payload.reject(error);
+    message.warning(error.message);
+
+    return;
+  }
+
+  if (payload.message.role !== 'user') {
+    const error = new Error('只能编辑用户消息。');
+    payload.reject(error);
+    message.warning(error.message);
+
+    return;
+  }
+
+  try {
+    await chatStore.editMessage(payload.message.id, payload.content);
+    payload.resolve();
+    message.success('消息已保存');
+  } catch (error) {
+    payload.reject(error);
+    message.error(error instanceof Error ? error.message : '消息保存失败。');
+  }
+}
+
+function confirmDelete(target: Message) {
+  if (chatStore.isGenerating) {
+    message.warning('生成中不能删除消息。');
+
+    return;
+  }
+
+  dialog.warning({
+    title: '删除消息',
+    content: '删除后会从当前会话列表移除，不会触发重新生成。',
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await chatStore.removeMessage(target.id);
+        message.success('消息已删除');
+      } catch (error) {
+        message.error(error instanceof Error ? error.message : '消息删除失败。');
+      }
+    }
+  });
+}
+
 async function runChatStream(activeConversationId: string, payload: ChatStreamPayload) {
   let streamFailed = false;
   let streamStopped = false;
@@ -272,6 +331,12 @@ function handleLatestRegeneratePlaceholder() {
 }
 
 async function copyMessage(target: Message) {
+  if (!target.content) {
+    message.warning('当前消息没有可复制的内容。');
+
+    return;
+  }
+
   try {
     await navigator.clipboard.writeText(target.content);
     message.success('消息已复制');

@@ -62,6 +62,13 @@ export class MessagesService {
     const existing = await this.findOwnedActiveMessage(currentUser, id);
     const contentChanged = dto.content !== undefined && dto.content !== existing.content;
 
+    if (dto.content !== undefined && existing.role !== 'user') {
+      throw new BadRequestException({
+        code: ERROR_CODES.MESSAGE_UPDATE_TARGET_INVALID,
+        message: 'Only user messages can be edited.'
+      });
+    }
+
     const message = await this.prisma.message.update({
       where: { id },
       data: {

@@ -27,7 +27,12 @@
           :key="message.id"
           :message="message"
           :regenerate-disabled="isGenerating"
+          :operation-pending="mutatingMessageIds.includes(message.id)"
+          :edit-disabled="isGenerating"
+          :delete-disabled="isGenerating"
           @copy="$emit('copy', $event)"
+          @edit="$emit('edit', $event)"
+          @delete="$emit('delete', $event)"
           @regenerate="$emit('regenerate', $event)"
         />
       </template>
@@ -67,7 +72,8 @@ import EmptyState from './EmptyState.vue';
 import ErrorState from './ErrorState.vue';
 import LoadingState from './LoadingState.vue';
 
-const props = defineProps<{
+const props = withDefaults(
+  defineProps<{
   title: string;
   characterName?: string | null;
   messages: Message[];
@@ -79,7 +85,12 @@ const props = defineProps<{
   isGenerating?: boolean;
   canStop?: boolean;
   stopping?: boolean;
-}>();
+  mutatingMessageIds?: string[];
+  }>(),
+  {
+    mutatingMessageIds: () => []
+  }
+);
 
 defineEmits<{
   'update:draft': [value: string];
@@ -87,6 +98,15 @@ defineEmits<{
   send: [];
   stop: [];
   copy: [message: Message];
+  edit: [
+    payload: {
+      message: Message;
+      content: string;
+      resolve: () => void;
+      reject: (error: unknown) => void;
+    }
+  ];
+  delete: [message: Message];
   regenerate: [message: Message];
   'regenerate-latest': [];
 }>();

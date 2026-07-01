@@ -1,6 +1,12 @@
 import { defineStore } from 'pinia';
 
-import { fetchConversationMessages, type Message, type MessageListParams } from '../api/messages';
+import {
+  deleteMessage,
+  fetchConversationMessages,
+  updateMessage,
+  type Message,
+  type MessageListParams
+} from '../api/messages';
 
 let localMessageSeed = 0;
 
@@ -21,6 +27,8 @@ type ChatState = {
   stopping: boolean;
   currentStreamTaskId: string | null;
   regeneratingMessageId: string | null;
+  mutatingMessageIds: string[];
+  operationError: string | null;
 };
 
 export const useChatStore = defineStore('chat', {
@@ -40,7 +48,9 @@ export const useChatStore = defineStore('chat', {
     isStreaming: false,
     stopping: false,
     currentStreamTaskId: null,
-    regeneratingMessageId: null
+    regeneratingMessageId: null,
+    mutatingMessageIds: [],
+    operationError: null
   }),
   getters: {
     visibleMessages: (state): Message[] => [
@@ -75,6 +85,8 @@ export const useChatStore = defineStore('chat', {
       this.stopping = false;
       this.currentStreamTaskId = null;
       this.regeneratingMessageId = null;
+      this.mutatingMessageIds = [];
+      this.operationError = null;
     },
     beginStreaming(conversationId: string, userMessage: string) {
       const content = userMessage.trim();
@@ -267,6 +279,75 @@ export const useChatStore = defineStore('chat', {
           this.loading = false;
         }
       }
+    },
+    async editMessage(id: string, content: string) {
+      const nextContent = content.trim();
+
+      if (!nextContent) {
+        throw new Error('消息内容不能为空。');
+      }
+
+      this.markMessageMutating(id);
+      this.operationError = null;
+
+      try {
+        const updated = await updateMessage(id, { content: nextContent });
+        this.messages = this.messages.map((message) => (message.id === id ? updated : message));
+
+        if (this.streamingMessage?.id === id) {
+          this.streamingMessage = updated;
+        }
+
+        if (this.pendingUserMessage?.id === id) {
+          this.pendingUserMessage = updated;
+        }
+
+        return updated;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '消息保存失败。';
+        this.operationError = message;
+        throw new Error(message);
+      } finally {
+        this.unmarkMessageMutating(id);
+      }
+    },
+    async removeMessage(id: string) {
+      this.markMessageMutating(id);
+      this.operationError = null;
+
+      try {
+        await deleteMessage(id);
+        const beforeCount = this.messages.length;
+        const removedPending = this.pendingUserMessage?.id === id;
+        const removedStreaming = this.streamingMessage?.id === id;
+        this.messages = this.messages.filter((message) => message.id !== id);
+
+        if (removedPending) {
+          this.pendingUserMessage = null;
+        }
+
+        if (removedStreaming) {
+          this.streamingMessage = null;
+        }
+
+        if (beforeCount !== this.messages.length || removedPending || removedStreaming) {
+          this.total = Math.max(0, this.total - 1);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '消息删除失败。';
+        this.operationError = message;
+        throw new Error(message);
+      } finally {
+        this.unmarkMessageMutating(id);
+      }
+    },
+    markMessageMutating(id: string) {
+      if (!this.mutatingMessageIds.includes(id)) {
+        this.mutatingMessageIds = [...this.mutatingMessageIds, id];
+      }
+    },
+    unmarkMessageMutating(id: string) {
+      this.mutatingMessageIds = this.mutatingMessageIds.filter((messageId) => messageId !== id);
     }
   }
 });

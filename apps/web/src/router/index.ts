@@ -14,7 +14,7 @@ import NotFoundView from '../views/NotFoundView.vue';
 import PersonaView from '../views/personas/PersonaView.vue';
 import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/prompts/PromptPreviewView.vue';
-import SettingsView from '../views/SettingsView.vue';
+import SettingView from '../views/settings/SettingView.vue';
 import WorldBookView from '../views/world-books/WorldBookView.vue';
 
 export const router = createRouter({
@@ -135,7 +135,7 @@ export const router = createRouter({
         {
           path: 'settings',
           name: 'settings',
-          component: SettingsView,
+          component: SettingView,
           meta: {
             title: '设置'
           }

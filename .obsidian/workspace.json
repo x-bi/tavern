@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "model-context/stages/stage-44-数据恢复导入.md",
+                "file": "model-context/stages/stage-45-设置页.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "stage-44-数据恢复导入"
+              "title": "stage-45-设置页"
             }
           }
         ]
@@ -185,20 +185,21 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
+    "data/tavern-lite.db-journal",
+    "apps/web/src/views/settings/SettingView.vue",
+    "apps/web/src/views/settings",
+    "apps/web/src/stores/setting.ts",
+    "apps/web/src/api/settings.ts",
+    "model-context/stages/stage-44-数据恢复导入.md",
     "docs/backup-import.md",
     "apps/server/src/modules/backups/dto/import-backup.dto.ts",
     "apps/server/src/modules/backups/dto",
     "model-context/stages/stage-45-设置页.md",
-    "data/tavern-lite.db-journal",
     "docs/backup-export.md",
     "apps/web/src/api/backups.ts",
     "apps/server/src/modules/backups/backups.module.ts",
     "apps/server/src/modules/backups/backups.controller.ts",
     "apps/server/src/modules/backups/backups.service.ts",
-    "apps/server/src/modules/backups/backup.types.ts",
-    "apps/server/src/modules/backups",
-    "packages/shared/src/backup.ts",
-    "model-context/stages/stage-44-数据恢复导入.md",
     "model-context/stages/stage-43-数据备份导出.md",
     "model-context/stages/stage-42-角色卡-json-导出.md",
     "model-context/stages/stage-41-角色卡-json-导入.md",
@@ -220,7 +221,6 @@
     "model-context/stages/stage-33-聊天流式输出接入.md",
     "model-context/stages/stage-32-前端-usechatstream-composable.md",
     "model-context/stages/stage-31-后端-sse-fetch-stream-聊天接口.md",
-    "model-context/stages/stage-30-openai-compatible-chat-completions-适配.md",
     "uploads/avatars/characters/1a801e83-fce1-4597-98fa-ed7fb6496356.png",
     "uploads/avatars/characters/22c500b8-d49d-4560-90ca-a8b9f3247c6f.png",
     "uploads/avatars/characters/40b56634-435a-4cbb-9e3f-3178b1299447.png",

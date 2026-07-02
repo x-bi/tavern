@@ -1,5 +1,10 @@
 import { requestJson } from './http';
 import type {
+  CharacterExportResponse,
+  CharacterImportPayload,
+  CharacterImportResponse as SharedCharacterImportResponse
+} from '@tavern/shared';
+import type {
   CharacterMetadata,
   CharacterMutationPayload,
   ExampleMessage
@@ -41,6 +46,8 @@ export type CharacterDeleteResult = {
   id: string;
 };
 
+export type CharacterImportResponse = SharedCharacterImportResponse<Character>;
+
 export class ApiClientError extends Error {
   constructor(
     message: string,
@@ -58,11 +65,7 @@ export async function fetchCharacters(
   const response = await requestJson<CharacterListResult>(`/characters${toQueryString(params)}`);
 
   if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
   return response.data;
@@ -72,11 +75,7 @@ export async function fetchCharacter(id: string): Promise<Character> {
   const response = await requestJson<Character>(`/characters/${id}`);
 
   if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
   return response.data;
@@ -89,11 +88,7 @@ export async function createCharacter(payload: CharacterMutationPayload): Promis
   });
 
   if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
   return response.data;
@@ -109,11 +104,7 @@ export async function updateCharacter(
   });
 
   if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
   return response.data;
@@ -125,11 +116,32 @@ export async function deleteCharacter(id: string): Promise<CharacterDeleteResult
   });
 
   if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function importCharacterJson(
+  payload: CharacterImportPayload
+): Promise<CharacterImportResponse> {
+  const response = await requestJson<CharacterImportResponse>('/characters/import', {
+    method: 'POST',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function exportCharacterJson(id: string): Promise<CharacterExportResponse> {
+  const response = await requestJson<CharacterExportResponse>(`/characters/${id}/export`);
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
   return response.data;

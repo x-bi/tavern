@@ -21,6 +21,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { CurrentUser as CurrentUserType } from '../users/user.types';
 import { CharactersService } from './characters.service';
 import { CreateCharacterDto } from './dto/create-character.dto';
+import { ImportCharacterDto } from './dto/import-character.dto';
 import { QueryCharactersDto } from './dto/query-characters.dto';
 import { UpdateCharacterDto } from './dto/update-character.dto';
 
@@ -46,6 +47,19 @@ export class CharactersController {
     @Body(new DtoValidationPipe(CreateCharacterDto)) dto: CreateCharacterDto
   ) {
     return this.charactersService.create(currentUser, dto);
+  }
+
+  @Post('import')
+  importJson(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Body(new DtoValidationPipe(ImportCharacterDto)) dto: ImportCharacterDto
+  ) {
+    return this.charactersService.importJson(currentUser, dto);
+  }
+
+  @Get(':id/export')
+  exportJson(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.charactersService.exportJson(currentUser, id);
   }
 
   @Get(':id')

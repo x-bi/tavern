@@ -20,7 +20,19 @@
 
       <n-space class="character-detail__actions" justify="end">
         <n-button secondary :disabled="!character" @click="goEdit">编辑</n-button>
-        <n-button secondary :disabled="!character || characterStore.saving" @click="duplicateCurrent">
+        <n-button
+          secondary
+          :loading="exportLoading"
+          :disabled="!character || exportLoading"
+          @click="exportCurrent"
+        >
+          导出 JSON
+        </n-button>
+        <n-button
+          secondary
+          :disabled="!character || characterStore.saving"
+          @click="duplicateCurrent"
+        >
           复制角色
         </n-button>
         <n-button type="primary" :disabled="!character" @click="startConversation">
@@ -48,6 +60,10 @@
 
     <n-alert v-else-if="characterStore.saveError" type="error" :bordered="false">
       {{ characterStore.saveError }}
+    </n-alert>
+
+    <n-alert v-if="exportError" type="error" :bordered="false">
+      {{ exportError }}
     </n-alert>
 
     <template v-if="character">
@@ -122,11 +138,12 @@
 
 <script setup lang="ts">
 import { useDialog, useMessage } from 'naive-ui';
-import { computed, onMounted, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
+import { exportCharacterJson } from '../../api/characters';
 import { useCharacterStore } from '../../stores/character';
 import type { ExampleMessage } from '../../types/character';
 
@@ -137,6 +154,8 @@ const message = useMessage();
 const characterStore = useCharacterStore();
 const characterId = computed(() => String(route.params.id ?? ''));
 const character = computed(() => characterStore.current);
+const exportLoading = ref(false);
+const exportError = ref<string | null>(null);
 
 const initials = computed(() => character.value?.name.trim().slice(0, 2).toUpperCase() || 'TL');
 
@@ -212,6 +231,36 @@ async function duplicateCurrent() {
 
   message.success('角色已复制');
   router.push({ name: 'character-detail', params: { id: duplicated.id } });
+}
+
+async function exportCurrent() {
+  if (!character.value) {
+    return;
+  }
+
+  exportLoading.value = true;
+  exportError.value = null;
+
+  try {
+    const result = await exportCharacterJson(character.value.id);
+    const blob = new Blob([`${JSON.stringify(result.card, null, 2)}\n`], {
+      type: 'application/json;charset=utf-8'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = result.fileName;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    message.success('角色 JSON 已导出');
+  } catch (error) {
+    exportError.value = error instanceof Error ? error.message : '角色导出失败。';
+  } finally {
+    exportLoading.value = false;
+  }
 }
 
 function startConversation() {

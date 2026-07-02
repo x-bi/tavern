@@ -1,5 +1,20 @@
 export type { ApiError, ApiResponse } from './api';
 export type {
+  CharacterExportCard,
+  CharacterExportCardData,
+  CharacterExportResponse
+} from './character-export';
+export type {
+  CharacterImportDuplicateNameStrategy,
+  CharacterImportExampleMessage,
+  CharacterImportFieldAction,
+  CharacterImportFieldMapping,
+  CharacterImportPayload,
+  CharacterImportPreview,
+  CharacterImportResponse,
+  CharacterImportWarning
+} from './character-import';
+export type {
   ChatStreamDeltaEvent,
   ChatStreamDoneEvent,
   ChatStreamErrorEvent,

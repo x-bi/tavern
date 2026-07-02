@@ -1,4 +1,17 @@
 export type { ApiError, ApiResponse } from './api';
+export { APPLICATION_BACKUP_FORMAT_VERSION } from './backup';
+export type {
+  ApplicationBackupExport,
+  ApplicationBackupImportPayload,
+  ApplicationBackupImportResponse,
+  ApplicationBackupImportSummary,
+  ApplicationBackupModelConfig,
+  ApplicationBackupSecurity,
+  ApplicationBackupSetting,
+  BackupApiKeyPolicy,
+  BackupJsonRecord,
+  BackupSettingsPolicy
+} from './backup';
 export type {
   CharacterExportCard,
   CharacterExportCardData,

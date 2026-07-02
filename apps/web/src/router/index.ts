@@ -15,7 +15,7 @@ import PersonaView from '../views/personas/PersonaView.vue';
 import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/prompts/PromptPreviewView.vue';
 import SettingsView from '../views/SettingsView.vue';
-import WorldBookView from '../views/WorldBookView.vue';
+import WorldBookView from '../views/world-books/WorldBookView.vue';
 
 export const router = createRouter({
   history: createWebHistory(),

@@ -14,6 +14,7 @@ import { ModelsModule } from './modules/models/models.module';
 import { PersonasModule } from './modules/personas/personas.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
 import { PresetsModule } from './modules/presets/presets.module';
+import { WorldBooksModule } from './modules/world-books/world-books.module';
 import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PersonasModule,
     PromptsModule,
     PresetsModule,
+    WorldBooksModule,
     HealthModule
   ]
 })

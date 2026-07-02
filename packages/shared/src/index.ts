@@ -85,3 +85,13 @@ export type {
   PromptPresetPayload,
   PromptPresetResponse
 } from './prompt-preset';
+export type {
+  WorldBookEntryInsertionOrder,
+  WorldBookEntryPayload,
+  WorldBookEntryResponse,
+  WorldBookEntryUpdatePayload,
+  WorldBookListResponse,
+  WorldBookPayload,
+  WorldBookResponse,
+  WorldBookUpdatePayload
+} from './world-book';

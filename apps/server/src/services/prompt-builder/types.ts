@@ -267,6 +267,25 @@ export type PromptHistoryTrimInfo = {
   truncatedHistory: PromptTruncatedHistoryItem[];
 };
 
+export type PromptPreviewWorldBookDebug = {
+  scanDepth: number;
+  tokenBudget: number;
+  usedTokenEstimate: number;
+  scannedMessageIds: string[];
+  matchedCount: number;
+  skippedCount: number;
+  matchedEntries: WorldBookMatchedEntry[];
+  skippedEntries: WorldBookSkippedEntry[];
+  insertedSections: Array<{
+    sectionId: string;
+    entryId: string | null;
+    title: string;
+    insertionOrder: WorldBookEntryPosition | null;
+    order: number;
+    tokenEstimate?: number | null;
+  }>;
+};
+
 export type PromptPreviewResponse = {
   conversationId: string;
   generatedAt: string;
@@ -274,6 +293,7 @@ export type PromptPreviewResponse = {
   logicalMessages: PromptBuilderMessage[];
   finalMessages: ProviderChatMessage[];
   worldBook: WorldBookMatchResult;
+  worldBookDebug: PromptPreviewWorldBookDebug;
   historyTrimInfo: PromptHistoryTrimInfo;
   tokenEstimate?: number | null;
   debug: BuildPromptDebugInfo;

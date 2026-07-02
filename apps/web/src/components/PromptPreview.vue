@@ -48,8 +48,84 @@
           <strong>{{ preview.historyTrimInfo.truncatedCount }}</strong>
         </div>
         <div>
+          <span>世界书命中</span>
+          <strong>{{ worldBookDebug.matchedCount }}</strong>
+        </div>
+        <div>
           <span>Token 估算</span>
           <strong>{{ preview.tokenEstimate ?? 0 }}</strong>
+        </div>
+      </section>
+
+      <section class="prompt-preview-worldbook" aria-label="世界书命中调试">
+        <header>
+          <div>
+            <h3>世界书命中</h3>
+            <p>展示 Prompt Builder 已插入的世界书条目和预算使用情况。</p>
+          </div>
+          <n-tag size="small" :bordered="false">
+            {{ worldBookDebug.usedTokenEstimate }} / {{ worldBookDebug.tokenBudget }} tokens
+          </n-tag>
+        </header>
+
+        <dl class="prompt-preview-worldbook__stats">
+          <div>
+            <dt>扫描深度</dt>
+            <dd>{{ worldBookDebug.scanDepth }}</dd>
+          </div>
+          <div>
+            <dt>扫描消息</dt>
+            <dd>{{ worldBookDebug.scannedMessageIds.length }}</dd>
+          </div>
+          <div>
+            <dt>命中条目</dt>
+            <dd>{{ worldBookDebug.matchedCount }}</dd>
+          </div>
+          <div>
+            <dt>跳过条目</dt>
+            <dd>{{ worldBookDebug.skippedCount }}</dd>
+          </div>
+        </dl>
+
+        <div v-if="matchedWorldBookEntries.length > 0" class="prompt-preview-worldbook__list">
+          <article
+            v-for="entry in matchedWorldBookEntries"
+            :key="entry.entryId"
+            class="prompt-preview-worldbook-entry"
+          >
+            <header>
+              <div>
+                <n-tag size="small" type="success" :bordered="false">
+                  {{ insertionOrderLabel(entry.insertionOrder) }}
+                </n-tag>
+                <h4>{{ entry.title }}</h4>
+              </div>
+              <span>#{{ sectionOrderByEntryId.get(entry.entryId) ?? '-' }}</span>
+            </header>
+            <dl>
+              <div>
+                <dt>世界书</dt>
+                <dd>{{ entry.worldBookName }}</dd>
+              </div>
+              <div>
+                <dt>Priority</dt>
+                <dd>{{ entry.priority }}</dd>
+              </div>
+              <div>
+                <dt>命中关键词</dt>
+                <dd>{{ formatKeywords(entry.matchedKeywords) }}</dd>
+              </div>
+              <div>
+                <dt>预算</dt>
+                <dd>{{ entry.tokenEstimate ?? 0 }} / {{ entry.tokenBudget ?? '全局' }}</dd>
+              </div>
+            </dl>
+            <p>{{ contentSummary(entry.content) }}</p>
+          </article>
+        </div>
+
+        <div v-else class="prompt-preview-worldbook__empty">
+          当前输入和扫描范围内的历史消息没有命中世界书条目，Prompt 中不会插入 worldbook 分段。
         </div>
       </section>
 
@@ -165,6 +241,50 @@ const viewOptions: Array<{ label: string; value: ViewMode }> = [
   { label: 'JSON', value: 'json' }
 ];
 const previewJson = computed(() => JSON.stringify(props.preview, null, 2));
+const worldBookDebug = computed(() => {
+  return (
+    props.preview?.worldBookDebug ?? {
+      scanDepth: 0,
+      tokenBudget: 0,
+      usedTokenEstimate: 0,
+      scannedMessageIds: [],
+      matchedCount: 0,
+      skippedCount: 0,
+      matchedEntries: [],
+      skippedEntries: [],
+      insertedSections: []
+    }
+  );
+});
+const matchedWorldBookEntries = computed(() => worldBookDebug.value.matchedEntries);
+const sectionOrderByEntryId = computed(() => {
+  return new Map(
+    worldBookDebug.value.insertedSections
+      .filter((section) => section.entryId)
+      .map((section) => [section.entryId as string, section.order])
+  );
+});
+
+function formatKeywords(keywords: string[]) {
+  return keywords.length > 0 ? keywords.join('、') : '-';
+}
+
+function insertionOrderLabel(value: string) {
+  const labels: Record<string, string> = {
+    before_history: '历史前',
+    after_history: '历史后',
+    before_current_user_input: '本轮前',
+    after_current_user_input: '本轮后'
+  };
+
+  return labels[value] ?? value;
+}
+
+function contentSummary(content: string) {
+  const normalized = content.replace(/\s+/g, ' ').trim();
+
+  return normalized.length > 180 ? `${normalized.slice(0, 180)}...` : normalized;
+}
 
 async function copyFinalMessages() {
   if (!props.preview) {
@@ -240,7 +360,7 @@ async function copyText(value: string) {
 
 .prompt-preview__summary {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -255,7 +375,9 @@ async function copyText(value: string) {
 
 .prompt-preview__summary span,
 .prompt-preview-section dt,
-.prompt-preview-debug dt {
+.prompt-preview-debug dt,
+.prompt-preview-worldbook dt,
+.prompt-preview-worldbook-entry dt {
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -268,7 +390,8 @@ async function copyText(value: string) {
 .prompt-preview-section,
 .prompt-preview-message,
 .prompt-preview__json,
-.prompt-preview-debug {
+.prompt-preview-debug,
+.prompt-preview-worldbook {
   display: grid;
   gap: 10px;
   padding: 14px;
@@ -280,7 +403,9 @@ async function copyText(value: string) {
 .prompt-preview-section header,
 .prompt-preview-message header,
 .prompt-preview__json header,
-.prompt-preview-debug header {
+.prompt-preview-debug header,
+.prompt-preview-worldbook header,
+.prompt-preview-worldbook-entry header {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -288,7 +413,9 @@ async function copyText(value: string) {
 }
 
 .prompt-preview-section header div,
-.prompt-preview-message header div {
+.prompt-preview-message header div,
+.prompt-preview-worldbook header div,
+.prompt-preview-worldbook-entry header div {
   display: flex;
   gap: 8px;
   align-items: center;
@@ -297,14 +424,29 @@ async function copyText(value: string) {
 
 .prompt-preview-section h3,
 .prompt-preview__json h3,
-.prompt-preview-debug h3 {
+.prompt-preview-debug h3,
+.prompt-preview-worldbook h3,
+.prompt-preview-worldbook-entry h4 {
   margin: 0;
   color: var(--text-strong);
   font-size: 15px;
 }
 
+.prompt-preview-worldbook header div {
+  display: grid;
+  gap: 2px;
+}
+
+.prompt-preview-worldbook header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 .prompt-preview-section dl,
-.prompt-preview-debug dl {
+.prompt-preview-debug dl,
+.prompt-preview-worldbook__stats,
+.prompt-preview-worldbook-entry dl {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
@@ -312,15 +454,52 @@ async function copyText(value: string) {
 }
 
 .prompt-preview-section dl div,
-.prompt-preview-debug dl div {
+.prompt-preview-debug dl div,
+.prompt-preview-worldbook dl div,
+.prompt-preview-worldbook-entry dl div {
   min-width: 0;
 }
 
 .prompt-preview-section dd,
-.prompt-preview-debug dd {
+.prompt-preview-debug dd,
+.prompt-preview-worldbook dd,
+.prompt-preview-worldbook-entry dd {
   overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-strong);
+}
+
+.prompt-preview-worldbook__list {
+  display: grid;
+  gap: 10px;
+}
+
+.prompt-preview-worldbook-entry {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.prompt-preview-worldbook-entry header > span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.prompt-preview-worldbook-entry p,
+.prompt-preview-worldbook__empty {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.prompt-preview-worldbook__empty {
+  padding: 12px;
+  border: 1px dashed var(--line-subtle);
+  border-radius: 8px;
 }
 
 .prompt-preview pre {
@@ -346,7 +525,9 @@ async function copyText(value: string) {
 
   .prompt-preview__summary,
   .prompt-preview-section dl,
-  .prompt-preview-debug dl {
+  .prompt-preview-debug dl,
+  .prompt-preview-worldbook__stats,
+  .prompt-preview-worldbook-entry dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -355,7 +536,9 @@ async function copyText(value: string) {
   .prompt-preview__mode-switch,
   .prompt-preview__summary,
   .prompt-preview-section dl,
-  .prompt-preview-debug dl {
+  .prompt-preview-debug dl,
+  .prompt-preview-worldbook__stats,
+  .prompt-preview-worldbook-entry dl {
     grid-template-columns: 1fr;
   }
 }

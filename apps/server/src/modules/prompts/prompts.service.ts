@@ -20,7 +20,10 @@ import type {
   ChatMessageLike,
   PromptHistoryTrimInfo,
   PromptModelParameters,
+  PromptPreviewWorldBookDebug,
   PromptPreviewResponse,
+  PromptSection,
+  WorldBookEntryPosition,
   WorldBookContext
 } from '../../services/prompt-builder/types';
 import type { CurrentUser } from '../users/user.types';
@@ -58,6 +61,7 @@ export class PromptsService {
     const buildInput = this.toBuildPromptInput(currentUser, conversation, history, dto, worldBooks);
     const result = this.promptBuilder.build(buildInput);
     const historyTrimInfo = this.toHistoryTrimInfo(dto, history.length, result);
+    const worldBookDebug = this.toWorldBookDebug(result);
 
     return {
       conversationId: result.conversationId,
@@ -66,6 +70,7 @@ export class PromptsService {
       logicalMessages: result.logicalMessages,
       finalMessages: result.finalMessages,
       worldBook: result.worldBook,
+      worldBookDebug,
       historyTrimInfo,
       tokenEstimate: result.tokenEstimate,
       debug: {
@@ -228,6 +233,53 @@ export class PromptsService {
       truncatedCount: result.truncatedHistory.length,
       truncatedHistory: result.truncatedHistory
     };
+  }
+
+  private toWorldBookDebug(
+    result: ReturnType<PromptBuilderService['build']>
+  ): PromptPreviewWorldBookDebug {
+    return {
+      scanDepth: result.worldBook.scanDepth,
+      tokenBudget: result.worldBook.tokenBudget,
+      usedTokenEstimate: result.worldBook.usedTokenEstimate,
+      scannedMessageIds: result.worldBook.scannedMessageIds,
+      matchedCount: result.worldBook.matchedEntries.length,
+      skippedCount: result.worldBook.skippedEntries.length,
+      matchedEntries: result.worldBook.matchedEntries,
+      skippedEntries: result.worldBook.skippedEntries,
+      insertedSections: result.sections
+        .filter((section) => section.kind === 'worldbook' && section.isIncluded)
+        .map((section) => this.toWorldBookInsertedSection(section))
+    };
+  }
+
+  private toWorldBookInsertedSection(
+    section: PromptSection
+  ): PromptPreviewWorldBookDebug['insertedSections'][number] {
+    const metadata = this.isRecord(section.metadata) ? section.metadata : {};
+    const insertionOrder = this.toWorldBookInsertionOrder(metadata.insertionOrder);
+
+    return {
+      sectionId: section.id,
+      entryId: typeof metadata.entryId === 'string' ? metadata.entryId : (section.sourceId ?? null),
+      title: section.title,
+      insertionOrder,
+      order: section.order,
+      tokenEstimate: section.tokenEstimate
+    };
+  }
+
+  private toWorldBookInsertionOrder(value: unknown): WorldBookEntryPosition | null {
+    if (
+      value === 'before_history' ||
+      value === 'after_history' ||
+      value === 'before_current_user_input' ||
+      value === 'after_current_user_input'
+    ) {
+      return value;
+    }
+
+    return null;
   }
 
   private resolveHistoryTake(

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "model-context/stages/stage-40-世界书命中调试与-prompt-预览集成.md",
+                "file": "model-context/stages/stage-41-角色卡-json-导入.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "stage-40-世界书命中调试与-prompt-预览集成"
+              "title": "stage-41-角色卡-json-导入"
             }
           }
         ]
@@ -185,9 +185,9 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
-    "model-context/stages/stage-39-世界书关键词匹配逻辑.md",
     "model-context/stages/stage-40-世界书命中调试与-prompt-预览集成.md",
     "data/tavern-lite.db-journal",
+    "model-context/stages/stage-39-世界书关键词匹配逻辑.md",
     "scripts/tmp-fix-any-baseurl.cjs",
     "scripts/tmp-call-any-fix.cjs",
     "scripts/tmp-call-any-paths.cjs",

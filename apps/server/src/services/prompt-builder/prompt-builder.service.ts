@@ -19,8 +19,10 @@ import type {
   PromptSectionSource,
   PromptTruncatedHistoryItem,
   ProviderChatMessage,
+  WorldBookEntryPosition,
   WorldBookMatchResult
 } from './types';
+import { matchWorldBookEntries } from './world-book-matcher';
 
 @Injectable()
 export class PromptBuilderService {
@@ -75,6 +77,18 @@ export class PromptBuilderService {
       input,
       warnings
     );
+    const worldBook = matchWorldBookEntries({
+      worldBooks: input.worldBooks,
+      history: input.history,
+      currentUserMessage: input.currentUserMessage,
+      estimateTokens: (content) => this.estimateTokens(content)
+    });
+    const worldBookSections = this.createEmptyWorldBookSectionGroups();
+    worldBookSections.before_history = this.addWorldBookSections(
+      sections,
+      worldBook,
+      'before_history'
+    );
     const historySections = historyResult.history.map((message) =>
       this.addSection(sections, {
         kind: 'history',
@@ -84,6 +98,16 @@ export class PromptBuilderService {
         sourceId: message.id
       })
     );
+    worldBookSections.after_history = this.addWorldBookSections(
+      sections,
+      worldBook,
+      'after_history'
+    );
+    worldBookSections.before_current_user_input = this.addWorldBookSections(
+      sections,
+      worldBook,
+      'before_current_user_input'
+    );
     const currentUserSection = this.addSection(sections, {
       kind: 'current_user_input',
       source: 'message',
@@ -91,6 +115,11 @@ export class PromptBuilderService {
       content: input.currentUserMessage.content.trim(),
       sourceId: input.currentUserMessage.id
     });
+    worldBookSections.after_current_user_input = this.addWorldBookSections(
+      sections,
+      worldBook,
+      'after_current_user_input'
+    );
     const developerSections = [
       characterSection,
       personaSection,
@@ -100,6 +129,7 @@ export class PromptBuilderService {
     const logicalMessages = this.buildLogicalMessages({
       platformSection,
       developerSections,
+      worldBookSections,
       history: historyResult.history,
       historySections,
       currentUserSection
@@ -108,8 +138,6 @@ export class PromptBuilderService {
       logicalMessages,
       input.options.supportsDeveloperRole ?? false
     );
-    const worldBook = this.emptyWorldBookMatchResult(input);
-
     return {
       conversationId: input.conversation.id,
       sections,
@@ -133,6 +161,7 @@ export class PromptBuilderService {
   private buildLogicalMessages(params: {
     platformSection: PromptSection;
     developerSections: PromptSection[];
+    worldBookSections: Record<WorldBookEntryPosition, PromptSection[]>;
     history: ChatMessageLike[];
     historySections: PromptSection[];
     currentUserSection: PromptSection;
@@ -145,6 +174,8 @@ export class PromptBuilderService {
       messages.push(this.toLogicalMessage('developer', params.developerSections));
     }
 
+    this.pushSectionMessage(messages, 'system', params.worldBookSections.before_history);
+
     params.history.forEach((message, index) => {
       const role = this.toProviderHistoryRole(message.role);
       const section = params.historySections[index];
@@ -154,7 +185,11 @@ export class PromptBuilderService {
       }
     });
 
+    this.pushSectionMessage(messages, 'system', params.worldBookSections.after_history);
+    this.pushSectionMessage(messages, 'system', params.worldBookSections.before_current_user_input);
+
     messages.push(this.toLogicalMessage('user', [params.currentUserSection]));
+    this.pushSectionMessage(messages, 'system', params.worldBookSections.after_current_user_input);
 
     return messages;
   }
@@ -302,6 +337,58 @@ export class PromptBuilderService {
     return promptSection;
   }
 
+  private addWorldBookSections(
+    sections: PromptSection[],
+    worldBook: WorldBookMatchResult,
+    position: WorldBookEntryPosition
+  ): PromptSection[] {
+    return worldBook.matchedEntries
+      .filter((entry) => entry.position === position)
+      .map((entry) =>
+        this.addSection(sections, {
+          kind: 'worldbook',
+          source: 'worldbook',
+          title: `World book: ${entry.title}`,
+          content: entry.content,
+          sourceId: entry.entryId,
+          reason: `Matched keywords: ${entry.matchedKeywords.join(', ')}`,
+          metadata: {
+            worldBookId: entry.worldBookId,
+            worldBookName: entry.worldBookName,
+            entryId: entry.entryId,
+            insertionOrder: entry.position,
+            priority: entry.priority,
+            matchedKeywords: entry.matchedKeywords,
+            matchedSecondaryKeywords: entry.matchedSecondaryKeywords ?? [],
+            sourceMessageIds: entry.sourceMessageIds
+          }
+        })
+      );
+  }
+
+  private createEmptyWorldBookSectionGroups(): Record<WorldBookEntryPosition, PromptSection[]> {
+    return {
+      before_history: [],
+      after_history: [],
+      before_current_user_input: [],
+      after_current_user_input: []
+    };
+  }
+
+  private pushSectionMessage(
+    messages: PromptBuilderMessage[],
+    role: PromptInternalMessageRole,
+    sections: PromptSection[]
+  ): void {
+    const includedSections = sections.filter((section) => section.isIncluded);
+
+    if (includedSections.length === 0) {
+      return;
+    }
+
+    messages.push(this.toLogicalMessage(role, includedSections));
+  }
+
   private toLogicalMessage(
     role: PromptInternalMessageRole,
     sections: PromptSection[]
@@ -373,19 +460,6 @@ export class PromptBuilderService {
       role: message.role,
       reason,
       tokenEstimate: this.estimateTokens(message.content)
-    };
-  }
-
-  private emptyWorldBookMatchResult(input: BuildPromptInput): WorldBookMatchResult {
-    return {
-      scannedMessageIds: input.history
-        .slice(-(input.options.historyLimit ?? PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT))
-        .map((message) => message.id),
-      scanDepth: 0,
-      tokenBudget: 0,
-      usedTokenEstimate: 0,
-      matchedEntries: [],
-      skippedEntries: []
     };
   }
 

@@ -1,4 +1,7 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { appendFileSync, mkdirSync } from 'fs';
+import { basename, dirname, join, resolve } from 'path';
 
 import { ERROR_CODES } from '../../../../common/dto/error-codes';
 import { ModelGatewayError } from '../../model-gateway.error';
@@ -28,6 +31,8 @@ import type {
   OpenAICompatibleRequestOptions,
   OpenAICompatibleUsage
 } from './types';
+
+const RAW_LOG_MAX_TEXT_LENGTH = 120000;
 
 @Injectable()
 export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleInit {
@@ -86,6 +91,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
 
       try {
         responseText = await response.text();
+        this.writeRawResponseBodyLog(result.requestId, responseText, config.apiKey);
       } finally {
         result.cleanup();
       }
@@ -140,6 +146,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
 
     try {
       responseText = await response.text();
+      this.writeRawResponseBodyLog(result.requestId, responseText, options.apiKey);
     } catch (error) {
       throw this.normalizeRequestError(error, this.resolveTimeoutMs(options.timeout));
     } finally {
@@ -176,8 +183,10 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     const response = result.response;
 
     if (!response.ok) {
+      const responseText = await response.text();
+      this.writeRawResponseBodyLog(result.requestId, responseText, options.apiKey);
       yield this.toStreamErrorEvent(
-        this.toRequestFailedError(response.status, await response.text(), options),
+        this.toRequestFailedError(response.status, responseText, options),
         options
       );
       result.cleanup();
@@ -197,10 +206,16 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
 
     let content = '';
     let finishReason: string | null = null;
+    let responseModel: string | null = null;
+    let responseId: string | null = null;
+    let usage: OpenAICompatibleUsage | null = null;
     let index = 0;
 
     try {
-      for await (const payload of this.readSseJsonPayloads(response.body)) {
+      for await (const payload of this.readSseJsonPayloads(response.body, {
+        requestId: result.requestId,
+        apiKey: options.apiKey
+      })) {
         if (payload === '[DONE]') {
           break;
         }
@@ -217,8 +232,25 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
           return;
         }
 
+        responseModel = typeof parsed.model === 'string' ? parsed.model : responseModel;
+        responseId = typeof parsed.id === 'string' ? parsed.id : responseId;
+        usage = this.toUsage(parsed.usage) ?? usage;
+        finishReason = parsed.finish_reason ?? finishReason;
+
+        const directText = this.extractResponseText(parsed);
+
+        if (directText) {
+          content += directText;
+          yield {
+            type: 'delta',
+            text: directText,
+            index
+          };
+          index += 1;
+        }
+
         for (const choice of parsed.choices ?? []) {
-          const deltaText = choice.delta?.content ?? '';
+          const deltaText = choice.delta?.content ?? choice.message?.content ?? '';
 
           if (deltaText) {
             content += deltaText;
@@ -236,16 +268,31 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         }
       }
 
+      if (!content) {
+        yield {
+          type: 'error',
+          code: ERROR_CODES.MODEL_GATEWAY_INVALID_RESPONSE,
+          message: '模型服务返回成功，但没有生成任何文本内容。',
+          retryable: false,
+          metadata: {
+            providerName: options.providerName,
+            modelName: options.modelName
+          }
+        };
+        return;
+      }
+
       yield {
         type: 'done',
         result: {
           text: content,
           providerName: options.providerName,
-          modelName: options.modelName,
+          modelName: responseModel ?? options.modelName,
           finishReason,
-          usage: null,
+          usage,
           metadata: {
-            provider: this.providerName
+            provider: this.providerName,
+            responseId
           }
         }
       };
@@ -268,6 +315,10 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     const controller = new AbortController();
     const upstreamSignal = options.signal;
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const requestId = options.requestId ?? randomUUID();
+    const url = this.toChatCompletionsUrl(options.baseUrl);
+    const headers = this.buildHeaders(options, stream);
+    const requestBody = this.buildRequestBody(options, messages, stream);
     const abortFromUpstream = (): void => controller.abort();
     const cleanup = (): void => {
       clearTimeout(timeout);
@@ -275,6 +326,19 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     };
 
     upstreamSignal?.addEventListener('abort', abortFromUpstream, { once: true });
+    this.writeRawLog({
+      type: 'request',
+      requestId,
+      at: new Date().toISOString(),
+      operation: options.operation,
+      providerName: options.providerName,
+      modelName: options.modelName,
+      stream,
+      method: 'POST',
+      url,
+      headers: this.sanitizeHeaders(headers, options.apiKey),
+      body: requestBody
+    });
     this.recordCall({
       providerName: options.providerName,
       modelName: options.modelName,
@@ -284,10 +348,10 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
 
     try {
       const startedAt = Date.now();
-      const response = await fetch(this.toChatCompletionsUrl(options.baseUrl), {
+      const response = await fetch(url, {
         method: 'POST',
-        headers: this.buildHeaders(options, stream),
-        body: JSON.stringify(this.buildRequestBody(options, messages, stream)),
+        headers,
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
 
@@ -299,9 +363,23 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         statusCode: response.status,
         latencyMs: Date.now() - startedAt
       });
+      this.writeRawLog({
+        type: 'response-start',
+        requestId,
+        at: new Date().toISOString(),
+        operation: options.operation,
+        providerName: options.providerName,
+        modelName: options.modelName,
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: this.headersToRecord(response.headers),
+        latencyMs: Date.now() - startedAt
+      });
 
       return {
         response,
+        requestId,
         cleanup
       };
     } catch (error) {
@@ -310,6 +388,15 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         modelName: options.modelName,
         operation: options.operation,
         status: 'failed'
+      });
+      this.writeRawLog({
+        type: 'request-error',
+        requestId,
+        at: new Date().toISOString(),
+        operation: options.operation,
+        providerName: options.providerName,
+        modelName: options.modelName,
+        message: error instanceof Error && error.message ? error.message : 'Model request failed.'
       });
       cleanup();
       throw this.normalizeRequestError(error, timeoutMs);
@@ -367,12 +454,13 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     options: ModelGatewayRequestOptions
   ): ModelGatewayChatResult {
     const firstChoice = response.choices?.[0];
+    const text = firstChoice?.message?.content ?? this.extractResponseText(response);
 
     return {
-      text: firstChoice?.message?.content ?? '',
+      text,
       providerName: options.providerName,
       modelName: typeof response.model === 'string' ? response.model : options.modelName,
-      finishReason: firstChoice?.finish_reason ?? null,
+      finishReason: firstChoice?.finish_reason ?? response.finish_reason ?? null,
       usage: this.toUsage(response.usage),
       metadata: {
         provider: this.providerName,
@@ -381,10 +469,17 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     };
   }
 
-  private async *readSseJsonPayloads(body: ReadableStream<Uint8Array>): AsyncIterable<string> {
+  private async *readSseJsonPayloads(
+    body: ReadableStream<Uint8Array>,
+    logContext: {
+      requestId: string;
+      apiKey?: string | null;
+    }
+  ): AsyncIterable<string> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let emittedPayload = false;
 
     try {
       while (true) {
@@ -394,7 +489,9 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
           break;
         }
 
-        buffer += decoder.decode(value, { stream: true });
+        const decodedChunk = decoder.decode(value, { stream: true });
+        buffer += decodedChunk;
+        this.writeRawResponseChunkLog(logContext.requestId, decodedChunk, logContext.apiKey);
 
         const frames = buffer.split(/\r?\n\r?\n/);
         buffer = frames.pop() ?? '';
@@ -403,6 +500,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
           const payload = this.extractSseData(frame);
 
           if (payload) {
+            emittedPayload = true;
             yield payload;
           }
         }
@@ -414,7 +512,10 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         const payload = this.extractSseData(buffer);
 
         if (payload) {
+          emittedPayload = true;
           yield payload;
+        } else if (!emittedPayload) {
+          yield buffer.trim();
         }
       }
     } finally {
@@ -613,6 +714,10 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     return this.sanitizeProviderText(parts.join(' '), apiKey);
   }
 
+  private extractResponseText(response: OpenAICompatibleChatResponse): string {
+    return response.text ?? response.output?.text ?? '';
+  }
+
   private sanitizeProviderText(value: string, apiKey: string | null | undefined): string {
     const sanitizedValue = apiKey
       ? value.replace(new RegExp(this.escapeRegExp(apiKey), 'g'), '[api-key]')
@@ -622,6 +727,88 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [api-key]')
       .replace(/sk-[A-Za-z0-9_-]+/g, 'sk-****')
       .trim();
+  }
+
+  private writeRawResponseBodyLog(
+    requestId: string,
+    responseText: string,
+    apiKey: string | null | undefined
+  ): void {
+    this.writeRawLog({
+      type: 'response-body',
+      requestId,
+      at: new Date().toISOString(),
+      bodyText: this.truncateLogText(this.sanitizeProviderText(responseText, apiKey)),
+      bodyLength: responseText.length
+    });
+  }
+
+  private writeRawResponseChunkLog(
+    requestId: string,
+    chunkText: string,
+    apiKey: string | null | undefined
+  ): void {
+    this.writeRawLog({
+      type: 'response-chunk',
+      requestId,
+      at: new Date().toISOString(),
+      chunkText: this.truncateLogText(this.sanitizeProviderText(chunkText, apiKey)),
+      chunkLength: chunkText.length
+    });
+  }
+
+  private writeRawLog(entry: Record<string, unknown>): void {
+    try {
+      const logPath = this.resolveRawLogPath();
+
+      mkdirSync(dirname(logPath), { recursive: true });
+      appendFileSync(logPath, `${JSON.stringify(entry)}\n`, 'utf8');
+    } catch {
+      // Raw logging is diagnostic only and must not break model calls.
+    }
+  }
+
+  private resolveRawLogPath(): string {
+    if (process.env.MODEL_GATEWAY_RAW_LOG_PATH) {
+      return resolve(process.env.MODEL_GATEWAY_RAW_LOG_PATH);
+    }
+
+    return join(this.resolveProjectRoot(), 'data', 'model-gateway-raw.jsonl');
+  }
+
+  private resolveProjectRoot(): string {
+    const cwd = process.cwd();
+
+    if (basename(cwd) === 'server' && basename(dirname(cwd)) === 'apps') {
+      return resolve(cwd, '..', '..');
+    }
+
+    return process.env.INIT_CWD ? resolve(process.env.INIT_CWD) : cwd;
+  }
+
+  private sanitizeHeaders(
+    headers: Record<string, string>,
+    apiKey: string | null | undefined
+  ): Record<string, string> {
+    return Object.fromEntries(
+      Object.entries(headers).map(([key, value]) => [key, this.sanitizeProviderText(value, apiKey)])
+    );
+  }
+
+  private headersToRecord(headers: Headers): Record<string, string> {
+    const record: Record<string, string> = {};
+
+    headers.forEach((value, key) => {
+      record[key] = value;
+    });
+
+    return record;
+  }
+
+  private truncateLogText(value: string): string {
+    return value.length <= RAW_LOG_MAX_TEXT_LENGTH
+      ? value
+      : `${value.slice(0, RAW_LOG_MAX_TEXT_LENGTH)}...[truncated:${value.length}]`;
   }
 
   private toConnectionErrorMessage(error: unknown, timeoutMs: number): string {

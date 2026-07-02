@@ -11,14 +11,12 @@
             "id": "e34b73eecd086bb6",
             "type": "leaf",
             "state": {
-              "type": "markdown",
+              "type": "pdf",
               "state": {
-                "file": "model-context/stages/stage-38-worldbook-编辑页面.md",
-                "mode": "source",
-                "source": false
+                "file": "轻量级 AI 酒馆方案深度研究与实施报告.pdf"
               },
-              "icon": "lucide-file",
-              "title": "stage-38-worldbook-编辑页面"
+              "icon": "lucide-file-text",
+              "title": "轻量级 AI 酒馆方案深度研究与实施报告"
             }
           }
         ]
@@ -186,6 +184,20 @@
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
     "data/tavern-lite.db-journal",
+    "data/model-gateway-raw.jsonl",
+    "apps/server/src/services/prompt-builder/world-book-matcher.ts",
+    "model-context/README.md",
+    "model-context/source-map.md",
+    "model-context/stages/stage-index.md",
+    "model-context/stages/stage-50-mvp-验收清单.md",
+    "model-context/stages/stage-49-回归测试与修复.md",
+    "model-context/stages/stage-48-sqlite-与-uploads-备份脚本.md",
+    "model-context/stages/stage-47-生产环境静态资源托管.md",
+    "model-context/stages/stage-45-设置页.md",
+    "model-context/stages/stage-44-数据恢复导入.md",
+    "model-context/stages/stage-43-数据备份导出.md",
+    "model-context/stages/stage-39-世界书关键词匹配逻辑.md",
+    "model-context/stages/stage-38-worldbook-编辑页面.md",
     "apps/web/__unconfig_vite.config.ts",
     "apps/web/src/views/world-books/WorldBookView.vue",
     "apps/web/src/views/world-books",
@@ -195,10 +207,7 @@
     "model-context/stages/stage-37-worldbook-api.md",
     "apps/server/src/modules/world-books/world-books.service.ts",
     "apps/server/src/modules/world-books/world-books.module.ts",
-    "apps/server/src/modules/world-books/world-books.controller.ts",
-    "apps/server/src/modules/world-books/dto/update-world-book-entry.dto.ts",
     "model-context/stages/stage-36-编辑-删除-复制消息.md",
-    "model-context/stages/stage-44-数据恢复导入.md",
     "model-context/stages/stage-35-重新生成回复.md",
     "model-context/stages/stage-34-停止生成.md",
     "model-context/stages/stage-33-聊天流式输出接入.md",
@@ -210,17 +219,6 @@
     "model-context/stages/stage-27-prompt-预览-api.md",
     "model-context/stages/stage-26-prompt-builder-v1-实现.md",
     "model-context/stages/stage-25-prompt-builder-类型设计.md",
-    "docs/prompt-builder-types.md",
-    "model-context/stages/stage-24-聊天页面-ui-骨架.md",
-    "model-context/stages/stage-23-会话列表页.md",
-    "model-context/stages/stage-22-message-api.md",
-    "model-context/stages/stage-21-conversation-api.md",
-    "model-context/stages/stage-20-persona-设置页面.md",
-    "model-context/stages/stage-19-userpersona-api.md",
-    "model-context/stages/stage-18-参数预设页面.md",
-    "model-context/stages/stage-17-promptpreset-api.md",
-    "model-context/stages/stage-16-模型连接测试.md",
-    "model-context/stages/stage-15-模型配置页面.md",
     "uploads/avatars/characters/1a801e83-fce1-4597-98fa-ed7fb6496356.png",
     "uploads/avatars/characters/22c500b8-d49d-4560-90ca-a8b9f3247c6f.png",
     "uploads/avatars/characters/40b56634-435a-4cbb-9e3f-3178b1299447.png",

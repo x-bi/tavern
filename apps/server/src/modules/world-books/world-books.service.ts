@@ -3,6 +3,7 @@ import type { Character, WorldBook, WorldBookEntry } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { WorldBookContext, WorldBookEntryContext } from '../../services/prompt-builder/types';
 import type { CurrentUser } from '../users/user.types';
 import type { CreateWorldBookEntryDto } from './dto/create-world-book-entry.dto';
 import type { CreateWorldBookDto } from './dto/create-world-book.dto';
@@ -71,6 +72,30 @@ export class WorldBooksService {
       page,
       pageSize
     };
+  }
+
+  async listPromptContexts(
+    currentUser: CurrentUser,
+    characterId: string | null
+  ): Promise<WorldBookContext[]> {
+    const worldBooks = await this.prisma.worldBook.findMany({
+      where: {
+        userId: currentUser.id,
+        deletedAt: null,
+        OR: [{ characterId: null }, { characterId }]
+      },
+      include: {
+        entries: {
+          where: {
+            deletedAt: null
+          },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+        }
+      },
+      orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
+    });
+
+    return worldBooks.map((worldBook) => this.toPromptContext(worldBook));
   }
 
   async create(currentUser: CurrentUser, dto: CreateWorldBookDto): Promise<WorldBookResponse> {
@@ -335,6 +360,38 @@ export class WorldBooksService {
       entries: worldBook.entries.map((entry) => this.toEntryResponse(entry)),
       createdAt: worldBook.createdAt.toISOString(),
       updatedAt: worldBook.updatedAt.toISOString()
+    };
+  }
+
+  private toPromptContext(worldBook: WorldBookWithEntries): WorldBookContext {
+    return {
+      id: worldBook.id,
+      userId: worldBook.userId,
+      characterId: worldBook.characterId,
+      name: worldBook.name,
+      description: worldBook.description,
+      isEnabled: worldBook.isEnabled,
+      scanDepth: worldBook.scanDepth,
+      tokenBudget: worldBook.tokenBudget,
+      metadata: this.parseRecord(worldBook.metadataJson),
+      entries: worldBook.entries.map((entry) => this.toPromptEntryContext(entry))
+    };
+  }
+
+  private toPromptEntryContext(entry: WorldBookEntry): WorldBookEntryContext {
+    return {
+      id: entry.id,
+      worldBookId: entry.worldBookId,
+      title: entry.title,
+      content: entry.content,
+      keywords: this.parseStringArray(entry.keywordsJson),
+      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+      isEnabled: entry.isEnabled,
+      priority: entry.priority,
+      position: this.toInsertionOrder(entry.position),
+      tokenBudget: entry.tokenBudget,
+      caseSensitive: entry.caseSensitive,
+      metadata: this.parseRecord(entry.metadataJson)
     };
   }
 

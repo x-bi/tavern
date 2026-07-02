@@ -171,6 +171,7 @@ export type WorldBookMatchedEntry = {
   matchedSecondaryKeywords?: string[];
   priority: number;
   position: WorldBookEntryPosition;
+  insertionOrder: WorldBookEntryPosition;
   tokenBudget?: number | null;
   tokenEstimate?: number | null;
   sourceMessageIds: string[];

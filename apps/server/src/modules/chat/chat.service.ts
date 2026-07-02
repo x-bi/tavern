@@ -18,11 +18,13 @@ import { PromptBuilderService } from '../../services/prompt-builder/prompt-build
 import type {
   BuildPromptInput,
   ChatMessageLike,
-  PromptModelParameters
+  PromptModelParameters,
+  WorldBookContext
 } from '../../services/prompt-builder/types';
 import { ModelsService } from '../models/models.service';
 import type { ModelGatewayConfig, ModelConfigParams } from '../models/model-config.types';
 import type { CurrentUser } from '../users/user.types';
+import { WorldBooksService } from '../world-books/world-books.service';
 import type {
   ChatConversation,
   ChatMessageMetadata,
@@ -51,7 +53,9 @@ export class ChatService {
     @Inject(ModelGatewayService)
     private readonly modelGateway: ModelGatewayService,
     @Inject(ModelsService)
-    private readonly modelsService: ModelsService
+    private readonly modelsService: ModelsService,
+    @Inject(WorldBooksService)
+    private readonly worldBooksService: WorldBooksService
   ) {}
 
   async stream(
@@ -84,6 +88,11 @@ export class ChatService {
         dto.modelConfigId ?? conversation.modelConfigId
       );
       const promptPreset = await this.resolvePromptPreset(currentUser, dto, conversation);
+      const worldBooks = await this.worldBooksService.listPromptContexts(
+        currentUser,
+        conversation.characterId
+      );
+      const historyTake = this.resolveHistoryTake(dto.historyLimit, worldBooks);
 
       this.assertModelConfigReady(modelConfig);
 
@@ -91,9 +100,9 @@ export class ChatService {
         ? await this.prepareRegenerateMessages(
             conversation.id,
             dto.regenerateMessageId,
-            dto.historyLimit
+            historyTake
           )
-        : await this.prepareNewMessages(conversation.id, dto.userMessage, dto.historyLimit);
+        : await this.prepareNewMessages(conversation.id, dto.userMessage, historyTake);
 
       assistantMessage = preparedMessages.assistantMessage;
       task.assistantMessageId = assistantMessage.id;
@@ -106,6 +115,7 @@ export class ChatService {
           currentUserMessage: preparedMessages.currentUserMessage,
           promptPreset,
           modelConfig,
+          worldBooks,
           dto
         })
       );
@@ -574,6 +584,7 @@ export class ChatService {
     currentUserMessage: Message;
     promptPreset: PromptPreset | null;
     modelConfig: ModelGatewayConfig;
+    worldBooks: WorldBookContext[];
     dto: StreamChatDto;
   }): BuildPromptInput {
     return {
@@ -616,7 +627,7 @@ export class ChatService {
       },
       history: params.history.map((message) => this.toChatMessageLike(message)),
       currentUserMessage: this.toChatMessageLike(params.currentUserMessage),
-      worldBooks: [],
+      worldBooks: params.worldBooks,
       options: {
         mode: 'chat',
         historyLimit: params.dto.historyLimit,
@@ -641,6 +652,20 @@ export class ChatService {
     };
   }
 
+  private resolveHistoryTake(
+    historyLimit: number | undefined,
+    worldBooks: WorldBookContext[]
+  ): number {
+    const promptHistoryLimit = historyLimit ?? PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT;
+    const worldBookScanDepth = worldBooks.reduce(
+      (maxDepth, worldBook) =>
+        worldBook.isEnabled ? Math.max(maxDepth, worldBook.scanDepth) : maxDepth,
+      0
+    );
+
+    return Math.max(promptHistoryLimit, worldBookScanDepth);
+  }
+
   private toChatMessageLike(message: Message): ChatMessageLike {
     return {
       id: message.id,
@@ -661,7 +686,7 @@ export class ChatService {
   ): PromptModelParameters {
     return {
       ...modelParams,
-      ...(promptPreset ? this.parseParams(promptPreset.parametersJson) ?? {} : {})
+      ...(promptPreset ? (this.parseParams(promptPreset.parametersJson) ?? {}) : {})
     };
   }
 
@@ -678,10 +703,7 @@ export class ChatService {
     response.write(`data: ${JSON.stringify(payload)}\n\n`);
   }
 
-  private toErrorPayload(
-    error: unknown,
-    aborted: boolean
-  ): { code: string; message: string } {
+  private toErrorPayload(error: unknown, aborted: boolean): { code: string; message: string } {
     if (aborted) {
       return {
         code: ERROR_CODES.CHAT_STREAM_ABORTED,

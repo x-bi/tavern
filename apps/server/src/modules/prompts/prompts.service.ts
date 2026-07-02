@@ -20,9 +20,11 @@ import type {
   ChatMessageLike,
   PromptHistoryTrimInfo,
   PromptModelParameters,
-  PromptPreviewResponse
+  PromptPreviewResponse,
+  WorldBookContext
 } from '../../services/prompt-builder/types';
 import type { CurrentUser } from '../users/user.types';
+import { WorldBooksService } from '../world-books/world-books.service';
 import type { PreviewPromptDto } from './dto/preview-prompt.dto';
 
 type PreviewConversation = Conversation & {
@@ -38,13 +40,22 @@ export class PromptsService {
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
     @Inject(PromptBuilderService)
-    private readonly promptBuilder: PromptBuilderService
+    private readonly promptBuilder: PromptBuilderService,
+    @Inject(WorldBooksService)
+    private readonly worldBooksService: WorldBooksService
   ) {}
 
   async preview(currentUser: CurrentUser, dto: PreviewPromptDto): Promise<PromptPreviewResponse> {
     const conversation = await this.findOwnedActiveConversation(currentUser, dto.conversationId);
-    const history = await this.listRecentMessages(conversation.id, dto.historyLimit);
-    const buildInput = this.toBuildPromptInput(currentUser, conversation, history, dto);
+    const worldBooks = await this.worldBooksService.listPromptContexts(
+      currentUser,
+      conversation.characterId
+    );
+    const history = await this.listRecentMessages(
+      conversation.id,
+      this.resolveHistoryTake(dto.historyLimit, worldBooks)
+    );
+    const buildInput = this.toBuildPromptInput(currentUser, conversation, history, dto, worldBooks);
     const result = this.promptBuilder.build(buildInput);
     const historyTrimInfo = this.toHistoryTrimInfo(dto, history.length, result);
 
@@ -117,7 +128,8 @@ export class PromptsService {
     currentUser: CurrentUser,
     conversation: PreviewConversation,
     history: Message[],
-    dto: PreviewPromptDto
+    dto: PreviewPromptDto,
+    worldBooks: WorldBookContext[]
   ): BuildPromptInput {
     return {
       userId: currentUser.id,
@@ -187,7 +199,7 @@ export class PromptsService {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },
-      worldBooks: [],
+      worldBooks,
       options: {
         mode: 'preview',
         historyLimit: dto.historyLimit,
@@ -216,6 +228,20 @@ export class PromptsService {
       truncatedCount: result.truncatedHistory.length,
       truncatedHistory: result.truncatedHistory
     };
+  }
+
+  private resolveHistoryTake(
+    historyLimit: number | undefined,
+    worldBooks: WorldBookContext[]
+  ): number {
+    const promptHistoryLimit = historyLimit ?? PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT;
+    const worldBookScanDepth = worldBooks.reduce(
+      (maxDepth, worldBook) =>
+        worldBook.isEnabled ? Math.max(maxDepth, worldBook.scanDepth) : maxDepth,
+      0
+    );
+
+    return Math.max(promptHistoryLimit, worldBookScanDepth);
   }
 
   private toChatMessageLike(message: Message): ChatMessageLike {

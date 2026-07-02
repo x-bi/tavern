@@ -34,6 +34,11 @@ export type OpenAICompatibleChatChoice = {
 export type OpenAICompatibleChatResponse = {
   id?: string;
   model?: string;
+  text?: string | null;
+  finish_reason?: string | null;
+  output?: {
+    text?: string | null;
+  } | null;
   choices?: OpenAICompatibleChatChoice[];
   usage?: {
     prompt_tokens?: number | null;
@@ -64,6 +69,7 @@ export type OpenAICompatibleRequestOptions = ModelGatewayRequestOptions & {
 
 export type OpenAICompatibleHttpResult = {
   response: Response;
+  requestId: string;
   cleanup: () => void;
 };
 

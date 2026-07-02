@@ -172,8 +172,11 @@ const characterOptions = computed<SelectOption[]>(() =>
 
 const modelOptions = computed<SelectOption[]>(() =>
   modelStore.items.map((modelConfig) => ({
-    label: `${modelConfig.name} / ${modelConfig.modelName}`,
-    value: modelConfig.id
+    label: `${modelConfig.name} / ${modelConfig.modelName}${
+      modelConfig.isEnabled ? '' : '（停用）'
+    }`,
+    value: modelConfig.id,
+    disabled: !modelConfig.isEnabled
   }))
 );
 
@@ -233,7 +236,8 @@ function resetForm() {
 
   form.characterId = firstCharacter?.id ?? null;
   form.title = firstCharacter ? `${firstCharacter.name} 的会话` : '';
-  form.modelConfigId = modelStore.items.find((item) => item.isDefault)?.id ?? null;
+  form.modelConfigId =
+    modelStore.items.find((item) => item.isDefault && item.isEnabled)?.id ?? null;
   form.personaId = personaStore.items.find((item) => item.isDefault)?.id ?? null;
   form.promptPresetId = presetStore.items.find((item) => item.isDefault)?.id ?? null;
   conversationStore.saveError = null;

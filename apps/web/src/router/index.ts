@@ -1,3 +1,13 @@
+/**
+ * 前端路由配置：登录页与主框架两套布局。
+ *
+ * - `/login` 独立页面（不套 AppLayout）；
+ * - `/` 套 AppLayout，子路由为各业务页面；
+ * - `/:pathMatch(.*)*` 兜底 404。
+ *
+ * 每条路由的 meta.title 由 usePageTitle 读取并写入 document.title。
+ * 路由只负责页面装配，不写业务请求逻辑。
+ */
 import { createRouter, createWebHistory } from 'vue-router';
 
 import AppLayout from '../layouts/AppLayout.vue';
@@ -20,6 +30,7 @@ import WorldBookView from '../views/world-books/WorldBookView.vue';
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
+    // 登录页：独立布局，不套 AppLayout
     {
       path: '/login',
       name: 'login',
@@ -32,6 +43,7 @@ export const router = createRouter({
       path: '/',
       component: AppLayout,
       children: [
+        // 根路径重定向到角色列表
         {
           path: '',
           redirect: '/characters'
@@ -84,6 +96,7 @@ export const router = createRouter({
             title: '聊天'
           }
         },
+        // 指定会话的聊天页：:conversationId 由 ChatView 读取
         {
           path: 'chat/:conversationId',
           name: 'chat-conversation',
@@ -150,6 +163,7 @@ export const router = createRouter({
         }
       ]
     },
+    // 兜底 404：匹配所有未命中的路径
     {
       path: '/:pathMatch(.*)*',
       name: 'not-found',

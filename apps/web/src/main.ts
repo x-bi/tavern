@@ -1,3 +1,9 @@
+/**
+ * 前端应用入口：创建 Vue 实例、全局注册 Naive UI 组件、挂载 Pinia 与路由。
+ *
+ * Naive UI 组件在此全局注册后可在模板中直接使用（如 <n-button>），
+ * 避免在每个 SFC 里重复 import。
+ */
 import { createPinia } from 'pinia';
 import { createApp } from 'vue';
 import {
@@ -34,6 +40,7 @@ import './styles/global.css';
 
 const app = createApp(App);
 
+// 全局注册 Naive UI 组件：注册后模板中可用对应标签（如 <n-button>）
 app.component('NAlert', NAlert);
 app.component('NAvatar', NAvatar);
 app.component('NButton', NButton);

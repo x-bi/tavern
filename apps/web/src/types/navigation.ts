@@ -1,8 +1,12 @@
+/** 侧边栏导航项。 */
 export type NavigationItem = {
+  /** 路由路径。 */
   path: string;
+  /** 菜单显示文本。 */
   label: string;
 };
 
+/** 侧边栏导航项列表，AppLayout 据此渲染 n-menu。 */
 export const navigationItems: NavigationItem[] = [
   {
     path: '/characters',

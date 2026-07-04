@@ -18,14 +18,22 @@ import type {
   WorldBookResponse
 } from './world-book.types';
 
+/** 世界书 + 其条目（include 后的形态）。 */
 type WorldBookWithEntries = WorldBook & {
   entries: WorldBookEntry[];
 };
 
+/** 条目 + 其世界书（include 后的形态）。 */
 type WorldBookEntryWithBook = WorldBookEntry & {
   worldBook: WorldBook;
 };
 
+/**
+ * 世界书服务：世界书及其条目的 CRUD，并提供 prompt 构建所需的世界书上下文。
+ *
+ * 世界书可绑定特定角色（characterId）或全局（characterId=null，所有角色共享）。
+ * 所有查询按 userId 隔离；删除世界书时级联软删除其条目。
+ */
 @Injectable()
 export class WorldBooksService {
   constructor(
@@ -33,14 +41,23 @@ export class WorldBooksService {
     private readonly prisma: PrismaService
   ) {}
 
+  /**
+   * 分页查询当前用户的世界书（含条目）。
+   * @param currentUser 当前登录用户（限定只查自己的）。
+   * @param query 分页/搜索/角色/启用过滤参数。
+   * @returns 分页结果，含 items、total、page、pageSize。
+   */
   async list(currentUser: CurrentUser, query: QueryWorldBooksDto): Promise<WorldBookListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    // 构建查询条件：限定当前用户 + 未软删除
     const where = {
       userId: currentUser.id,
       deletedAt: null,
+      // characterId/isEnabled 未传时不加条件，传了则按值过滤
       ...(query.characterId === undefined ? {} : { characterId: query.characterId }),
       ...(query.isEnabled === undefined ? {} : { isEnabled: query.isEnabled }),
+      // search 关键字：匹配 name/description 任一包含
       ...(query.search
         ? {
             OR: [{ name: { contains: query.search } }, { description: { contains: query.search } }]
@@ -48,6 +65,7 @@ export class WorldBooksService {
         : {})
     };
 
+    // 事务内并行：查当前页（含条目，按优先级倒序）+ 统计总数
     const [items, total] = await this.prisma.$transaction([
       this.prisma.worldBook.findMany({
         where,
@@ -74,6 +92,16 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 取角色的世界书上下文（供 prompt 构建用）。
+   *
+   * 查询条件：当前用户 + 未删除 + （全局 characterId=null 或 绑定该角色）。
+   * 即角色可用全局世界书 + 自己专属的世界书。
+   *
+   * @param currentUser 当前登录用户。
+   * @param characterId 角色 ID；为 null 时只取全局世界书。
+   * @returns 世界书上下文数组。
+   */
   async listPromptContexts(
     currentUser: CurrentUser,
     characterId: string | null
@@ -82,6 +110,7 @@ export class WorldBooksService {
       where: {
         userId: currentUser.id,
         deletedAt: null,
+        // 全局世界书（characterId=null）或绑定该角色的
         OR: [{ characterId: null }, { characterId }]
       },
       include: {
@@ -98,7 +127,15 @@ export class WorldBooksService {
     return worldBooks.map((worldBook) => this.toPromptContext(worldBook));
   }
 
+  /**
+   * 创建世界书：校验角色归属（若指定）+ 创建。
+   * @param currentUser 当前登录用户。
+   * @param dto 创建入参。
+   * @returns 创建后的世界书响应（含条目）。
+   * @throws BadRequestException 指定的角色不存在或不属于该用户。
+   */
   async create(currentUser: CurrentUser, dto: CreateWorldBookDto): Promise<WorldBookResponse> {
+    // 校验角色归属（传了 characterId 才校验）
     const characterId = await this.resolveCharacterId(currentUser, dto.characterId);
     const worldBook = await this.prisma.worldBook.create({
       data: {
@@ -119,21 +156,40 @@ export class WorldBooksService {
     return this.toWorldBookResponse(worldBook);
   }
 
+  /**
+   * 获取单个世界书（含条目）。
+   * @param currentUser 当前登录用户。
+   * @param id 世界书 ID。
+   * @returns 世界书响应（含条目）。
+   * @throws NotFoundException 世界书不存在或不属于该用户。
+   */
   async getById(currentUser: CurrentUser, id: string): Promise<WorldBookResponse> {
     return this.toWorldBookResponse(await this.findOwnedActiveWorldBook(currentUser, id));
   }
 
+  /**
+   * 更新世界书（部分更新）；characterId 传入时校验归属。
+   * @param currentUser 当前登录用户。
+   * @param id 世界书 ID。
+   * @param dto 更新入参，只有传入的字段会被更新。
+   * @returns 更新后的世界书响应（含条目）。
+   * @throws BadRequestException 传入的 characterId 角色不存在或不属于该用户。
+   * @throws NotFoundException 世界书不存在或不属于该用户。
+   */
   async update(
     currentUser: CurrentUser,
     id: string,
     dto: UpdateWorldBookDto
   ): Promise<WorldBookResponse> {
+    // 先校验世界书存在且属于当前用户
     await this.findOwnedActiveWorldBook(currentUser, id);
+    // characterId：未传不动，传了（含 null）校验归属
     const characterId =
       dto.characterId === undefined
         ? undefined
         : await this.resolveCharacterId(currentUser, dto.characterId);
 
+    // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
     const worldBook = await this.prisma.worldBook.update({
       where: { id },
       data: {
@@ -160,9 +216,17 @@ export class WorldBooksService {
     return this.toWorldBookResponse(worldBook);
   }
 
+  /**
+   * 删除世界书（级联软删除）：世界书 + 其所有条目一起软删除。
+   * @param currentUser 当前登录用户。
+   * @param id 世界书 ID。
+   * @returns `{ deleted: true, id }`。
+   * @throws NotFoundException 世界书不存在或不属于该用户。
+   */
   async remove(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
     await this.findOwnedActiveWorldBook(currentUser, id);
 
+    // 事务：世界书软删除 + 其条目全部软删除
     await this.prisma.$transaction([
       this.prisma.worldBook.update({
         where: { id },
@@ -189,11 +253,20 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 创建条目：先校验世界书归属，再创建。
+   * @param currentUser 当前登录用户。
+   * @param worldBookId 世界书 ID。
+   * @param dto 条目创建入参。
+   * @returns 创建后的条目响应。
+   * @throws NotFoundException 世界书不存在或不属于该用户。
+   */
   async createEntry(
     currentUser: CurrentUser,
     worldBookId: string,
     dto: CreateWorldBookEntryDto
   ): Promise<WorldBookEntryResponse> {
+    // 校验世界书存在且属于当前用户
     await this.findOwnedActiveWorldBook(currentUser, worldBookId);
 
     const entry = await this.prisma.worldBookEntry.create({
@@ -201,6 +274,7 @@ export class WorldBooksService {
         worldBookId,
         title: dto.title,
         content: dto.content,
+        // 关键词序列化成 JSON 存储；position 字段存 insertionOrder
         keywordsJson: JSON.stringify(dto.keywords),
         secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords),
         isEnabled: dto.isEnabled ?? true,
@@ -215,13 +289,23 @@ export class WorldBooksService {
     return this.toEntryResponse(entry);
   }
 
+  /**
+   * 更新条目（部分更新）。
+   * @param currentUser 当前登录用户。
+   * @param id 条目 ID。
+   * @param dto 更新入参，只有传入的字段会被更新。
+   * @returns 更新后的条目响应。
+   * @throws NotFoundException 条目不存在或所属世界书不属于该用户。
+   */
   async updateEntry(
     currentUser: CurrentUser,
     id: string,
     dto: UpdateWorldBookEntryDto
   ): Promise<WorldBookEntryResponse> {
+    // 先校验条目存在且属于当前用户（通过世界书关联校验）
     await this.findOwnedActiveEntry(currentUser, id);
 
+    // 部分更新：仅写入 DTO 中实际传入的字段；keywords/insertionOrder 需转换存储格式
     const entry = await this.prisma.worldBookEntry.update({
       where: { id },
       data: {
@@ -245,6 +329,13 @@ export class WorldBooksService {
     return this.toEntryResponse(entry);
   }
 
+  /**
+   * 删除条目（软删除）。
+   * @param currentUser 当前登录用户。
+   * @param id 条目 ID。
+   * @returns `{ deleted: true, id }`。
+   * @throws NotFoundException 条目不存在或所属世界书不属于该用户。
+   */
   async removeEntry(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
     await this.findOwnedActiveEntry(currentUser, id);
 
@@ -262,6 +353,13 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 查询世界书并校验所有权：限定 id + 当前用户 + 未删除（含条目）。
+   * @param currentUser 当前登录用户。
+   * @param id 世界书 ID。
+   * @returns 校验通过的世界书记录（含条目）。
+   * @throws NotFoundException 不存在/不属于该用户/已删除。
+   */
   private async findOwnedActiveWorldBook(
     currentUser: CurrentUser,
     id: string
@@ -292,6 +390,13 @@ export class WorldBooksService {
     return worldBook;
   }
 
+  /**
+   * 查询条目并校验所有权：通过所属世界书的用户间接校验。
+   * @param currentUser 当前登录用户。
+   * @param id 条目 ID。
+   * @returns 校验通过的条目记录（含世界书）。
+   * @throws NotFoundException 条目不存在或所属世界书不属于该用户。
+   */
   private async findOwnedActiveEntry(
     currentUser: CurrentUser,
     id: string
@@ -300,6 +405,7 @@ export class WorldBooksService {
       where: {
         id,
         deletedAt: null,
+        // 通过 worldBook 关联校验：世界书必须属于当前用户
         worldBook: {
           userId: currentUser.id,
           deletedAt: null
@@ -320,6 +426,13 @@ export class WorldBooksService {
     return entry;
   }
 
+  /**
+   * 校验角色归属并返回其 ID；传空值不校验返回 null。
+   * @param currentUser 当前登录用户。
+   * @param characterId 角色 ID，为空返回 null。
+   * @returns 校验通过的角色 ID，或 null。
+   * @throws BadRequestException 角色不存在或不属于该用户。
+   */
   private async resolveCharacterId(
     currentUser: CurrentUser,
     characterId: string | null | undefined
@@ -346,6 +459,11 @@ export class WorldBooksService {
     return character.id;
   }
 
+  /**
+   * 世界书记录 → 对外响应（含条目、解析 metadata、格式化时间）。
+   * @param worldBook 世界书记录（含条目）。
+   * @returns 世界书响应。
+   */
   private toWorldBookResponse(worldBook: WorldBookWithEntries): WorldBookResponse {
     return {
       id: worldBook.id,
@@ -363,6 +481,11 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 世界书记录 → prompt 构建用的上下文（结构同响应但用 prompt-builder 的类型）。
+   * @param worldBook 世界书记录（含条目）。
+   * @returns 世界书上下文。
+   */
   private toPromptContext(worldBook: WorldBookWithEntries): WorldBookContext {
     return {
       id: worldBook.id,
@@ -378,6 +501,11 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 条目 → prompt 构建用的条目上下文。
+   * @param entry 条目记录。
+   * @returns 条目上下文。
+   */
   private toPromptEntryContext(entry: WorldBookEntry): WorldBookEntryContext {
     return {
       id: entry.id,
@@ -395,6 +523,11 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 条目记录 → 对外响应（解析关键词数组、metadata、格式化时间）。
+   * @param entry 条目记录。
+   * @returns 条目响应。
+   */
   private toEntryResponse(entry: WorldBookEntry): WorldBookEntryResponse {
     return {
       id: entry.id,
@@ -414,16 +547,31 @@ export class WorldBooksService {
     };
   }
 
+  /**
+   * 把 position 字段归一化为插入位置枚举；非法值回退 before_history。
+   * @param value 原始 position 值。
+   * @returns 合法的插入位置。
+   */
   private toInsertionOrder(value: string): WorldBookEntryInsertionOrder {
     return WORLD_BOOK_ENTRY_INSERTION_ORDERS.includes(value as WorldBookEntryInsertionOrder)
       ? (value as WorldBookEntryInsertionOrder)
       : 'before_history';
   }
 
+  /**
+   * 把结构化数据序列化成 JSON 字符串；undefined/null 返回 null。
+   * @param value 任意值。
+   * @returns JSON 字符串，undefined/null 返回 null。
+   */
   private stringifyNullable(value: unknown): string | null {
     return value === undefined || value === null ? null : JSON.stringify(value);
   }
 
+  /**
+   * 解析关键词 JSON 为字符串数组；为空/非数组/解析失败返回空数组。
+   * @param value keywordsJson 字符串。
+   * @returns 关键词数组。
+   */
   private parseStringArray(value: string | null): string[] {
     if (!value) {
       return [];
@@ -440,6 +588,11 @@ export class WorldBooksService {
     }
   }
 
+  /**
+   * 解析 metadataJson 为对象；为空/非对象/解析失败返回 null。
+   * @param value metadataJson 字符串。
+   * @returns 解析后的对象，或 null。
+   */
   private parseRecord(value: string | null): Record<string, unknown> | null {
     if (!value) {
       return null;

@@ -1,3 +1,9 @@
+/**
+ * 全局业务错误码常量表。
+ *
+ * service/controller 抛异常时带 `code` 字段引用这里的常量，前端按 code 做差异化处理
+ * （如区分"密码错误"和"token 失效"）。新增错误码在此追加，保持命名 {模块}_{原因} 风格。
+ */
 export const ERROR_CODES = {
   BAD_REQUEST: 'BAD_REQUEST',
   VALIDATION_ERROR: 'VALIDATION_ERROR',

@@ -22,6 +22,10 @@ import { QueryPromptPresetsDto } from './dto/query-prompt-presets.dto';
 import { UpdatePromptPresetDto } from './dto/update-prompt-preset.dto';
 import { PresetsService } from './presets.service';
 
+/**
+ * 预设控制器，路由前缀 `/prompt-presets`，需登录。
+ * 方法体均为纯转发到 PresetsService。
+ */
 @Controller('prompt-presets')
 @UseGuards(AuthGuard)
 export class PresetsController {
@@ -30,6 +34,7 @@ export class PresetsController {
     private readonly presetsService: PresetsService
   ) {}
 
+  /** 列表分页查询。GET /prompt-presets */
   @Get()
   list(
     @CurrentUser() currentUser: CurrentUserType,
@@ -38,6 +43,7 @@ export class PresetsController {
     return this.presetsService.list(currentUser, query);
   }
 
+  /** 创建预设。POST /prompt-presets */
   @Post()
   create(
     @CurrentUser() currentUser: CurrentUserType,
@@ -46,6 +52,7 @@ export class PresetsController {
     return this.presetsService.create(currentUser, dto);
   }
 
+  /** 更新预设。PUT /prompt-presets/:id */
   @Put(':id')
   update(
     @CurrentUser() currentUser: CurrentUserType,
@@ -55,6 +62,7 @@ export class PresetsController {
     return this.presetsService.update(currentUser, id, dto);
   }
 
+  /** 删除预设（软删除）。DELETE /prompt-presets/:id */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {

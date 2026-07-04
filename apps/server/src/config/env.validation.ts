@@ -1,5 +1,6 @@
 type RawEnv = Record<string, string | undefined>;
 
+/** 环境变量校验后的结构（所有字段保证为字符串，已填默认值并校验通过）。 */
 export type ValidatedEnv = {
   NODE_ENV: string;
   SERVER_HOST: string;
@@ -15,6 +16,7 @@ export type ValidatedEnv = {
   AUTH_TOKEN_TTL_SECONDS: string;
 };
 
+/** 环境变量默认值（未显式设置时使用）。 */
 const DEFAULT_ENV: ValidatedEnv = {
   NODE_ENV: 'development',
   SERVER_HOST: '127.0.0.1',
@@ -30,31 +32,47 @@ const DEFAULT_ENV: ValidatedEnv = {
   AUTH_TOKEN_TTL_SECONDS: '604800'
 };
 
+/**
+ * 校验并归一化环境变量。
+ *
+ * 流程：用默认值兜底 → 逐项校验关键变量 → 端口/ TTL 数值化 → 返回规整后的对象。
+ * 校验失败直接抛 Error，会中断应用启动（ConfigModule 的 validate 阶段）。
+ *
+ * @param config 原始环境变量（process.env）。
+ * @returns 校验通过、字段齐全的 ValidatedEnv。
+ * @throws Error 任一校验不通过时抛出（含具体原因）。
+ */
 export function validateEnv(config: RawEnv): ValidatedEnv {
+  // 先用默认值兜底，再覆盖以实际传入的值（未设置的字段保留默认值）
   const merged = {
     ...DEFAULT_ENV,
     ...config
   };
   const port = Number(merged.SERVER_PORT);
 
+  // 防止端口非法：必须是 1~65535 的整数
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     throw new Error('SERVER_PORT must be an integer between 1 and 65535.');
   }
 
+  // 当前仅支持单用户模式，其它值会让后续认证逻辑无所适从
   if (merged.AUTH_MODE !== 'single_user') {
     throw new Error('AUTH_MODE currently only supports single_user.');
   }
 
+  // 密码开关只接受字符串 true/false，避免布尔解析歧义
   if (!['true', 'false'].includes(merged.AUTH_REQUIRE_PASSWORD)) {
     throw new Error('AUTH_REQUIRE_PASSWORD must be true or false.');
   }
 
+  // 开启密码校验时必须配置密码，否则登录无法比对
   if (merged.AUTH_REQUIRE_PASSWORD === 'true' && !merged.AUTH_SINGLE_USER_PASSWORD) {
     throw new Error('AUTH_SINGLE_USER_PASSWORD is required when AUTH_REQUIRE_PASSWORD is true.');
   }
 
   const tokenTtlSeconds = Number(merged.AUTH_TOKEN_TTL_SECONDS);
 
+  // token 有效期至少 60 秒，过短会导致频繁过期、无法正常使用
   if (!Number.isInteger(tokenTtlSeconds) || tokenTtlSeconds < 60) {
     throw new Error('AUTH_TOKEN_TTL_SECONDS must be an integer greater than or equal to 60.');
   }
@@ -75,6 +93,11 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
   };
 }
 
+/**
+ * 规整 API 前缀：去掉首尾斜杠，避免路由变成 //api//xxx；为空时回退默认 api。
+ * @param value 原始 API_PREFIX 值。
+ * @returns 不含首尾斜杠的前缀字符串。
+ */
 function normalizeApiPrefix(value: string): string {
   const normalized = value.replace(/^\/+|\/+$/g, '');
 

@@ -18,6 +18,13 @@ import { PresetsModule } from './modules/presets/presets.module';
 import { WorldBooksModule } from './modules/world-books/world-books.module';
 import { PrismaModule } from './prisma/prisma.module';
 
+/**
+ * 应用根模块。
+ *
+ * imports 装配两部分：
+ * - ConfigModule：全局加载 .env、注册 serverConfig 命名空间、用 validateEnv 校验环境变量；
+ * - PrismaModule（@Global）+ 各业务模块：Prisma 全局可用，业务模块按功能划分。
+ */
 @Module({
   imports: [
     ConfigModule.forRoot({

@@ -22,6 +22,10 @@ import { QueryModelConfigsDto } from './dto/query-model-configs.dto';
 import { UpdateModelConfigDto } from './dto/update-model-config.dto';
 import { ModelsService } from './models.service';
 
+/**
+ * 模型配置控制器，路由前缀 `/model-configs`，需登录。
+ * 方法体均为纯转发到 ModelsService。
+ */
 @Controller('model-configs')
 @UseGuards(AuthGuard)
 export class ModelsController {
@@ -30,6 +34,7 @@ export class ModelsController {
     private readonly modelsService: ModelsService
   ) {}
 
+  /** 列表分页查询。GET /model-configs */
   @Get()
   list(
     @CurrentUser() currentUser: CurrentUserType,
@@ -38,6 +43,7 @@ export class ModelsController {
     return this.modelsService.list(currentUser, query);
   }
 
+  /** 创建模型配置。POST /model-configs */
   @Post()
   create(
     @CurrentUser() currentUser: CurrentUserType,
@@ -46,17 +52,20 @@ export class ModelsController {
     return this.modelsService.create(currentUser, dto);
   }
 
+  /** 获取单个模型配置。GET /model-configs/:id */
   @Get(':id')
   getById(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
     return this.modelsService.getById(currentUser, id);
   }
 
+  /** 测试模型连接。POST /model-configs/:id/test */
   @Post(':id/test')
   @HttpCode(HttpStatus.OK)
   testConnection(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
     return this.modelsService.testConnection(currentUser, id);
   }
 
+  /** 更新模型配置。PUT /model-configs/:id */
   @Put(':id')
   update(
     @CurrentUser() currentUser: CurrentUserType,
@@ -66,6 +75,7 @@ export class ModelsController {
     return this.modelsService.update(currentUser, id, dto);
   }
 
+  /** 删除模型配置（软删除）。DELETE /model-configs/:id */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {

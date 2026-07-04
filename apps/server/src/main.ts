@@ -12,26 +12,39 @@ import { ApiResponseInterceptor } from './common/interceptors/api-response.inter
 import type { ServerConfig } from './config/server.config';
 import { UPLOADS_ROOT } from './modules/assets/assets.constants';
 
+/**
+ * 应用启动入口。
+ *
+ * 创建 Nest 实例 → 读取配置 → 注册全局中间件/管道/过滤器/拦截器 → 监听端口。
+ * 任一环节失败会直接抛错退出。
+ */
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
+  // 取 server 命名空间配置（在 app.module 经 load: [serverConfig] 注册）
   const serverConfig = configService.getOrThrow<ServerConfig>('server');
 
+  // 全局 API 前缀：所有路由变为 /{apiPrefix}/...
   app.setGlobalPrefix(serverConfig.apiPrefix);
+  // 静态资源：把 uploads 目录映射到 /uploads/ 路径（供前端访问上传的文件）
   app.useStaticAssets(UPLOADS_ROOT, {
     prefix: '/uploads/'
   });
+  // CORS：允许配置的前端来源跨域访问，并允许携带凭证（cookie 等）
   app.enableCors({
     origin: serverConfig.corsOrigins,
     credentials: true
   });
+  // 全局 DTO 校验管道：自动剥离多余字段、把入参转换成 DTO 类型实例
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
       whitelist: true
     })
   );
+  // 全局异常过滤器：把异常统一转成 { success: false, error } 结构
   app.useGlobalFilters(new ApiExceptionFilter());
+  // 全局响应拦截器：把返回值统一包成 { success: true, data }，需注入 Reflector 读元数据
   app.useGlobalInterceptors(new ApiResponseInterceptor(app.get(Reflector)));
 
   await app.listen(serverConfig.port, serverConfig.host);

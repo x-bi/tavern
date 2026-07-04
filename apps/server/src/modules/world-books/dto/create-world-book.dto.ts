@@ -10,24 +10,30 @@ import {
   Min
 } from 'class-validator';
 
+/** 创建世界书入参。除 name 外可选。 */
 export class CreateWorldBookDto {
+  /** 世界书名，必填，最长 120。 */
   @IsString()
   @MaxLength(120)
   name!: string;
 
+  /** 关联角色 ID；传 null 表示全局世界书。 */
   @IsOptional()
   @IsString()
   characterId?: string | null;
 
+  /** 描述，可选，最长 4000。 */
   @IsOptional()
   @IsString()
   @MaxLength(4000)
   description?: string;
 
+  /** 是否启用，可选，默认 true。 */
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
 
+  /** 扫描深度 1~200，可选，默认 6。 */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -35,6 +41,7 @@ export class CreateWorldBookDto {
   @Max(200)
   scanDepth?: number;
 
+  /** token 预算 1~200000，可选，默认 1000。 */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -42,6 +49,7 @@ export class CreateWorldBookDto {
   @Max(200000)
   tokenBudget?: number;
 
+  /** 扩展元数据，可选。 */
   @IsOptional()
   @IsObject()
   metadata?: Record<string, unknown> | null;

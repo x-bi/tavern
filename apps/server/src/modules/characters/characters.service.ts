@@ -26,13 +26,22 @@ import type { UpdateCharacterDto } from './dto/update-character.dto';
 import { CharacterCardJsonExporter } from './export/character-card-json-exporter';
 import { CharacterCardJsonImporter } from './import/character-card-json-importer';
 
+/** 角色记录 + 关联的头像素材（include avatarAsset 后的形态）。 */
 type CharacterWithAvatar = Character & {
   avatarAsset: Asset | null;
 };
 
+/**
+ * 角色服务：角色的 CRUD、导入导出。
+ *
+ * exporter / importer 是无状态的纯工具类，直接 new 实例复用（无需 DI）。
+ * 所有查询都按 userId 隔离，确保用户只能访问自己的角色。
+ */
 @Injectable()
 export class CharactersService {
+  /** 角色卡导出器（角色记录 → chara_card_v2 格式）。 */
   private readonly exporter = new CharacterCardJsonExporter();
+  /** 角色卡导入器（chara_card_v2 JSON → 结构化字段）。 */
   private readonly importer = new CharacterCardJsonImporter();
 
   constructor(
@@ -40,13 +49,23 @@ export class CharactersService {
     private readonly prisma: PrismaService
   ) {}
 
+  /**
+   * 分页查询当前用户的角色列表。
+   * @param currentUser 当前登录用户（限定只查自己的）。
+   * @param query 分页/搜索/归档过滤参数。
+   * @returns 分页结果，含 items、total、page、pageSize。
+   */
   async list(currentUser: CurrentUser, query: QueryCharactersDto): Promise<CharacterListResponse> {
+    // 分页参数兜底
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    // 构建查询条件：限定当前用户 + 未软删除
     const where = {
       userId: currentUser.id,
       deletedAt: null,
+      // isArchived 未传时不加条件（查全部），传了则按值过滤归档/未归档
       ...(query.isArchived === undefined ? {} : { isArchived: query.isArchived }),
+      // search 关键字：匹配 name/description/personality/scenario 任一包含
       ...(query.search
         ? {
             OR: [
@@ -59,6 +78,7 @@ export class CharactersService {
         : {})
     };
 
+    // 事务内并行：查当前页数据 + 统计符合条件的总数（两者共用同一 where）
     const [items, total] = await this.prisma.$transaction([
       this.prisma.character.findMany({
         where,
@@ -80,17 +100,27 @@ export class CharactersService {
     };
   }
 
+  /**
+   * 创建角色。
+   * @param currentUser 当前登录用户（角色归属于该用户）。
+   * @param dto 创建入参。
+   * @returns 创建后的角色响应。
+   * @throws BadRequestException 传了 avatarAssetId 但素材不存在/不属于该用户/非头像类型。
+   */
   async create(currentUser: CurrentUser, dto: CreateCharacterDto): Promise<CharacterResponse> {
+    // 校验头像素材归属（传了才校验，返回校验通过的 assetId）
     const avatarAssetId = await this.resolveAvatarAssetId(currentUser, dto.avatarAssetId);
     const character = await this.prisma.character.create({
       data: {
         userId: currentUser.id,
         avatarAssetId,
         name: dto.name,
+        // 可选字段未传时落库为空串（避免 null）
         description: dto.description ?? '',
         personality: dto.personality ?? '',
         scenario: dto.scenario ?? '',
         firstMessage: dto.firstMessage ?? '',
+        // exampleMessages / metadata 是结构化数据，序列化成 JSON 字符串存储
         exampleMessagesJson: this.stringifyNullable(dto.exampleMessages),
         metadataJson: this.stringifyNullable(dto.metadata),
         isArchived: dto.isArchived ?? false
@@ -103,13 +133,24 @@ export class CharactersService {
     return this.toResponse(character);
   }
 
+  /**
+   * 导入角色卡 JSON，支持预览/正式提交两阶段。
+   *
+   * @param currentUser 当前登录用户。
+   * @param dto 导入入参；commit=false 仅预览，commit=true 正式落库。
+   * @returns imported=false 返回预览，imported=true 返回已导入的角色。
+   * @throws ConflictException 名称冲突且未选择 rename 策略时抛出。
+   */
   async importJson(
     currentUser: CurrentUser,
     dto: ImportCharacterDto
   ): Promise<CharacterImportResponse> {
+    // 解析卡片 JSON，映射成结构化字段（importer 内部做格式兼容、字段提取、敏感字段过滤）
     const mapped = this.importer.map(dto.rawJson);
+    // 生成导入预览：检测同名角色冲突，冲突时生成建议副本名
     const preview = await this.toImportPreview(currentUser, mapped);
 
+    // 预览模式（commit 未传或 false）：不落库，直接返回预览供前端确认
     if (!dto.commit) {
       return {
         imported: false,
@@ -118,11 +159,13 @@ export class CharactersService {
       };
     }
 
+    // 决定最终名称：冲突且选择 rename 策略时改用建议副本名，否则用原名
     const importName =
       preview.nameConflict && dto.duplicateNameStrategy === 'rename'
         ? preview.suggestedName
         : preview.name;
 
+    // rename 策略但没有可用建议名：无法继续导入
     if (!importName) {
       throw new ConflictException({
         code: ERROR_CODES.CHARACTER_IMPORT_NAME_EXISTS,
@@ -134,6 +177,7 @@ export class CharactersService {
       });
     }
 
+    // 冲突但未选择 rename 策略：要求前端显式选择 rename 才能导入副本
     if (preview.nameConflict && dto.duplicateNameStrategy !== 'rename') {
       throw new ConflictException({
         code: ERROR_CODES.CHARACTER_IMPORT_NAME_EXISTS,
@@ -145,6 +189,7 @@ export class CharactersService {
       });
     }
 
+    // 正式落库（导入的角色暂不带头像）
     const character = await this.prisma.character.create({
       data: {
         userId: currentUser.id,
@@ -175,10 +220,24 @@ export class CharactersService {
     };
   }
 
+  /**
+   * 获取单个角色。
+   * @param currentUser 当前登录用户。
+   * @param id 角色 ID。
+   * @returns 角色响应。
+   * @throws NotFoundException 角色不存在或不属于当前用户。
+   */
   async getById(currentUser: CurrentUser, id: string): Promise<CharacterResponse> {
     return this.toResponse(await this.findOwnedActiveCharacter(currentUser, id));
   }
 
+  /**
+   * 导出角色为 chara_card_v2 JSON。
+   * @param currentUser 当前登录用户。
+   * @param id 角色 ID。
+   * @returns 含文件名、卡片、导出时间、原始示例对话。
+   * @throws NotFoundException 角色不存在或不属于当前用户。
+   */
   async exportJson(currentUser: CurrentUser, id: string): Promise<CharacterExportResponse> {
     const character = await this.findOwnedActiveCharacter(currentUser, id);
 
@@ -189,17 +248,30 @@ export class CharactersService {
     );
   }
 
+  /**
+   * 更新角色（部分更新）。
+   * @param currentUser 当前登录用户。
+   * @param id 角色 ID。
+   * @param dto 只有传入的字段会被更新，undefined 的字段保持原值。
+   * @returns 更新后的角色响应。
+   * @throws NotFoundException 角色不存在或不属于当前用户。
+   * @throws BadRequestException 传了不存在的头像素材。
+   */
   async update(
     currentUser: CurrentUser,
     id: string,
     dto: UpdateCharacterDto
   ): Promise<CharacterResponse> {
+    // 先校验角色存在且属于当前用户
     await this.findOwnedActiveCharacter(currentUser, id);
+    // 头像：未传(undefined)不动，传 null/值则解析校验归属
     const avatarAssetId =
       dto.avatarAssetId === undefined
         ? undefined
         : await this.resolveAvatarAssetId(currentUser, dto.avatarAssetId);
 
+    // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
+    // exampleMessages / metadata 传则整体替换
     const character = await this.prisma.character.update({
       where: { id },
       data: {
@@ -225,6 +297,13 @@ export class CharactersService {
     return this.toResponse(character);
   }
 
+  /**
+   * 删除角色（软删除：标记归档 + 设置删除时间，不真删记录）。
+   * @param currentUser 当前登录用户。
+   * @param id 角色 ID。
+   * @returns `{ deleted: true, id }`。
+   * @throws NotFoundException 角色不存在或不属于当前用户。
+   */
   async remove(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
     await this.findOwnedActiveCharacter(currentUser, id);
 
@@ -242,6 +321,16 @@ export class CharactersService {
     };
   }
 
+  /**
+   * 查询角色并校验所有权：限定 id + 当前用户 + 未删除。
+   *
+   * 防止越权访问或操作他人的角色；未找到时抛 404。
+   *
+   * @param currentUser 当前登录用户。
+   * @param id 角色 ID。
+   * @returns 校验通过的角色记录（含头像）。
+   * @throws NotFoundException 角色不存在/不属于该用户/已删除。
+   */
   private async findOwnedActiveCharacter(
     currentUser: CurrentUser,
     id: string
@@ -267,14 +356,23 @@ export class CharactersService {
     return character;
   }
 
+  /**
+   * 校验头像素材并返回其 ID。
+   * @param currentUser 当前登录用户。
+   * @param avatarAssetId 传入的头像素材 ID；为空则不设头像。
+   * @returns 校验通过的素材 ID，或 null（不设头像）。
+   * @throws BadRequestException 素材不存在/不属于该用户/非头像类型。
+   */
   private async resolveAvatarAssetId(
     currentUser: CurrentUser,
     avatarAssetId: string | null | undefined
   ): Promise<string | null> {
+    // 未传头像：不设
     if (!avatarAssetId) {
       return null;
     }
 
+    // 校验素材存在 + 属于当前用户 + 是头像类型
     const asset = await this.prisma.asset.findFirst({
       where: {
         id: avatarAssetId,
@@ -294,10 +392,18 @@ export class CharactersService {
     return asset.id;
   }
 
+  /**
+   * 生成导入预览：在映射字段基础上补充冲突检测和建议名。
+   *
+   * @param currentUser 当前登录用户。
+   * @param mapped importer 已映射好的结构化字段。
+   * @returns 含 nameConflict / suggestedName / warnings 的完整预览。
+   */
   private async toImportPreview(
     currentUser: CurrentUser,
     mapped: Omit<CharacterImportPreview, 'nameConflict' | 'suggestedName'>
   ): Promise<CharacterImportPreview> {
+    // 查是否已存在同名角色
     const existing = await this.prisma.character.findFirst({
       where: {
         userId: currentUser.id,
@@ -309,12 +415,14 @@ export class CharactersService {
       }
     });
     const nameConflict = Boolean(existing);
+    // 冲突时生成建议副本名（如「xxx 导入副本」）
     const suggestedName = nameConflict
       ? await this.createSuggestedImportName(currentUser, mapped.name)
       : null;
 
     return {
       ...mapped,
+      // 冲突时追加 NAME_CONFLICT 警告，提示默认不会覆盖
       warnings: nameConflict
         ? [
             ...mapped.warnings,
@@ -330,11 +438,21 @@ export class CharactersService {
     };
   }
 
+  /**
+   * 生成不冲突的导入副本名。
+   *
+   * 基础名「{原名} 导入副本」，若已存在则追加序号（2、3…）直到不冲突。
+   * 名字长度受 110/120 字符限制。
+   * @param currentUser 当前登录用户。
+   * @param name 原角色名。
+   * @returns 不冲突的副本名。
+   */
   private async createSuggestedImportName(currentUser: CurrentUser, name: string): Promise<string> {
     const baseName = `${name} 导入副本`.slice(0, 110);
     let candidate = baseName;
     let index = 2;
 
+    // 候选名已存在就追加序号重试，直到找到不冲突的名字
     while (await this.characterNameExists(currentUser, candidate)) {
       candidate = `${baseName} ${index}`.slice(0, 120);
       index += 1;
@@ -343,6 +461,12 @@ export class CharactersService {
     return candidate;
   }
 
+  /**
+   * 判断当前用户是否已有指定名称的角色（未删除的）。
+   * @param currentUser 当前登录用户。
+   * @param name 角色名。
+   * @returns 存在返回 true。
+   */
   private async characterNameExists(currentUser: CurrentUser, name: string): Promise<boolean> {
     const character = await this.prisma.character.findFirst({
       where: {
@@ -358,6 +482,11 @@ export class CharactersService {
     return Boolean(character);
   }
 
+  /**
+   * 数据库记录 → 对外响应（解析 JSON 字符串字段、补充头像 URL、格式化时间）。
+   * @param character 角色记录（含头像）。
+   * @returns 角色响应。
+   */
   private toResponse(character: CharacterWithAvatar): CharacterResponse {
     return {
       id: character.id,
@@ -377,10 +506,20 @@ export class CharactersService {
     };
   }
 
+  /**
+   * 把结构化数据序列化成 JSON 字符串；undefined/null 返回 null。
+   * @param value 任意值。
+   * @returns JSON 字符串，undefined/null 返回 null。
+   */
   private stringifyNullable(value: unknown): string | null {
     return value === undefined || value === null ? null : JSON.stringify(value);
   }
 
+  /**
+   * 解析 exampleMessagesJson 为数组；为空或解析失败返回空数组。
+   * @param value exampleMessagesJson 字符串。
+   * @returns 示例消息数组。
+   */
   private parseExampleMessages(value: string | null): ExampleMessage[] {
     if (!value) {
       return [];
@@ -395,6 +534,11 @@ export class CharactersService {
     }
   }
 
+  /**
+   * 解析 metadataJson 为对象；为空/非对象/解析失败返回 null。
+   * @param value metadataJson 字符串。
+   * @returns 解析后的对象，或 null。
+   */
   private parseRecord(value: string | null): Record<string, unknown> | null {
     if (!value) {
       return null;

@@ -22,6 +22,10 @@ import { QueryPersonasDto } from './dto/query-personas.dto';
 import { UpdatePersonaDto } from './dto/update-persona.dto';
 import { PersonasService } from './personas.service';
 
+/**
+ * 人设控制器，路由前缀 `/personas`，需登录。
+ * 方法体均为纯转发到 PersonasService。
+ */
 @Controller('personas')
 @UseGuards(AuthGuard)
 export class PersonasController {
@@ -30,6 +34,7 @@ export class PersonasController {
     private readonly personasService: PersonasService
   ) {}
 
+  /** 列表分页查询。GET /personas */
   @Get()
   list(
     @CurrentUser() currentUser: CurrentUserType,
@@ -38,6 +43,7 @@ export class PersonasController {
     return this.personasService.list(currentUser, query);
   }
 
+  /** 创建人设。POST /personas */
   @Post()
   create(
     @CurrentUser() currentUser: CurrentUserType,
@@ -46,6 +52,7 @@ export class PersonasController {
     return this.personasService.create(currentUser, dto);
   }
 
+  /** 更新人设。PUT /personas/:id */
   @Put(':id')
   update(
     @CurrentUser() currentUser: CurrentUserType,
@@ -55,12 +62,14 @@ export class PersonasController {
     return this.personasService.update(currentUser, id, dto);
   }
 
+  /** 删除人设（软删除）。DELETE /personas/:id */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   remove(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
     return this.personasService.remove(currentUser, id);
   }
 
+  /** 设为默认人设。POST /personas/:id/set-default */
   @Post(':id/set-default')
   @HttpCode(HttpStatus.OK)
   setDefault(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {

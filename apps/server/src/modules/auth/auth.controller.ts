@@ -17,6 +17,13 @@ import { AuthService } from './auth.service';
 import { CurrentUser } from './current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 
+/**
+ * 认证控制器，路由前缀 `/auth`（完整路径为 `/{API_PREFIX}/auth/...`）。
+ *
+ * 统一响应格式：成功返回由全局 ApiResponseInterceptor 包成
+ * `{ success: true, data: ... }`；失败由全局 ApiExceptionFilter 包成
+ * `{ success: false, error: { code, message } }` 并带对应 HTTP 状态码。
+ */
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -24,6 +31,13 @@ export class AuthController {
     private readonly authService: AuthService
   ) {}
 
+  /**
+   * 登录。`POST /{apiPrefix}/auth/login`
+   *
+   * @param dto 登录入参，password 是否必填取决于服务端 AUTH_REQUIRE_PASSWORD。
+   * @returns LoginResponse（被全局拦截器包成成功响应）。
+   * @throws UnauthorizedException 密码错误时抛出，并带错误码 AUTH_INVALID_CREDENTIALS（→ 401）。
+   */
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto) {
@@ -41,12 +55,25 @@ export class AuthController {
     }
   }
 
+  /**
+   * 获取当前登录用户。`GET /{apiPrefix}/auth/me`
+   *
+   * 需携带有效 token（由 AuthGuard 校验）。
+   * @param currentUser 由 @CurrentUser() 注入的当前用户。
+   * @returns 当前用户的最新信息。
+   */
   @Get('me')
   @UseGuards(AuthGuard)
   async me(@CurrentUser() currentUser: CurrentUserType) {
     return this.authService.me(currentUser);
   }
 
+  /**
+   * 登出。`POST /{apiPrefix}/auth/logout`
+   *
+   * 服务端不维护 session，登出仅作语义占位（前端丢弃 token 即可）。
+   * @returns `{ loggedOut: true }`。
+   */
   @Post('logout')
   @UseGuards(AuthGuard)
   @HttpCode(HttpStatus.OK)

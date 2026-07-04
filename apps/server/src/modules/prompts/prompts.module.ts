@@ -6,6 +6,11 @@ import { WorldBooksModule } from '../world-books/world-books.module';
 import { PromptsController } from './prompts.controller';
 import { PromptsService } from './prompts.service';
 
+/**
+ * Prompt 预览模块。
+ *
+ * imports PromptBuilderModule（构建 prompt）和 WorldBooksModule（取世界书上下文）。
+ */
 @Module({
   imports: [AuthModule, PromptBuilderModule, WorldBooksModule],
   controllers: [PromptsController],

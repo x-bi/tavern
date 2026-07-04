@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "model-context/stages/stage-45-设置页.md",
+                "file": "model-context/stages/stage-46-docker-compose-部署.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "stage-45-设置页"
+              "title": "stage-46-docker-compose-部署"
             }
           }
         ]
@@ -185,21 +185,21 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
-    "data/tavern-lite.db-journal",
-    "apps/web/src/views/settings/SettingView.vue",
-    "apps/web/src/views/settings",
-    "apps/web/src/stores/setting.ts",
-    "apps/web/src/api/settings.ts",
+    "apps/server/src/modules/presets/presets.service.ts.tmp.41288.bdc4efed5f49",
+    "apps/server/src/modules/presets/presets.service.ts.tmp.41288.36d61b9e91f5",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.d5f4f585ad73",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.5b7754d9f343",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.ddc3617f08e6",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.8640bfd14bd0",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.ca78a2679787",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.44f8dfed2d00",
+    "apps/server/src/modules/models/models.service.ts.tmp.41288.da325a62d620",
+    "apps/server/src/modules/world-books/dto/update-world-book.dto.ts.tmp.41288.20fc796cddf2",
+    "apps/server/src/modules/world-books/world-books.controller.ts.tmp.41288.ffe342b3eded",
+    "model-context/stages/stage-45-设置页.md",
     "model-context/stages/stage-44-数据恢复导入.md",
     "docs/backup-import.md",
-    "apps/server/src/modules/backups/dto/import-backup.dto.ts",
-    "apps/server/src/modules/backups/dto",
-    "model-context/stages/stage-45-设置页.md",
     "docs/backup-export.md",
-    "apps/web/src/api/backups.ts",
-    "apps/server/src/modules/backups/backups.module.ts",
-    "apps/server/src/modules/backups/backups.controller.ts",
-    "apps/server/src/modules/backups/backups.service.ts",
     "model-context/stages/stage-43-数据备份导出.md",
     "model-context/stages/stage-42-角色卡-json-导出.md",
     "model-context/stages/stage-41-角色卡-json-导入.md",

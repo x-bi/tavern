@@ -123,6 +123,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话 Web MVP，面向个人�
 - Prompt 组装只能存在于 `prompt-builder` 相关模块。
 - 上传文件读写只能存在于 uploads/asset 相关服务。
 - 禁止在业务模块中散落 `fetch(providerUrl)`、`axios(providerUrl)` 或 SDK 直连模型。
+- 注释规范见 [docs/comment-style.md](docs/comment-style.md)，开发阶段即按规则写 TSDoc 注释与方法头，不后期补。auth 模块为标准范例。
 
 ## 8. DTO 与类型规范
 

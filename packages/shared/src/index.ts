@@ -1,3 +1,9 @@
+/**
+ * shared 包桶文件：集中重导出前后端共享的稳定类型契约与常量。
+ *
+ * 前后端统一从 `@tavern/shared` 导入，不直接引用内部子模块路径。
+ * 这里只放跨端稳定契约，不放业务实现。
+ */
 export type { ApiError, ApiResponse } from './api';
 export { APPLICATION_BACKUP_FORMAT_VERSION } from './backup';
 export type {

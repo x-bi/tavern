@@ -1,3 +1,6 @@
+/**
+ * Model Gateway 桶文件：重新导出网关核心类和类型。
+ */
 export { ModelGatewayError } from './model-gateway.error';
 export { ModelGatewayModule } from './model-gateway.module';
 export { ModelGatewayRegistry } from './model-gateway.registry';

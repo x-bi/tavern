@@ -18,6 +18,10 @@ export type ModelGatewayProviderOptions = {
   temperature?: number | null;
   topP?: number | null;
   maxTokens?: number | null;
+  /** 频率惩罚（0~2），抑制已出现 token 重复。 */
+  frequencyPenalty?: number | null;
+  /** 存在惩罚（0~2），鼓励引入新内容。 */
+  presencePenalty?: number | null;
   timeout?: number | null;
   stop?: string[];
   metadata?: Record<string, unknown> | null;

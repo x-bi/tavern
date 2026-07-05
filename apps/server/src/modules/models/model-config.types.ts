@@ -4,6 +4,10 @@ export type ModelConfigParams = {
   topP?: number;
   maxTokens?: number;
   timeout?: number;
+  /** 频率惩罚（0~2），降低已出现 token 的重复概率，抑制套话循环。 */
+  frequencyPenalty?: number;
+  /** 存在惩罚（0~2），鼓励引入新内容，缓解长会话同质化。 */
+  presencePenalty?: number;
 };
 
 /** 模型配置对外响应（apiKey 不回传，仅含脱敏 mask）。 */

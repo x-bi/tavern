@@ -133,6 +133,10 @@ export type PromptModelParameters = {
   topP?: number | null;
   maxTokens?: number | null;
   timeout?: number | null;
+  /** 频率惩罚（0~2），抑制已出现 token 重复，缓解套话循环。 */
+  frequencyPenalty?: number | null;
+  /** 存在惩罚（0~2），鼓励引入新内容，缓解长会话同质化。 */
+  presencePenalty?: number | null;
 };
 
 /** 模型配置上下文。 */

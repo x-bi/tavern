@@ -579,8 +579,19 @@ export class PromptBuilderService {
     return rules.map((rule) => `- ${rule}`).join('\n');
   }
 
-  /** 把 section 格式化成消息内的一段（`## 标题\n内容`）。 */
+  /**
+   * 把 section 格式化成消息内的一段。
+   *
+   * 对话类 section（history / current_user_input）返回纯内容，不加标题：
+   * 历史消息必须保持纯净的 role+content 形态，否则给每条历史都顶一个 `## History assistant`
+   * 标题会让模型把"标题+该内容"当成既定写作风格去模仿，长会话下加剧同质化重复。
+   * 设定类 section（角色卡/人设/预设/输出规则/世界书/平台规则）仍带标题便于区分。
+   */
   private formatSectionForMessage(section: PromptSection): string {
+    if (section.kind === 'history' || section.kind === 'current_user_input') {
+      return section.content;
+    }
+
     return `## ${section.title}\n${section.content}`;
   }
 

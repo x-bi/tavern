@@ -502,6 +502,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       messages: messages.map((message) => this.toOpenAIMessage(message)),
       ...(typeof options.temperature === 'number' ? { temperature: options.temperature } : {}),
       ...(typeof options.topP === 'number' ? { top_p: options.topP } : {}),
+      ...(typeof options.frequencyPenalty === 'number'
+        ? { frequency_penalty: options.frequencyPenalty }
+        : {}),
+      ...(typeof options.presencePenalty === 'number'
+        ? { presence_penalty: options.presencePenalty }
+        : {}),
       ...(typeof options.maxTokens === 'number' && Number.isInteger(options.maxTokens)
         ? { max_tokens: options.maxTokens }
         : {}),

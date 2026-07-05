@@ -178,7 +178,9 @@ export class ChatService {
           modelName: candidate.modelName,
           apiKey: candidate.apiKey,
           signal: abortController.signal,
-          ...this.mergeModelParams(candidate.params, promptPreset)
+          ...this.mergeModelParams(candidate.params, promptPreset, {
+            isRegenerate: Boolean(dto.regenerateMessageId)
+          })
         })) {
           // 客户端中断：抛错走 catch（标 stopped）
           if (abortController.signal.aborted) {
@@ -1002,19 +1004,42 @@ export class ChatService {
   }
 
   /**
-   * 合并模型配置参数和预设参数（预设覆盖模型配置）。
+   * 合并模型配置参数和预设参数（预设覆盖模型配置），并注入防重复默认值。
+   *
+   * 默认注入 frequencyPenalty=0.5 / presencePenalty=0.3，缓解长会话下模型陷入套话循环
+   * （历史里堆叠多条同质化 assistant 回复时，模型会持续模仿相同开头与句式）。
+   * 模型配置或预设显式传入这两个字段时覆盖默认值。
+   *
+   * 重新生成模式（isRegenerate）下临时提高 temperature 与两个 penalty：
+   * 固定上下文+固定参数下模型输出确定性很强，重生成会得到几乎相同结果，
+   * 扰动后让重新生成真正产出不同回复。
+   *
    * @param modelParams 模型配置参数。
    * @param promptPreset 预设。
+   * @param options 选项（isRegenerate 是否重新生成模式）。
    * @returns 合并后的参数。
    */
   private mergeModelParams(
     modelParams: ModelConfigParams,
-    promptPreset: PromptPreset | null
+    promptPreset: PromptPreset | null,
+    options: { isRegenerate?: boolean } = {}
   ): PromptModelParameters {
-    return {
+    const merged: PromptModelParameters = {
+      // 防重复默认值：模型配置/预设可覆盖
+      frequencyPenalty: 0.6,
+      presencePenalty: 0.4,
       ...modelParams,
       ...(promptPreset ? (this.parseParams(promptPreset.parametersJson) ?? {}) : {})
     };
+
+    if (options.isRegenerate) {
+      // 重新生成：提高温度 + 加强 penalty，避免复现上一次结果
+      merged.temperature = Math.min((merged.temperature ?? 0.8) + 0.2, 1.5);
+      merged.frequencyPenalty = Math.min((merged.frequencyPenalty ?? 0.5) + 0.3, 2);
+      merged.presencePenalty = Math.min((merged.presencePenalty ?? 0.3) + 0.2, 2);
+    }
+
+    return merged;
   }
 
   /**
@@ -1238,6 +1263,12 @@ export class ChatService {
         : {}),
       ...(typeof parsed.timeout === 'number' && Number.isInteger(parsed.timeout)
         ? { timeout: parsed.timeout }
+        : {}),
+      ...(typeof parsed.frequencyPenalty === 'number'
+        ? { frequencyPenalty: parsed.frequencyPenalty }
+        : {}),
+      ...(typeof parsed.presencePenalty === 'number'
+        ? { presencePenalty: parsed.presencePenalty }
         : {})
     };
   }

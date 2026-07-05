@@ -1349,7 +1349,13 @@ export class ModelsService {
         ...(typeof parsed.temperature === 'number' ? { temperature: parsed.temperature } : {}),
         ...(typeof parsed.topP === 'number' ? { topP: parsed.topP } : {}),
         ...(Number.isInteger(parsed.maxTokens) ? { maxTokens: parsed.maxTokens } : {}),
-        ...(Number.isInteger(parsed.timeout) ? { timeout: parsed.timeout } : {})
+        ...(Number.isInteger(parsed.timeout) ? { timeout: parsed.timeout } : {}),
+        ...(typeof parsed.frequencyPenalty === 'number'
+          ? { frequencyPenalty: parsed.frequencyPenalty }
+          : {}),
+        ...(typeof parsed.presencePenalty === 'number'
+          ? { presencePenalty: parsed.presencePenalty }
+          : {})
       };
     } catch {
       return {};

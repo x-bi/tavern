@@ -34,6 +34,11 @@ export class UpdateWorldBookDto {
   @IsBoolean()
   isEnabled?: boolean;
 
+  /** 是否标记为敏感内容。 */
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
+
   /** 扫描深度 1~200。 */
   @IsOptional()
   @Type(() => Number)

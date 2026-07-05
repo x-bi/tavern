@@ -1,6 +1,7 @@
 import type {
   Character,
   Conversation,
+  ModelFallbackGroup,
   ModelConfig,
   PromptPreset,
   UserPersona
@@ -9,6 +10,7 @@ import type {
 /** 聊天会话（含关联的角色/模型配置/预设/人设）。 */
 export type ChatConversation = Conversation & {
   character: Character;
+  modelFallbackGroup: ModelFallbackGroup | null;
   modelConfig: ModelConfig | null;
   promptPreset: PromptPreset | null;
   persona: UserPersona | null;
@@ -42,6 +44,16 @@ export type ChatMessageMetadata = {
   error?: {
     code: string;
     message: string;
+  };
+  modelFallback?: {
+    groupId: string | null;
+    selectedModelId: string | null;
+    attempts: Array<{
+      providerName: string;
+      modelName: string;
+      status: 'failed' | 'succeeded';
+      reason?: string;
+    }>;
   };
   /** 是否被客户端中断。 */
   aborted?: boolean;

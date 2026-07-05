@@ -63,6 +63,7 @@ export type {
   ConversationCharacterSummary,
   ConversationClearResponse,
   ConversationListResponse,
+  ConversationModelFallbackGroupSummary,
   ConversationModelConfigSummary,
   ConversationPayload,
   ConversationPersonaSummary,
@@ -75,7 +76,18 @@ export type {
   ModelConfigListResponse,
   ModelConfigPayload,
   ModelConfigResponse,
-  ModelConfigTestResponse
+  ModelConfigTestResponse,
+  ModelFallbackCandidatePayload,
+  ModelFallbackCandidateResponse,
+  ModelFallbackGroupListResponse,
+  ModelFallbackGroupPayload,
+  ModelFallbackGroupResponse,
+  ModelProviderListResponse,
+  ModelProviderPayload,
+  ModelProviderResponse,
+  ProviderModelListResponse,
+  ProviderModelPayload,
+  ProviderModelResponse
 } from './model-config';
 export type {
   ModelGatewayChatResult,
@@ -113,6 +125,7 @@ export type {
 } from './message';
 export type { PageQuery, PageResult } from './pagination';
 export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
+export type { ApplicationSettings, ApplicationSettingsPayload } from './settings';
 export type {
   BuildPromptDebugInfo,
   BuildPromptInput,

@@ -17,6 +17,7 @@ export type PromptPresetResponse = {
   topP: number | null;
   maxTokens: number | null;
   isDefault: boolean;
+  isSensitive: boolean;
   createdAt: string;
   updatedAt: string;
 };

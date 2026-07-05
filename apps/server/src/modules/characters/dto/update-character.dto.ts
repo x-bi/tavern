@@ -69,4 +69,9 @@ export class UpdateCharacterDto {
   @IsOptional()
   @IsBoolean()
   isArchived?: boolean;
+
+  /** 是否标记为敏感内容。 */
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }

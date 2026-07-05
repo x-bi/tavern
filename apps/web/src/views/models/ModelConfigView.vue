@@ -1,187 +1,475 @@
 <template>
-  <main class="page-shell model-config-view">
-    <header class="page-shell__header model-config-view__header">
+  <main class="page-shell model-chain-view">
+    <header class="page-shell__header model-chain-view__header">
       <div>
-        <h2>模型配置</h2>
-        <p>管理 OpenAI-compatible 服务地址、模型名和默认生成参数。</p>
+        <h2>模型链</h2>
+        <p>先配置供应商 URL 和 Key，再维护模型列表，最后用模型链决定自动切换顺序。</p>
       </div>
-      <n-button type="primary" @click="openCreate">新建配置</n-button>
+      <n-space>
+        <n-button secondary @click="openCreateProvider">新建供应商</n-button>
+        <n-button secondary :disabled="!modelStore.hasProviders" @click="openCreateModel">
+          新建模型
+        </n-button>
+        <n-button type="primary" :disabled="!modelStore.hasProviderModels" @click="openCreateGroup">
+          新建模型链
+        </n-button>
+      </n-space>
     </header>
 
-    <section class="model-config-view__toolbar">
-      <n-input
-        v-model:value="searchText"
-        clearable
-        placeholder="搜索配置、供应商、模型或 Base URL"
-        @keyup.enter="applySearch"
-        @clear="applySearch"
-      />
-      <n-button secondary @click="applySearch">搜索</n-button>
-    </section>
-
-    <LoadingState v-if="modelStore.loading" text="正在加载模型配置" />
+    <LoadingState v-if="modelStore.loading" text="正在加载模型链" />
 
     <ErrorState
       v-else-if="modelStore.error"
-      title="模型配置加载失败"
+      title="模型资源加载失败"
       :description="modelStore.error"
     />
 
-    <EmptyState
-      v-else-if="!modelStore.hasModelConfigs"
-      title="还没有模型配置"
-      description="新增配置后，后续聊天和 Prompt 预览会使用这里的模型基础信息。"
-    />
+    <div v-else class="model-chain-view__content">
+      <section class="model-chain-section">
+        <header class="model-chain-section__header">
+          <h3>供应商</h3>
+          <span>{{ modelStore.providers.length }} 个</span>
+        </header>
 
-    <section v-else class="model-config-view__grid" aria-label="模型配置列表">
-      <n-card
-        v-for="modelConfig in modelStore.items"
-        :key="modelConfig.id"
-        class="model-config-card"
-        :bordered="false"
-      >
-        <template #header>
-          <div class="model-config-card__title">
-            <strong>{{ modelConfig.name }}</strong>
-            <n-space size="small">
-              <n-tag v-if="modelConfig.isDefault" size="small" type="success" :bordered="false">
-                默认
-              </n-tag>
-              <n-tag
-                size="small"
-                :type="modelConfig.isEnabled ? 'info' : 'warning'"
-                :bordered="false"
-              >
-                {{ modelConfig.isEnabled ? '启用' : '停用' }}
-              </n-tag>
-            </n-space>
-          </div>
-        </template>
+        <EmptyState
+          v-if="!modelStore.hasProviders"
+          title="还没有供应商"
+          description="先保存 OpenAI-compatible Base URL 和 API Key。"
+        />
 
-        <dl class="model-config-card__meta">
-          <div>
-            <dt>Provider</dt>
-            <dd>{{ modelConfig.providerName }}</dd>
-          </div>
-          <div>
-            <dt>Base URL</dt>
-            <dd>{{ modelConfig.baseUrl }}</dd>
-          </div>
-          <div>
-            <dt>Model</dt>
-            <dd>{{ modelConfig.modelName }}</dd>
-          </div>
-          <div>
-            <dt>API Key</dt>
-            <dd>{{ modelConfig.apiKeyMask ?? '未保存' }}</dd>
-          </div>
-        </dl>
+        <div v-else class="model-chain-grid">
+          <n-card
+            v-for="provider in modelStore.providers"
+            :key="provider.id"
+            class="model-chain-card"
+            :bordered="false"
+          >
+            <template #header>
+              <div class="model-chain-card__title">
+                <strong>{{ provider.name }}</strong>
+                <n-space size="small">
+                  <n-tag v-if="provider.isDefault" size="small" type="success" :bordered="false">
+                    默认
+                  </n-tag>
+                  <n-tag size="small" :type="provider.isEnabled ? 'info' : 'warning'">
+                    {{ provider.isEnabled ? '启用' : '停用' }}
+                  </n-tag>
+                </n-space>
+              </div>
+            </template>
 
-        <div class="model-config-card__params">
-          <n-tag v-for="item in parameterSummary(modelConfig)" :key="item" size="small">
-            {{ item }}
-          </n-tag>
+            <dl class="model-chain-meta">
+              <div>
+                <dt>Provider</dt>
+                <dd>{{ provider.providerName }}</dd>
+              </div>
+              <div>
+                <dt>Base URL</dt>
+                <dd>{{ provider.baseUrl }}</dd>
+              </div>
+              <div>
+                <dt>API Key</dt>
+                <dd>{{ provider.apiKeyMask ?? '未保存' }}</dd>
+              </div>
+            </dl>
+
+            <template #action>
+              <n-space justify="end">
+                <n-button size="small" secondary @click="openEditProvider(provider)">编辑</n-button>
+                <n-button size="small" secondary type="error" @click="deleteProvider(provider)">
+                  删除
+                </n-button>
+              </n-space>
+            </template>
+          </n-card>
         </div>
+      </section>
 
-        <n-alert
-          v-if="testResults[modelConfig.id]"
-          class="model-config-card__test-result"
-          :type="testResults[modelConfig.id].ok ? 'success' : 'error'"
-          :bordered="false"
-        >
-          <div class="model-config-card__test-message">
-            <strong>{{ testResults[modelConfig.id].message }}</strong>
-            <span>{{ testResultSummary(testResults[modelConfig.id]) }}</span>
-          </div>
-        </n-alert>
+      <section class="model-chain-section">
+        <header class="model-chain-section__header">
+          <h3>模型</h3>
+          <span>{{ modelStore.providerModels.length }} 个</span>
+        </header>
 
-        <template #action>
-          <n-space justify="end">
-            <n-button
-              size="small"
-              secondary
-              :loading="testingId === modelConfig.id"
-              @click="testConnection(modelConfig)"
-            >
-              测试连接
-            </n-button>
-            <n-button size="small" secondary @click="openEdit(modelConfig)">编辑</n-button>
-            <n-button
-              size="small"
-              secondary
-              type="error"
-              :loading="deletingId === modelConfig.id"
-              @click="confirmDelete(modelConfig)"
-            >
-              删除
-            </n-button>
-          </n-space>
-        </template>
-      </n-card>
-    </section>
+        <EmptyState
+          v-if="!modelStore.hasProviderModels"
+          title="还没有模型"
+          description="在供应商下面添加可调用的 modelName。"
+        />
+
+        <div v-else class="model-chain-grid">
+          <n-card
+            v-for="model in modelStore.providerModels"
+            :key="model.id"
+            class="model-chain-card"
+            :bordered="false"
+          >
+            <template #header>
+              <div class="model-chain-card__title">
+                <strong>{{ model.name }}</strong>
+                <n-tag size="small" :type="model.isEnabled ? 'info' : 'warning'">
+                  {{ model.isEnabled ? '启用' : '停用' }}
+                </n-tag>
+              </div>
+            </template>
+
+            <dl class="model-chain-meta">
+              <div>
+                <dt>供应商</dt>
+                <dd>{{ model.providerDisplayName }}</dd>
+              </div>
+              <div>
+                <dt>Model</dt>
+                <dd>{{ model.modelName }}</dd>
+              </div>
+              <div>
+                <dt>参数</dt>
+                <dd>{{ modelParamSummary(model) }}</dd>
+              </div>
+            </dl>
+
+            <template #action>
+              <n-space justify="end">
+                <n-button
+                  size="small"
+                  secondary
+                  :loading="testingId === model.id"
+                  @click="testModel(model)"
+                >
+                  测试
+                </n-button>
+                <n-button size="small" secondary @click="openEditModel(model)">编辑</n-button>
+                <n-button size="small" secondary type="error" @click="deleteModel(model)">
+                  删除
+                </n-button>
+              </n-space>
+            </template>
+          </n-card>
+        </div>
+      </section>
+
+      <section class="model-chain-section">
+        <header class="model-chain-section__header">
+          <h3>模型链</h3>
+          <span>{{ modelStore.fallbackGroups.length }} 个</span>
+        </header>
+
+        <EmptyState
+          v-if="!modelStore.hasFallbackGroups"
+          title="还没有模型链"
+          description="选择多个模型并排序，聊天失败时按顺序自动切换。"
+        />
+
+        <div v-else class="model-chain-grid">
+          <n-card
+            v-for="group in modelStore.fallbackGroups"
+            :key="group.id"
+            class="model-chain-card"
+            :bordered="false"
+          >
+            <template #header>
+              <div class="model-chain-card__title">
+                <strong>{{ group.name }}</strong>
+                <n-space size="small">
+                  <n-tag v-if="group.isDefault" size="small" type="success" :bordered="false">
+                    默认
+                  </n-tag>
+                  <n-tag size="small" :type="group.isEnabled ? 'info' : 'warning'">
+                    {{ group.isEnabled ? '启用' : '停用' }}
+                  </n-tag>
+                </n-space>
+              </div>
+            </template>
+
+            <ol class="model-chain-order">
+              <li v-for="candidate in group.candidates" :key="candidate.id">
+                {{ candidate.priority }}. {{ candidate.model.providerDisplayName }} /
+                {{ candidate.model.name }}
+              </li>
+            </ol>
+
+            <template #action>
+              <n-space justify="end">
+                <n-button size="small" secondary @click="openEditGroup(group)">编辑</n-button>
+                <n-button size="small" secondary type="error" @click="deleteGroup(group)">
+                  删除
+                </n-button>
+              </n-space>
+            </template>
+          </n-card>
+        </div>
+      </section>
+    </div>
 
     <n-drawer v-model:show="drawerVisible" :width="drawerWidth" placement="right">
-      <n-drawer-content :title="editingModelConfig ? '编辑模型配置' : '新建模型配置'">
-        <ModelConfigForm
-          :initial-value="editingModelConfig"
-          :submitting="modelStore.saving"
-          :submit-label="editingModelConfig ? '保存配置' : '创建配置'"
-          :error="modelStore.saveError"
-          @submit="handleSubmit"
-          @cancel="closeDrawer"
-        />
+      <n-drawer-content :title="drawerTitle">
+        <n-form class="model-chain-form" label-placement="top" @submit.prevent="submitDrawer">
+          <template v-if="drawerMode === 'provider'">
+            <n-form-item label="供应商名称" required>
+              <n-input v-model:value="providerForm.name" maxlength="120" />
+            </n-form-item>
+            <n-form-item label="Provider" required>
+              <n-input v-model:value="providerForm.providerName" maxlength="80" />
+            </n-form-item>
+            <n-form-item label="Base URL" required>
+              <n-input v-model:value="providerForm.baseUrl" maxlength="500" />
+            </n-form-item>
+            <n-form-item label="API Key">
+              <n-input
+                v-model:value="providerForm.apiKey"
+                type="password"
+                show-password-on="click"
+                maxlength="4096"
+                :placeholder="editingProvider?.apiKeyMask ? `已保存 ${editingProvider.apiKeyMask}` : ''"
+              />
+            </n-form-item>
+            <n-form-item label="Timeout ms">
+              <n-input-number v-model:value="providerForm.timeout" clearable :min="1000" />
+            </n-form-item>
+            <n-space>
+              <n-checkbox v-model:checked="providerForm.isDefault">默认供应商</n-checkbox>
+              <n-checkbox v-model:checked="providerForm.isEnabled">启用</n-checkbox>
+            </n-space>
+          </template>
+
+          <template v-else-if="drawerMode === 'model'">
+            <n-form-item label="供应商" required>
+              <NSelect v-model:value="modelForm.providerId" filterable :options="providerOptions" />
+            </n-form-item>
+            <n-form-item label="模型显示名" required>
+              <n-input v-model:value="modelForm.name" maxlength="120" />
+            </n-form-item>
+            <n-form-item label="modelName" required>
+              <n-input v-model:value="modelForm.modelName" maxlength="160" />
+            </n-form-item>
+            <div class="model-chain-form__grid">
+              <n-form-item label="Temperature">
+                <n-input-number v-model:value="modelForm.temperature" clearable :min="0" :max="2" />
+              </n-form-item>
+              <n-form-item label="Top P">
+                <n-input-number v-model:value="modelForm.topP" clearable :min="0" :max="1" />
+              </n-form-item>
+              <n-form-item label="Max Tokens">
+                <n-input-number v-model:value="modelForm.maxTokens" clearable :min="1" />
+              </n-form-item>
+              <n-form-item label="Timeout ms">
+                <n-input-number v-model:value="modelForm.timeout" clearable :min="1000" />
+              </n-form-item>
+            </div>
+            <n-form-item label="备注">
+              <n-input v-model:value="modelForm.notes" type="textarea" maxlength="500" />
+            </n-form-item>
+            <n-checkbox v-model:checked="modelForm.isEnabled">启用</n-checkbox>
+          </template>
+
+          <template v-else>
+            <n-form-item label="模型链名称" required>
+              <n-input v-model:value="groupForm.name" maxlength="120" />
+            </n-form-item>
+            <n-form-item label="候选模型" required>
+              <NSelect
+                v-model:value="groupForm.modelIds"
+                multiple
+                filterable
+                :options="modelOptions"
+                placeholder="按选择顺序生成调用顺序"
+              />
+            </n-form-item>
+            <n-space>
+              <n-checkbox v-model:checked="groupForm.isDefault">默认模型链</n-checkbox>
+              <n-checkbox v-model:checked="groupForm.isEnabled">启用</n-checkbox>
+            </n-space>
+          </template>
+
+          <n-alert v-if="modelStore.saveError" type="error" :bordered="false">
+            {{ modelStore.saveError }}
+          </n-alert>
+
+          <n-space justify="end">
+            <n-button secondary @click="closeDrawer">取消</n-button>
+            <n-button type="primary" :loading="modelStore.saving" attr-type="submit">保存</n-button>
+          </n-space>
+        </n-form>
       </n-drawer-content>
     </n-drawer>
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { useDialog, useMessage } from 'naive-ui';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 
 import {
-  testModelConfigConnection,
-  type ModelConfig,
-  type ModelConfigMutationPayload
+  testProviderModelConnection,
+  type ModelFallbackGroup,
+  type ModelProvider,
+  type ProviderModel
 } from '../../api/models';
 import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
-import ModelConfigForm from '../../components/ModelConfigForm.vue';
 import { useModelStore } from '../../stores/model';
-import type { ModelConfigPayload, ModelConfigTestResponse } from '@tavern/shared';
+
+type DrawerMode = 'provider' | 'model' | 'group';
 
 const modelStore = useModelStore();
-const dialog = useDialog();
 const message = useMessage();
-const searchText = ref(modelStore.search);
+const dialog = useDialog();
 const drawerVisible = ref(false);
-const editingModelConfig = ref<ModelConfig | null>(null);
-const deletingId = ref<string | null>(null);
+const drawerMode = ref<DrawerMode>('provider');
+const editingProvider = ref<ModelProvider | null>(null);
+const editingModel = ref<ProviderModel | null>(null);
+const editingGroup = ref<ModelFallbackGroup | null>(null);
 const testingId = ref<string | null>(null);
-const testResults = ref<Record<string, ModelConfigTestResponse>>({});
 const drawerWidth = computed(() => Math.min(720, window.innerWidth));
+const drawerTitle = computed(() => {
+  if (drawerMode.value === 'provider') {
+    return editingProvider.value ? '编辑供应商' : '新建供应商';
+  }
 
-onMounted(() => {
-  void modelStore.loadModelConfigs();
+  if (drawerMode.value === 'model') {
+    return editingModel.value ? '编辑模型' : '新建模型';
+  }
+
+  return editingGroup.value ? '编辑模型链' : '新建模型链';
 });
 
-function applySearch() {
-  modelStore.setSearch(searchText.value);
-  void modelStore.loadModelConfigs({
-    page: 1,
-    search: searchText.value
+const providerForm = reactive({
+  name: '',
+  providerName: 'openai-compatible',
+  baseUrl: '',
+  apiKey: '',
+  timeout: null as number | null,
+  isDefault: false,
+  isEnabled: true
+});
+
+const modelForm = reactive({
+  providerId: '',
+  name: '',
+  modelName: '',
+  temperature: null as number | null,
+  topP: null as number | null,
+  maxTokens: null as number | null,
+  timeout: null as number | null,
+  notes: '',
+  isEnabled: true
+});
+
+const groupForm = reactive({
+  name: '',
+  modelIds: [] as string[],
+  isDefault: false,
+  isEnabled: true
+});
+
+const providerOptions = computed<SelectOption[]>(() =>
+  modelStore.providers.map((provider) => ({
+    label: `${provider.name} / ${provider.providerName}`,
+    value: provider.id,
+    disabled: !provider.isEnabled
+  }))
+);
+
+const modelOptions = computed<SelectOption[]>(() =>
+  modelStore.providerModels.map((model) => ({
+    label: `${model.providerDisplayName} / ${model.name}`,
+    value: model.id,
+    disabled: !model.isEnabled
+  }))
+);
+
+onMounted(() => {
+  void modelStore.loadModelResources();
+});
+
+function openCreateProvider() {
+  editingProvider.value = null;
+  Object.assign(providerForm, {
+    name: '',
+    providerName: 'openai-compatible',
+    baseUrl: '',
+    apiKey: '',
+    timeout: null,
+    isDefault: false,
+    isEnabled: true
   });
+  openDrawer('provider');
 }
 
-function openCreate() {
-  editingModelConfig.value = null;
-  modelStore.saveError = null;
-  drawerVisible.value = true;
+function openEditProvider(provider: ModelProvider) {
+  editingProvider.value = provider;
+  Object.assign(providerForm, {
+    name: provider.name,
+    providerName: provider.providerName,
+    baseUrl: provider.baseUrl,
+    apiKey: '',
+    timeout: provider.timeout,
+    isDefault: provider.isDefault,
+    isEnabled: provider.isEnabled
+  });
+  openDrawer('provider');
 }
 
-function openEdit(modelConfig: ModelConfig) {
-  editingModelConfig.value = modelConfig;
+function openCreateModel() {
+  editingModel.value = null;
+  Object.assign(modelForm, {
+    providerId: modelStore.providers.find((provider) => provider.isDefault)?.id ?? '',
+    name: '',
+    modelName: '',
+    temperature: null,
+    topP: null,
+    maxTokens: null,
+    timeout: null,
+    notes: '',
+    isEnabled: true
+  });
+  openDrawer('model');
+}
+
+function openEditModel(model: ProviderModel) {
+  editingModel.value = model;
+  Object.assign(modelForm, {
+    providerId: model.providerId,
+    name: model.name,
+    modelName: model.modelName,
+    temperature: model.temperature,
+    topP: model.topP,
+    maxTokens: model.maxTokens,
+    timeout: model.timeout,
+    notes: model.notes ?? '',
+    isEnabled: model.isEnabled
+  });
+  openDrawer('model');
+}
+
+function openCreateGroup() {
+  editingGroup.value = null;
+  Object.assign(groupForm, {
+    name: '',
+    modelIds: [],
+    isDefault: false,
+    isEnabled: true
+  });
+  openDrawer('group');
+}
+
+function openEditGroup(group: ModelFallbackGroup) {
+  editingGroup.value = group;
+  Object.assign(groupForm, {
+    name: group.name,
+    modelIds: group.candidates
+      .slice()
+      .sort((left, right) => left.priority - right.priority)
+      .map((candidate) => candidate.modelId),
+    isDefault: group.isDefault,
+    isEnabled: group.isEnabled
+  });
+  openDrawer('group');
+}
+
+function openDrawer(mode: DrawerMode) {
+  drawerMode.value = mode;
   modelStore.saveError = null;
   drawerVisible.value = true;
 }
@@ -190,53 +478,103 @@ function closeDrawer() {
   drawerVisible.value = false;
 }
 
-async function handleSubmit(payload: ModelConfigPayload | ModelConfigMutationPayload) {
-  const result = editingModelConfig.value
-    ? await modelStore.updateModelConfig(editingModelConfig.value.id, payload)
-    : await modelStore.createModelConfig(payload as ModelConfigPayload);
-
-  if (!result) {
+async function submitDrawer() {
+  if (drawerMode.value === 'provider') {
+    await submitProvider();
     return;
   }
 
-  message.success(editingModelConfig.value ? '模型配置已保存' : '模型配置已创建');
-  closeDrawer();
+  if (drawerMode.value === 'model') {
+    await submitModel();
+    return;
+  }
+
+  await submitGroup();
 }
 
-function confirmDelete(modelConfig: ModelConfig) {
-  dialog.warning({
-    title: '删除模型配置',
-    content: `确认删除“${modelConfig.name}”？`,
-    positiveText: '删除',
-    negativeText: '取消',
-    onPositiveClick: () => deleteModelConfig(modelConfig.id)
-  });
-}
+async function submitProvider() {
+  if (!providerForm.name.trim() || !providerForm.baseUrl.trim()) {
+    message.warning('请填写供应商名称和 Base URL。');
+    return;
+  }
 
-async function deleteModelConfig(id: string) {
-  deletingId.value = id;
+  const payload = {
+    name: providerForm.name.trim(),
+    providerName: providerForm.providerName.trim(),
+    baseUrl: providerForm.baseUrl.trim(),
+    timeout: providerForm.timeout,
+    isDefault: providerForm.isDefault,
+    isEnabled: providerForm.isEnabled,
+    ...(providerForm.apiKey.trim() ? { apiKey: providerForm.apiKey.trim() } : {})
+  };
+  const result = editingProvider.value
+    ? await modelStore.updateProvider(editingProvider.value.id, payload)
+    : await modelStore.createProvider(payload);
 
-  try {
-    const deleted = await modelStore.deleteModelConfig(id);
-
-    if (deleted) {
-      message.success('模型配置已删除');
-    }
-  } finally {
-    deletingId.value = null;
+  if (result) {
+    message.success('供应商已保存');
+    closeDrawer();
   }
 }
 
-async function testConnection(modelConfig: ModelConfig) {
-  testingId.value = modelConfig.id;
+async function submitModel() {
+  if (!modelForm.providerId || !modelForm.name.trim() || !modelForm.modelName.trim()) {
+    message.warning('请选择供应商并填写模型名称。');
+    return;
+  }
+
+  const payload = {
+    providerId: modelForm.providerId,
+    name: modelForm.name.trim(),
+    modelName: modelForm.modelName.trim(),
+    temperature: modelForm.temperature,
+    topP: modelForm.topP,
+    maxTokens: modelForm.maxTokens,
+    timeout: modelForm.timeout,
+    notes: modelForm.notes.trim() || null,
+    isEnabled: modelForm.isEnabled
+  };
+  const result = editingModel.value
+    ? await modelStore.updateProviderModel(editingModel.value.id, payload)
+    : await modelStore.createProviderModel(payload);
+
+  if (result) {
+    message.success('模型已保存');
+    closeDrawer();
+  }
+}
+
+async function submitGroup() {
+  if (!groupForm.name.trim() || groupForm.modelIds.length === 0) {
+    message.warning('请填写模型链名称并选择候选模型。');
+    return;
+  }
+
+  const payload = {
+    name: groupForm.name.trim(),
+    isDefault: groupForm.isDefault,
+    isEnabled: groupForm.isEnabled,
+    candidates: groupForm.modelIds.map((modelId, index) => ({
+      modelId,
+      priority: index + 1,
+      isEnabled: true
+    }))
+  };
+  const result = editingGroup.value
+    ? await modelStore.updateFallbackGroup(editingGroup.value.id, payload)
+    : await modelStore.createFallbackGroup(payload);
+
+  if (result) {
+    message.success('模型链已保存');
+    closeDrawer();
+  }
+}
+
+async function testModel(model: ProviderModel) {
+  testingId.value = model.id;
 
   try {
-    const result = await testModelConfigConnection(modelConfig.id);
-
-    testResults.value = {
-      ...testResults.value,
-      [modelConfig.id]: result
-    };
+    const result = await testProviderModelConnection(model.id);
 
     if (result.ok) {
       message.success(`连接测试通过，耗时 ${result.latencyMs}ms`);
@@ -244,77 +582,111 @@ async function testConnection(modelConfig: ModelConfig) {
       message.error(result.message);
     }
   } catch (error) {
-    const fallbackResult: ModelConfigTestResponse = {
-      ok: false,
-      latencyMs: 0,
-      providerName: modelConfig.providerName,
-      modelName: modelConfig.modelName,
-      baseUrl: modelConfig.baseUrl,
-      statusCode: null,
-      message: error instanceof Error ? error.message : '连接测试失败。',
-      summary: null,
-      testedAt: new Date().toISOString()
-    };
-
-    testResults.value = {
-      ...testResults.value,
-      [modelConfig.id]: fallbackResult
-    };
-    message.error(fallbackResult.message);
+    message.error(error instanceof Error ? error.message : '连接测试失败。');
   } finally {
     testingId.value = null;
   }
 }
 
-function testResultSummary(result: ModelConfigTestResponse): string {
-  const status = result.statusCode === null ? '无 HTTP 状态' : `HTTP ${result.statusCode}`;
-  const summary = result.summary ? `，${result.summary}` : '';
-
-  return `${status}，耗时 ${result.latencyMs}ms${summary}`;
+function deleteProvider(provider: ModelProvider) {
+  dialog.warning({
+    title: '删除供应商',
+    content: `确认删除“${provider.name}”？关联模型会不可用。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      if (await modelStore.deleteProvider(provider.id)) {
+        message.success('供应商已删除');
+      }
+    }
+  });
 }
 
-function parameterSummary(modelConfig: ModelConfig): string[] {
-  const items = [
-    modelConfig.temperature === null ? null : `temp ${modelConfig.temperature}`,
-    modelConfig.topP === null ? null : `topP ${modelConfig.topP}`,
-    modelConfig.maxTokens === null ? null : `max ${modelConfig.maxTokens}`,
-    modelConfig.timeout === null ? null : `${modelConfig.timeout}ms`
-  ].filter(Boolean) as string[];
+function deleteModel(model: ProviderModel) {
+  dialog.warning({
+    title: '删除模型',
+    content: `确认删除“${model.name}”？模型链中的候选会失效。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      if (await modelStore.deleteProviderModel(model.id)) {
+        message.success('模型已删除');
+      }
+    }
+  });
+}
 
-  return items.length > 0 ? items : ['未设置生成参数'];
+function deleteGroup(group: ModelFallbackGroup) {
+  dialog.warning({
+    title: '删除模型链',
+    content: `确认删除“${group.name}”？`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      if (await modelStore.deleteFallbackGroup(group.id)) {
+        message.success('模型链已删除');
+      }
+    }
+  });
+}
+
+function modelParamSummary(model: ProviderModel): string {
+  const parts = [
+    model.temperature === null ? null : `temp ${model.temperature}`,
+    model.topP === null ? null : `topP ${model.topP}`,
+    model.maxTokens === null ? null : `max ${model.maxTokens}`,
+    model.timeout === null ? null : `${model.timeout}ms`
+  ].filter(Boolean);
+
+  return parts.length > 0 ? parts.join(' / ') : '未设置';
 }
 </script>
 
 <style scoped>
-.model-config-view {
+.model-chain-view {
   align-content: start;
 }
 
-.model-config-view__header {
+.model-chain-view__header {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
 
-.model-config-view__toolbar {
+.model-chain-view__content,
+.model-chain-section {
   display: grid;
-  grid-template-columns: minmax(240px, 480px) auto;
-  gap: 10px;
-  align-items: center;
+  gap: 16px;
 }
 
-.model-config-view__grid {
+.model-chain-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.model-chain-section__header h3 {
+  margin: 0;
+  color: var(--text-strong);
+}
+
+.model-chain-section__header span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.model-chain-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
 }
 
-.model-config-card {
+.model-chain-card {
   border: 1px solid var(--line-subtle);
   border-radius: 8px;
   background: var(--surface-panel);
 }
 
-.model-config-card__title {
+.model-chain-card__title {
   display: flex;
   gap: 12px;
   align-items: center;
@@ -322,7 +694,7 @@ function parameterSummary(modelConfig: ModelConfig): string[] {
   min-width: 0;
 }
 
-.model-config-card__title strong {
+.model-chain-card__title strong {
   overflow: hidden;
   min-width: 0;
   color: var(--text-strong);
@@ -330,58 +702,56 @@ function parameterSummary(modelConfig: ModelConfig): string[] {
   white-space: nowrap;
 }
 
-.model-config-card__meta {
+.model-chain-meta {
   display: grid;
   gap: 10px;
   margin: 0;
 }
 
-.model-config-card__meta div {
+.model-chain-meta div {
   display: grid;
   gap: 3px;
   min-width: 0;
 }
 
-.model-config-card__meta dt {
+.model-chain-meta dt {
   color: var(--text-muted);
   font-size: 12px;
 }
 
-.model-config-card__meta dd {
+.model-chain-meta dd {
   overflow-wrap: anywhere;
   margin: 0;
   color: var(--text-strong);
   line-height: 1.5;
 }
 
-.model-config-card__params {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.model-config-card__test-result {
-  margin-top: 14px;
-}
-
-.model-config-card__test-message {
+.model-chain-order {
   display: grid;
-  gap: 4px;
+  gap: 8px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-strong);
 }
 
-.model-config-card__test-message span {
-  overflow-wrap: anywhere;
-  font-size: 12px;
+.model-chain-form {
+  display: grid;
+  gap: 6px;
 }
 
-@media (max-width: 720px) {
-  .model-config-view__header,
-  .model-config-view__toolbar {
+.model-chain-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 780px) {
+  .model-chain-view__header,
+  .model-chain-form__grid {
     grid-template-columns: 1fr;
   }
 
-  .model-config-view__grid {
+  .model-chain-grid {
     grid-template-columns: 1fr;
   }
 }

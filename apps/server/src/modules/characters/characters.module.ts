@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuthModule } from '../auth/auth.module';
+import { SettingsModule } from '../settings/settings.module';
 import { CharactersController } from './characters.controller';
 import { CharactersService } from './characters.service';
 
@@ -11,7 +12,7 @@ import { CharactersService } from './characters.service';
  * exporter/importer 是 CharactersService 内部 new 出来的纯工具类，无需 DI。
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, SettingsModule],
   controllers: [CharactersController],
   providers: [CharactersService],
   exports: [CharactersService]

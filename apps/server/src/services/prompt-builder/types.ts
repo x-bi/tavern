@@ -170,6 +170,7 @@ export type WorldBookContext = {
   name: string;
   description: string;
   isEnabled: boolean;
+  isSensitive: boolean;
   /** 扫描深度：扫描最近多少条消息触发关键词。 */
   scanDepth: number;
   /** token 预算：世界书条目总 token 上限。 */

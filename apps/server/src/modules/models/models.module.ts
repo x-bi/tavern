@@ -2,8 +2,11 @@ import { Module } from '@nestjs/common';
 
 import { ModelGatewayModule } from '../../services/model-gateway';
 import { AuthModule } from '../auth/auth.module';
+import { ModelFallbackGroupsController } from './model-fallback-groups.controller';
+import { ModelProvidersController } from './model-providers.controller';
 import { ModelsController } from './models.controller';
 import { ModelsService } from './models.service';
+import { ProviderModelsController } from './provider-models.controller';
 
 /**
  * 模型配置模块。
@@ -12,7 +15,12 @@ import { ModelsService } from './models.service';
  */
 @Module({
   imports: [AuthModule, ModelGatewayModule],
-  controllers: [ModelsController],
+  controllers: [
+    ModelsController,
+    ModelProvidersController,
+    ProviderModelsController,
+    ModelFallbackGroupsController
+  ],
   providers: [ModelsService],
   exports: [ModelsService]
 })

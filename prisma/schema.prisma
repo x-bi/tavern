@@ -17,15 +17,17 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  appSettings   AppSetting[]
-  assets        Asset[]
-  characters    Character[]
-  conversations Conversation[]
-  modelCallLogs ModelCallLog[]
-  modelConfigs  ModelConfig[]
-  personas      UserPersona[]
-  promptPresets PromptPreset[]
-  worldBooks    WorldBook[]
+  appSettings         AppSetting[]
+  assets              Asset[]
+  characters          Character[]
+  conversations       Conversation[]
+  modelCallLogs       ModelCallLog[]
+  modelConfigs        ModelConfig[]
+  modelFallbackGroups ModelFallbackGroup[]
+  modelProviders      ModelProvider[]
+  personas            UserPersona[]
+  promptPresets       PromptPreset[]
+  worldBooks          WorldBook[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -42,6 +44,7 @@ model Character {
   firstMessage        String    @default("")
   exampleMessagesJson String?
   metadataJson        String?
+  isSensitive         Boolean   @default(false)
   isArchived          Boolean   @default(false)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -53,6 +56,7 @@ model Character {
   worldBooks    WorldBook[]
 
   @@index([userId])
+  @@index([userId, isSensitive])
   @@index([userId, isArchived])
   @@index([name])
   @@index([deletedAt])
@@ -84,6 +88,89 @@ model ModelConfig {
   @@index([deletedAt])
 }
 
+model ModelProvider {
+  id               String    @id @default(cuid())
+  userId           String
+  name             String
+  provider         String    @default("openai-compatible")
+  baseUrl          String
+  apiKeyCiphertext String?
+  apiKeyMask       String?
+  timeout          Int?
+  isDefault        Boolean   @default(false)
+  isEnabled        Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  models ProviderModel[]
+  user   User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, isEnabled])
+  @@index([provider])
+  @@index([deletedAt])
+}
+
+model ProviderModel {
+  id                String    @id @default(cuid())
+  providerId        String
+  name              String
+  model             String
+  defaultParamsJson String?
+  contextLength     Int?
+  notes             String?
+  sortOrder         Int       @default(0)
+  isEnabled         Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  deletedAt         DateTime?
+
+  fallbackCandidates ModelFallbackCandidate[]
+  provider           ModelProvider            @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, name])
+  @@unique([providerId, model])
+  @@index([providerId, isEnabled])
+  @@index([deletedAt])
+}
+
+model ModelFallbackGroup {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  isDefault Boolean   @default(false)
+  isEnabled Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  candidates    ModelFallbackCandidate[]
+  conversations Conversation[]
+  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, isEnabled])
+  @@index([deletedAt])
+}
+
+model ModelFallbackCandidate {
+  id        String   @id @default(cuid())
+  groupId   String
+  modelId   String
+  priority  Int
+  isEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group ModelFallbackGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  model ProviderModel      @relation(fields: [modelId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, modelId])
+  @@unique([groupId, priority])
+  @@index([modelId])
+}
+
 model PromptPreset {
   id             String    @id @default(cuid())
   userId         String
@@ -93,6 +180,7 @@ model PromptPreset {
   outputRules    String    @default("")
   parametersJson String?
   metadataJson   String?
+  isSensitive    Boolean   @default(false)
   isDefault      Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -102,6 +190,7 @@ model PromptPreset {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
+  @@index([userId, isSensitive])
   @@index([userId, isDefault])
   @@index([deletedAt])
 }
@@ -112,6 +201,7 @@ model UserPersona {
   name         String
   content      String    @default("")
   metadataJson String?
+  isSensitive  Boolean   @default(false)
   isDefault    Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -121,36 +211,42 @@ model UserPersona {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
+  @@index([userId, isSensitive])
   @@index([userId, isDefault])
   @@index([deletedAt])
 }
 
 model Conversation {
-  id             String    @id @default(cuid())
-  userId         String
-  characterId    String
-  modelConfigId  String?
-  promptPresetId String?
-  personaId      String?
-  title          String
-  status         String    @default("active")
-  metadataJson   String?
-  lastMessageAt  DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id                   String    @id @default(cuid())
+  userId               String
+  characterId          String
+  modelConfigId        String?
+  modelFallbackGroupId String?
+  promptPresetId       String?
+  personaId            String?
+  title                String
+  status               String    @default("active")
+  metadataJson         String?
+  usesSensitiveResource Boolean   @default(false)
+  lastMessageAt        DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
 
-  character     Character      @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  messages      Message[]
-  modelCallLogs ModelCallLog[]
-  modelConfig   ModelConfig?   @relation(fields: [modelConfigId], references: [id], onDelete: SetNull)
-  persona       UserPersona?   @relation(fields: [personaId], references: [id], onDelete: SetNull)
-  promptPreset  PromptPreset?  @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character          Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  messages           Message[]
+  modelCallLogs      ModelCallLog[]
+  modelFallbackGroup ModelFallbackGroup? @relation(fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
+  modelConfig        ModelConfig?        @relation(fields: [modelConfigId], references: [id], onDelete: SetNull)
+  persona            UserPersona?        @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  promptPreset       PromptPreset?       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, updatedAt])
+  @@index([userId, usesSensitiveResource])
   @@index([characterId, updatedAt])
   @@index([modelConfigId])
+  @@index([modelFallbackGroupId])
   @@index([status])
   @@index([deletedAt])
 }
@@ -186,6 +282,7 @@ model WorldBook {
   scanDepth    Int       @default(6)
   tokenBudget  Int       @default(1000)
   metadataJson String?
+  isSensitive  Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
@@ -195,6 +292,7 @@ model WorldBook {
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isEnabled])
+  @@index([userId, isSensitive])
   @@index([characterId])
   @@index([deletedAt])
 }

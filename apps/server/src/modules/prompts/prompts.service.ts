@@ -26,6 +26,7 @@ import type {
   WorldBookEntryPosition,
   WorldBookContext
 } from '../../services/prompt-builder/types';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import { WorldBooksService } from '../world-books/world-books.service';
 import type { PreviewPromptDto } from './dto/preview-prompt.dto';
@@ -51,7 +52,9 @@ export class PromptsService {
     @Inject(PromptBuilderService)
     private readonly promptBuilder: PromptBuilderService,
     @Inject(WorldBooksService)
-    private readonly worldBooksService: WorldBooksService
+    private readonly worldBooksService: WorldBooksService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -115,11 +118,13 @@ export class PromptsService {
     currentUser: CurrentUser,
     conversationId: string
   ): Promise<PreviewConversation> {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id: conversationId,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { usesSensitiveResource: false })
       },
       include: {
         character: true,

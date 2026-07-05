@@ -42,6 +42,9 @@
             <n-checkbox v-model:checked="form.compactListMode">
               管理列表使用紧凑显示
             </n-checkbox>
+            <n-checkbox v-model:checked="form.showSensitiveContent">
+              显示敏感内容
+            </n-checkbox>
           </div>
           <div class="setting-actions">
             <n-button type="primary" :loading="settingStore.saving" @click="saveSettings">
@@ -162,7 +165,8 @@ const form = reactive({
   workspaceName: '',
   autoOpenLastConversation: true,
   compactListMode: false,
-  defaultHistoryLimit: 20
+  defaultHistoryLimit: 20,
+  showSensitiveContent: false
 });
 
 const refreshing = computed(
@@ -211,6 +215,7 @@ watch(
     form.autoOpenLastConversation = settings.autoOpenLastConversation;
     form.compactListMode = settings.compactListMode;
     form.defaultHistoryLimit = settings.defaultHistoryLimit;
+    form.showSensitiveContent = settings.showSensitiveContent;
   },
   { immediate: true, deep: true }
 );
@@ -233,7 +238,8 @@ async function saveSettings() {
     workspaceName: form.workspaceName,
     autoOpenLastConversation: form.autoOpenLastConversation,
     compactListMode: form.compactListMode,
-    defaultHistoryLimit: form.defaultHistoryLimit
+    defaultHistoryLimit: form.defaultHistoryLimit,
+    showSensitiveContent: form.showSensitiveContent
   });
 
   if (saved) {

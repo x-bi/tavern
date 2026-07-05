@@ -273,6 +273,8 @@ export type WorldBookContext = {
   description: string;
   /** 是否启用。 */
   isEnabled: boolean;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
   /** 扫描深度。 */
   scanDepth: number;
   /** 整本世界书的 token 预算。 */

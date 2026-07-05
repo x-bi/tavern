@@ -23,4 +23,9 @@ export class UpdatePersonaDto {
   @IsOptional()
   @IsBoolean()
   isDefault?: boolean;
+
+  /** 是否标记为敏感内容。 */
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }

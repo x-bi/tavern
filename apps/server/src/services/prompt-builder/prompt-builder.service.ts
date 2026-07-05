@@ -24,6 +24,11 @@ import type {
 } from './types';
 import { matchWorldBookEntries } from './world-book-matcher';
 
+type PromptTemplateVariables = {
+  characterName: string;
+  userName: string;
+};
+
 /**
  * Prompt Builder 服务：把会话上下文组装成发给模型的最终消息序列。
  *
@@ -45,6 +50,7 @@ export class PromptBuilderService {
   build(input: BuildPromptInput): BuildPromptResult {
     const warnings: PromptBuildWarning[] = [];
     const sections: PromptSection[] = [];
+    const variables = this.createTemplateVariables(input);
     // 平台级固定规则（注入到 system 消息）
     const platformSection = this.addSection(sections, {
       kind: 'platform',
@@ -57,7 +63,7 @@ export class PromptBuilderService {
       kind: 'character',
       source: 'character',
       title: 'Character card',
-      content: this.formatCharacter(input.character),
+      content: this.formatCharacter(input.character, variables),
       sourceId: input.character.id
     });
     // 用户人设（可选）
@@ -66,7 +72,10 @@ export class PromptBuilderService {
           kind: 'persona',
           source: 'persona',
           title: 'User persona',
-          content: this.formatTitledBlock(input.persona.name, input.persona.content),
+          content: this.formatTitledBlock(
+            input.persona.name,
+            this.resolveTemplateVariables(input.persona.content, variables)
+          ),
           sourceId: input.persona.id
         })
       : null;
@@ -79,7 +88,7 @@ export class PromptBuilderService {
             title: 'Prompt preset',
             content: this.formatTitledBlock(
               input.promptPreset.name,
-              input.promptPreset.systemPrompt
+              this.resolveTemplateVariables(input.promptPreset.systemPrompt, variables)
             ),
             sourceId: input.promptPreset.id
           })
@@ -89,7 +98,7 @@ export class PromptBuilderService {
       kind: 'output_rules',
       source: input.promptPreset?.id ? 'prompt_preset' : 'system',
       title: 'Output rules',
-      content: this.formatOutputRules(input.promptPreset?.outputRules ?? ''),
+      content: this.formatOutputRules(input.promptPreset?.outputRules ?? '', variables),
       sourceId: input.promptPreset?.id ?? null
     });
     // 裁剪历史（按条数 + 字符上限）
@@ -106,11 +115,12 @@ export class PromptBuilderService {
       currentUserMessage: input.currentUserMessage,
       estimateTokens: (content) => this.estimateTokens(content)
     });
+    const resolvedWorldBook = this.resolveWorldBookVariables(worldBook, variables);
     // 世界书 section 分四组插入（按 position）
     const worldBookSections = this.createEmptyWorldBookSectionGroups();
     worldBookSections.before_history = this.addWorldBookSections(
       sections,
-      worldBook,
+      resolvedWorldBook,
       'before_history'
     );
     // 历史 section（每条消息一个）
@@ -119,18 +129,18 @@ export class PromptBuilderService {
         kind: 'history',
         source: 'message',
         title: `History ${message.role}`,
-        content: message.content.trim(),
+        content: this.resolveTemplateVariables(message.content, variables),
         sourceId: message.id
       })
     );
     worldBookSections.after_history = this.addWorldBookSections(
       sections,
-      worldBook,
+      resolvedWorldBook,
       'after_history'
     );
     worldBookSections.before_current_user_input = this.addWorldBookSections(
       sections,
-      worldBook,
+      resolvedWorldBook,
       'before_current_user_input'
     );
     // 当前用户输入
@@ -138,12 +148,12 @@ export class PromptBuilderService {
       kind: 'current_user_input',
       source: 'message',
       title: 'Current user input',
-      content: input.currentUserMessage.content.trim(),
+      content: this.resolveTemplateVariables(input.currentUserMessage.content, variables),
       sourceId: input.currentUserMessage.id
     });
     worldBookSections.after_current_user_input = this.addWorldBookSections(
       sections,
-      worldBook,
+      resolvedWorldBook,
       'after_current_user_input'
     );
     // 归类到 developer 角色的 section（角色/人设/预设/输出规则）
@@ -172,13 +182,13 @@ export class PromptBuilderService {
       sections,
       logicalMessages,
       finalMessages,
-      worldBook,
+      worldBook: resolvedWorldBook,
       truncatedHistory: historyResult.truncatedHistory,
       tokenEstimate: this.estimateTokens(
         finalMessages.map((message) => message.content).join('\n')
       ),
       debug: {
-        matchedEntries: worldBook.matchedEntries,
+        matchedEntries: resolvedWorldBook.matchedEntries,
         truncatedHistory: historyResult.truncatedHistory,
         finalMessages,
         sectionOrder: sections.map((section) => section.id),
@@ -528,13 +538,28 @@ export class PromptBuilderService {
    * @param character 角色上下文。
    * @returns 格式化后的文本。
    */
-  private formatCharacter(character: BuildPromptInput['character']): string {
+  private formatCharacter(
+    character: BuildPromptInput['character'],
+    variables: PromptTemplateVariables
+  ): string {
     return [
       this.formatTitledBlock('Name', character.name),
-      this.formatTitledBlock('Description', character.description),
-      this.formatTitledBlock('Personality', character.personality),
-      this.formatTitledBlock('Scenario', character.scenario),
-      this.formatTitledBlock('First message', character.firstMessage)
+      this.formatTitledBlock(
+        'Description',
+        this.resolveTemplateVariables(character.description, variables)
+      ),
+      this.formatTitledBlock(
+        'Personality',
+        this.resolveTemplateVariables(character.personality, variables)
+      ),
+      this.formatTitledBlock(
+        'Scenario',
+        this.resolveTemplateVariables(character.scenario, variables)
+      ),
+      this.formatTitledBlock(
+        'First message',
+        this.resolveTemplateVariables(character.firstMessage, variables)
+      )
     ]
       .filter((line) => line.length > 0)
       .join('\n');
@@ -545,8 +570,11 @@ export class PromptBuilderService {
    * @param outputRules 预设的输出规则文本。
    * @returns 格式化后的规则文本。
    */
-  private formatOutputRules(outputRules: string): string {
-    const rules = [...PROMPT_BUILDER_DEFAULT_OUTPUT_RULES, ...this.splitLines(outputRules)];
+  private formatOutputRules(outputRules: string, variables: PromptTemplateVariables): string {
+    const rules = [
+      ...PROMPT_BUILDER_DEFAULT_OUTPUT_RULES,
+      ...this.splitLines(this.resolveTemplateVariables(outputRules, variables))
+    ];
 
     return rules.map((rule) => `- ${rule}`).join('\n');
   }
@@ -559,6 +587,66 @@ export class PromptBuilderService {
   /** 格式化标题块（`标题: 内容`），内容为空返回空串。 */
   private formatTitledBlock(title: string, content: string): string {
     return this.hasContent(content) ? `${title}: ${content.trim()}` : '';
+  }
+
+  /**
+   * 创建 Prompt 变量上下文。
+   * @param input Prompt 构建输入。
+   * @returns 可用于替换 `{{char}}`、`{{user}}` 等模板变量的值。
+   */
+  private createTemplateVariables(input: BuildPromptInput): PromptTemplateVariables {
+    return {
+      characterName: input.character.name.trim() || 'Assistant',
+      userName: input.persona?.name.trim() || 'User'
+    };
+  }
+
+  /**
+   * 替换进入 Prompt 的常见酒馆模板变量。
+   * @param value 原始文本。
+   * @param variables 模板变量上下文。
+   * @returns 替换后的文本。
+   */
+  private resolveTemplateVariables(value: string, variables: PromptTemplateVariables): string {
+    return value
+      .replace(
+        /\{\{\s*(char|character|bot|assistant|char_name)\s*\}\}/gi,
+        variables.characterName
+      )
+      .replace(/\{\{\s*(user|persona|user_name)\s*\}\}/gi, variables.userName)
+      .replace(/<BOT>/gi, variables.characterName)
+      .replace(/<USER>/gi, variables.userName)
+      .trim();
+  }
+
+  /**
+   * 替换世界书命中内容中的模板变量，并同步更新命中 token 估算。
+   * @param worldBook 世界书匹配结果。
+   * @param variables 模板变量上下文。
+   * @returns 替换后的世界书匹配结果。
+   */
+  private resolveWorldBookVariables(
+    worldBook: WorldBookMatchResult,
+    variables: PromptTemplateVariables
+  ): WorldBookMatchResult {
+    let usedTokenEstimate = 0;
+    const matchedEntries = worldBook.matchedEntries.map((entry) => {
+      const content = this.resolveTemplateVariables(entry.content, variables);
+      const tokenEstimate = this.estimateTokens(content);
+      usedTokenEstimate += tokenEstimate;
+
+      return {
+        ...entry,
+        content,
+        tokenEstimate
+      };
+    });
+
+    return {
+      ...worldBook,
+      matchedEntries,
+      usedTokenEstimate
+    };
   }
 
   /** 按行拆分文本，trim 并过滤空行。 */

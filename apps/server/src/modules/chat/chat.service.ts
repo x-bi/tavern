@@ -23,6 +23,7 @@ import type {
 } from '../../services/prompt-builder/types';
 import { ModelsService } from '../models/models.service';
 import type { ModelGatewayConfig, ModelConfigParams } from '../models/model-config.types';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import { WorldBooksService } from '../world-books/world-books.service';
 import type {
@@ -40,6 +41,11 @@ type PreparedChatStreamMessages = {
   currentUserMessage: Message;
   assistantMessage: Message;
   history: Message[];
+};
+
+type ChatTemplateVariables = {
+  characterName: string;
+  userName: string;
 };
 
 /**
@@ -66,7 +72,9 @@ export class ChatService {
     @Inject(ModelsService)
     private readonly modelsService: ModelsService,
     @Inject(WorldBooksService)
-    private readonly worldBooksService: WorldBooksService
+    private readonly worldBooksService: WorldBooksService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -103,7 +111,9 @@ export class ChatService {
     let task: ChatTask | null = null;
     let assistantMessage: Message | null = null;
     let assistantContent = '';
+    let assistantTemplateBuffer = '';
     let finishReason: string | null = null;
+    let templateVariables: ChatTemplateVariables | null = null;
 
     try {
       // 1. 获取会话任务锁（防止同一会话并发生成）
@@ -112,10 +122,13 @@ export class ChatService {
       this.assertStreamMode(dto);
       // 3. 取会话 + 模型配置 + 预设 + 世界书 + 历史条数
       const conversation = await this.findOwnedActiveConversation(currentUser, dto.conversationId);
-      const modelConfig = await this.modelsService.getGatewayConfig(
+      templateVariables = this.createTemplateVariables(conversation);
+      const modelCandidates = await this.modelsService.getGatewayCandidates({
         currentUser,
-        dto.modelConfigId ?? conversation.modelConfigId
-      );
+        modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId,
+        modelConfigId: dto.modelConfigId ?? conversation.modelConfigId
+      });
+      const modelConfig = modelCandidates[0];
       const promptPreset = await this.resolvePromptPreset(currentUser, dto, conversation);
       const worldBooks = await this.worldBooksService.listPromptContexts(
         currentUser,
@@ -123,8 +136,8 @@ export class ChatService {
       );
       const historyTake = this.resolveHistoryTake(dto.historyLimit, worldBooks);
 
-      // 4. 校验模型配置就绪（apiKey 必须有）
-      this.assertModelConfigReady(modelConfig);
+      // 4. 校验模型链至少有一个可调用候选（apiKey 必须有）
+      this.assertModelCandidatesReady(modelCandidates);
 
       // 5. 准备消息：重新生成模式软删原消息建新占位；否则新建 user 消息 + assistant 占位
       const preparedMessages = dto.regenerateMessageId
@@ -152,58 +165,154 @@ export class ChatService {
         })
       );
 
-      // 7. 流式调用模型，逐事件处理
-      for await (const event of this.modelGateway.streamChat(prompt.finalMessages, {
-        providerName: modelConfig.providerName,
-        baseUrl: modelConfig.baseUrl,
-        modelName: modelConfig.modelName,
-        apiKey: modelConfig.apiKey,
-        signal: abortController.signal,
-        ...this.mergeModelParams(modelConfig.params, promptPreset)
-      })) {
-        // 客户端中断：抛错走 catch（标 stopped）
-        if (abortController.signal.aborted) {
-          throw new Error('Chat stream aborted.');
+      const fallbackAttempts: NonNullable<ChatMessageMetadata['modelFallback']>['attempts'] = [];
+
+      // 7. 流式调用模型链，首个模型未输出前失败则自动尝试下一个
+      for (const [candidateIndex, candidate] of modelCandidates.entries()) {
+        let candidateEmittedDelta = false;
+        let candidateError: { code: string; message: string } | null = null;
+
+        for await (const event of this.modelGateway.streamChat(prompt.finalMessages, {
+          providerName: candidate.providerName,
+          baseUrl: candidate.baseUrl,
+          modelName: candidate.modelName,
+          apiKey: candidate.apiKey,
+          signal: abortController.signal,
+          ...this.mergeModelParams(candidate.params, promptPreset)
+        })) {
+          // 客户端中断：抛错走 catch（标 stopped）
+          if (abortController.signal.aborted) {
+            throw new Error('Chat stream aborted.');
+          }
+
+          // delta：累积内容 + 转发增量给前端
+          if (event.type === 'delta') {
+            candidateEmittedDelta = true;
+            const resolvedDelta = this.resolveTemplateDelta(
+              assistantTemplateBuffer + event.text,
+              templateVariables,
+              false
+            );
+            assistantTemplateBuffer = resolvedDelta.pending;
+
+            if (resolvedDelta.text.length > 0) {
+              assistantContent += resolvedDelta.text;
+              this.writeSse(response, 'delta', {
+                text: resolvedDelta.text,
+                messageId: assistantMessage.id
+              });
+            }
+            continue;
+          }
+
+          // done：完成消息 + 发完成事件 + 结束
+          if (event.type === 'done') {
+            finishReason = event.result.finishReason ?? 'stop';
+            const resolvedTail = this.resolveTemplateDelta(
+              assistantTemplateBuffer,
+              templateVariables,
+              true
+            );
+            assistantTemplateBuffer = resolvedTail.pending;
+
+            if (resolvedTail.text.length > 0) {
+              assistantContent += resolvedTail.text;
+              this.writeSse(response, 'delta', {
+                text: resolvedTail.text,
+                messageId: assistantMessage.id
+              });
+            }
+            fallbackAttempts.push({
+              providerName: candidate.providerName,
+              modelName: candidate.modelName,
+              status: 'succeeded'
+            });
+            await this.completeAssistantMessage(assistantMessage.id, assistantContent, event, {
+              groupId: candidate.modelFallbackGroupId ?? null,
+              selectedModelId: candidate.providerModelId ?? candidate.modelConfigId,
+              attempts: fallbackAttempts
+            });
+            this.writeSse(response, 'done', {
+              messageId: assistantMessage.id,
+              finishReason
+            });
+            return;
+          }
+
+          // error：未输出任何 delta 时可切下一个；已输出则停止，避免拼接两次生成
+          if (event.type === 'error') {
+            candidateError = {
+              code: event.code,
+              message: event.message
+            };
+            break;
+          }
         }
 
-        // delta：累积内容 + 转发增量给前端
-        if (event.type === 'delta') {
-          assistantContent += event.text;
-          this.writeSse(response, 'delta', {
-            text: event.text,
-            messageId: assistantMessage.id
-          });
+        if (!candidateError) {
           continue;
         }
 
-        // done：完成消息 + 发完成事件 + 结束
-        if (event.type === 'done') {
-          finishReason = event.result.finishReason ?? 'stop';
-          await this.completeAssistantMessage(assistantMessage.id, assistantContent, event);
-          this.writeSse(response, 'done', {
-            messageId: assistantMessage.id,
-            finishReason
-          });
-          return;
+        fallbackAttempts.push({
+          providerName: candidate.providerName,
+          modelName: candidate.modelName,
+          status: 'failed',
+          reason: candidateError.message
+        });
+
+        const hasNextCandidate = candidateIndex < modelCandidates.length - 1;
+
+        if (!candidateEmittedDelta && !assistantContent && hasNextCandidate) {
+          continue;
         }
 
-        // error：失败消息 + 发错误事件 + 结束
-        if (event.type === 'error') {
-          await this.failAssistantMessage(assistantMessage.id, assistantContent, {
-            code: event.code,
-            message: event.message
+        const resolvedTail = this.resolveTemplateDelta(
+          assistantTemplateBuffer,
+          templateVariables,
+          true
+        );
+        assistantTemplateBuffer = resolvedTail.pending;
+
+        if (resolvedTail.text.length > 0) {
+          assistantContent += resolvedTail.text;
+          this.writeSse(response, 'delta', {
+            text: resolvedTail.text,
+            messageId: assistantMessage.id
           });
-          this.writeSse(response, 'error', {
-            code: event.code,
-            message: event.message
-          });
-          return;
         }
+        await this.failAssistantMessage(assistantMessage.id, assistantContent, {
+          code: candidateError.code,
+          message: candidateError.message,
+          modelFallback: {
+            groupId: candidate.modelFallbackGroupId ?? null,
+            selectedModelId: candidate.providerModelId ?? candidate.modelConfigId,
+            attempts: fallbackAttempts
+          }
+        });
+        this.writeSse(response, 'error', {
+          code: candidateError.code,
+          message: candidateError.message
+        });
+        return;
       }
 
       // 8. 流正常结束但未收到 done 事件：兜底完成
       finishReason = finishReason ?? 'stop';
-      await this.completeAssistantMessage(assistantMessage.id, assistantContent, null);
+      const resolvedTail = this.resolveTemplateDelta(
+        assistantTemplateBuffer,
+        templateVariables,
+        true
+      );
+      assistantTemplateBuffer = resolvedTail.pending;
+
+      if (resolvedTail.text.length > 0) {
+        assistantContent += resolvedTail.text;
+        this.writeSse(response, 'delta', {
+          text: resolvedTail.text,
+          messageId: assistantMessage.id
+        });
+      }
+      await this.completeAssistantMessage(assistantMessage.id, assistantContent, null, null);
       this.writeSse(response, 'done', {
         messageId: assistantMessage.id,
         finishReason
@@ -213,6 +322,13 @@ export class ChatService {
       const errorPayload = this.toErrorPayload(error, abortController.signal.aborted);
 
       if (assistantMessage) {
+        const resolvedTail = this.resolveTemplateDelta(
+          assistantTemplateBuffer,
+          templateVariables,
+          true
+        );
+        assistantTemplateBuffer = resolvedTail.pending;
+        assistantContent += resolvedTail.text;
         // 客户端中断 → stopped；其它错误 → failed
         if (abortController.signal.aborted) {
           await this.stopAssistantMessage(assistantMessage.id, assistantContent, {
@@ -304,14 +420,17 @@ export class ChatService {
     currentUser: CurrentUser,
     conversationId: string
   ): Promise<ChatConversation> {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id: conversationId,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { usesSensitiveResource: false })
       },
       include: {
         character: true,
+        modelFallbackGroup: true,
         modelConfig: true,
         promptPreset: true,
         persona: true
@@ -361,7 +480,10 @@ export class ChatService {
       where: {
         id: dto.presetId,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
       }
     });
 
@@ -380,11 +502,11 @@ export class ChatService {
    * @param modelConfig 模型网关配置。
    * @throws BadRequestException 未配置 apiKey（CHAT_MODEL_CONFIG_REQUIRED）。
    */
-  private assertModelConfigReady(modelConfig: ModelGatewayConfig): void {
-    if (!modelConfig.apiKey) {
+  private assertModelCandidatesReady(modelCandidates: ModelGatewayConfig[]): void {
+    if (!modelCandidates.some((modelConfig) => modelConfig.apiKey)) {
       throw new BadRequestException({
         code: ERROR_CODES.CHAT_MODEL_CONFIG_REQUIRED,
-        message: 'Model config API Key is required before chat streaming.'
+        message: 'At least one model API Key is required before chat streaming.'
       });
     }
   }
@@ -617,7 +739,8 @@ export class ChatService {
   private async completeAssistantMessage(
     assistantMessageId: string,
     content: string,
-    event: Extract<ModelGatewayStreamEvent, { type: 'done' }> | null
+    event: Extract<ModelGatewayStreamEvent, { type: 'done' }> | null,
+    modelFallback: ChatMessageMetadata['modelFallback'] | null
   ): Promise<void> {
     const now = new Date();
 
@@ -630,7 +753,8 @@ export class ChatService {
           metadataJson: this.stringifyNullable({
             source: 'chat-stream',
             finishReason: event?.result.finishReason ?? null,
-            usage: event?.result.usage ?? null
+            usage: event?.result.usage ?? null,
+            modelFallback
           }),
           tokenCount: this.estimateTokens(content)
         }
@@ -654,7 +778,12 @@ export class ChatService {
   private async failAssistantMessage(
     assistantMessageId: string,
     content: string,
-    error: { code: string; message: string; aborted?: boolean }
+    error: {
+      code: string;
+      message: string;
+      aborted?: boolean;
+      modelFallback?: ChatMessageMetadata['modelFallback'];
+    }
   ): Promise<void> {
     await this.prisma.message.update({
       where: { id: assistantMessageId },
@@ -667,7 +796,8 @@ export class ChatService {
           error: {
             code: error.code,
             message: error.message
-          }
+          },
+          modelFallback: error.modelFallback
         } satisfies ChatMessageMetadata),
         tokenCount: this.estimateTokens(content)
       }
@@ -786,8 +916,11 @@ export class ChatService {
           }
         : null,
       modelConfig: {
-        id: params.modelConfig.modelConfigId,
-        name: params.conversation.modelConfig?.name ?? params.modelConfig.modelName,
+        id: params.modelConfig.providerModelId ?? params.modelConfig.modelConfigId ?? '',
+        name:
+          params.modelConfig.displayName ??
+          params.conversation.modelConfig?.name ??
+          params.modelConfig.modelName,
         providerName: params.modelConfig.providerName,
         baseUrl: params.modelConfig.baseUrl,
         modelName: params.modelConfig.modelName,
@@ -901,6 +1034,101 @@ export class ChatService {
 
     response.write(`event: ${eventName}\n`);
     response.write(`data: ${JSON.stringify(payload)}\n\n`);
+  }
+
+  /**
+   * 创建聊天输出占位符上下文。
+   * @param conversation 会话及关联角色/Persona。
+   * @returns 可用于替换 `{{char}}`、`{{user}}` 等模板变量的值。
+   */
+  private createTemplateVariables(conversation: ChatConversation): ChatTemplateVariables {
+    return {
+      characterName: conversation.character.name.trim() || 'Assistant',
+      userName: conversation.persona?.name.trim() || 'User'
+    };
+  }
+
+  /**
+   * 解析流式 delta 里的模板变量，并保留可能跨 chunk 的未完成占位符。
+   * @param value 当前缓存加新 delta。
+   * @param variables 模板变量上下文。
+   * @param flush 是否强制清空缓存。
+   * @returns 本次可发送文本和仍需等待后续 chunk 的尾部缓存。
+   */
+  private resolveTemplateDelta(
+    value: string,
+    variables: ChatTemplateVariables | null,
+    flush: boolean
+  ): { text: string; pending: string } {
+    if (!variables || value.length === 0) {
+      return {
+        text: value,
+        pending: ''
+      };
+    }
+
+    if (flush) {
+      return {
+        text: this.resolveTemplateVariables(value, variables),
+        pending: ''
+      };
+    }
+
+    const pendingStart = this.findPendingTemplateStart(value);
+    const safeText = pendingStart === -1 ? value : value.slice(0, pendingStart);
+    const pending = pendingStart === -1 ? '' : value.slice(pendingStart);
+
+    return {
+      text: this.resolveTemplateVariables(safeText, variables),
+      pending
+    };
+  }
+
+  /**
+   * 找到需要继续等待的占位符起点。
+   * @param value 待检查文本。
+   * @returns 起点下标；没有未完成占位符时返回 -1。
+   */
+  private findPendingTemplateStart(value: string): number {
+    const lastBraceOpen = value.lastIndexOf('{{');
+
+    if (lastBraceOpen !== -1 && value.indexOf('}}', lastBraceOpen) === -1) {
+      return lastBraceOpen;
+    }
+
+    const angleTokens = ['<BOT>', '<USER>'];
+    const upperValue = value.toUpperCase();
+
+    for (const token of angleTokens) {
+      const maxPrefixLength = Math.min(token.length - 1, value.length);
+
+      for (let length = maxPrefixLength; length > 0; length -= 1) {
+        const suffix = upperValue.slice(-length);
+
+        if (token.startsWith(suffix)) {
+          return value.length - length;
+        }
+      }
+    }
+
+    return -1;
+  }
+
+  /**
+   * 替换常见酒馆模板变量。
+   * @param value 原始文本。
+   * @param variables 模板变量上下文。
+   * @returns 替换后的文本。
+   */
+  private resolveTemplateVariables(value: string, variables: ChatTemplateVariables): string {
+    return value
+      .replace(
+        /\{\{\s*(char|character|bot|assistant|char_name)\s*\}\}/gi,
+        variables.characterName
+      )
+      .replace(/\{\{\s*(user|persona|user_name)\s*\}\}/gi, variables.userName)
+      .replace(/<BOT>/gi, variables.characterName)
+      .replace(/<USER>/gi, variables.userName);
   }
 
   /**

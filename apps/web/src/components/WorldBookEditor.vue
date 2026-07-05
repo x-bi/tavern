@@ -80,6 +80,7 @@
 
           <div class="world-book-editor__switches">
             <n-checkbox v-model:checked="bookForm.isEnabled">启用世界书</n-checkbox>
+            <n-checkbox v-model:checked="bookForm.isSensitive">标记为敏感内容</n-checkbox>
           </div>
 
           <n-space justify="end">
@@ -285,6 +286,7 @@ type WorldBookFormState = {
   scanDepth: number;
   tokenBudget: number;
   isEnabled: boolean;
+  isSensitive: boolean;
 };
 
 type EntryFormState = {
@@ -422,7 +424,8 @@ async function submitBook() {
     description: bookForm.description.trim(),
     scanDepth: bookForm.scanDepth,
     tokenBudget: bookForm.tokenBudget,
-    isEnabled: bookForm.isEnabled
+    isEnabled: bookForm.isEnabled,
+    isSensitive: bookForm.isSensitive
   });
 }
 
@@ -467,7 +470,8 @@ function createEmptyBookForm(): WorldBookFormState {
     description: '',
     scanDepth: 6,
     tokenBudget: 1000,
-    isEnabled: true
+    isEnabled: true,
+    isSensitive: false
   };
 }
 
@@ -478,7 +482,8 @@ function toBookForm(worldBook: WorldBook): WorldBookFormState {
     description: worldBook.description,
     scanDepth: worldBook.scanDepth,
     tokenBudget: worldBook.tokenBudget,
-    isEnabled: worldBook.isEnabled
+    isEnabled: worldBook.isEnabled,
+    isSensitive: worldBook.isSensitive
   };
 }
 

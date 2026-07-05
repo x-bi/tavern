@@ -63,4 +63,9 @@ export class CreateCharacterDto {
   @IsOptional()
   @IsBoolean()
   isArchived?: boolean;
+
+  /** 是否标记为敏感内容，可选，默认 false。 */
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
 }

@@ -15,6 +15,7 @@ import {
   type ModuleJsonImportWarning
 } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreatePromptPresetDto } from './dto/create-prompt-preset.dto';
 import type { QueryPromptPresetsDto } from './dto/query-prompt-presets.dto';
@@ -66,7 +67,9 @@ type NormalizedPromptPresetImport = {
 export class PresetsService {
   constructor(
     @Inject(PrismaService)
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -81,10 +84,12 @@ export class PresetsService {
   ): Promise<PromptPresetListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
       userId: currentUser.id,
       deletedAt: null,
+      ...(showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
       ...(query.isDefault === undefined ? {} : { isDefault: query.isDefault }),
       // search 关键字：匹配 name/description/outputRules 任一包含
@@ -137,7 +142,8 @@ export class PresetsService {
       outputRules: dto.outputRules ?? '',
       // 参数提取后序列化成 JSON 存储
       parametersJson: this.stringifyParams(this.pickParams(dto)),
-      isDefault: dto.isDefault ?? false
+      isDefault: dto.isDefault ?? false,
+      isSensitive: dto.isSensitive ?? false
     };
 
     try {
@@ -220,7 +226,8 @@ export class PresetsService {
         outputRules: normalized.outputRules,
         parametersJson: this.stringifyParams(normalized.parameters),
         metadataJson: this.stringifyNullable(normalized.metadata),
-        isDefault: normalized.isDefault
+        isDefault: normalized.isDefault,
+        isSensitive: false
       };
       const preset = data.isDefault
         ? await this.prisma.$transaction(async (tx) => {
@@ -278,6 +285,7 @@ export class PresetsService {
       ...(dto.description === undefined ? {} : { description: dto.description }),
       ...(dto.outputRules === undefined ? {} : { outputRules: dto.outputRules }),
       ...(this.hasParamUpdate(dto) ? { parametersJson: this.stringifyParams(params) } : {}),
+      ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
       ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault })
     };
 
@@ -308,6 +316,10 @@ export class PresetsService {
             where: { id },
             data
           });
+
+      if (dto.isSensitive !== undefined) {
+        await this.refreshConversationSensitivityForPreset(currentUser, id, dto.isSensitive);
+      }
 
       return this.toResponse(preset);
     } catch (error) {
@@ -411,7 +423,10 @@ export class PresetsService {
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
       }
     });
 
@@ -443,6 +458,7 @@ export class PresetsService {
       topP: params.topP ?? null,
       maxTokens: params.maxTokens ?? null,
       isDefault: preset.isDefault,
+      isSensitive: preset.isSensitive,
       createdAt: preset.createdAt.toISOString(),
       updatedAt: preset.updatedAt.toISOString()
     };
@@ -569,5 +585,43 @@ export class PresetsService {
         message: 'Prompt preset name already exists.'
       });
     }
+  }
+
+  private async refreshConversationSensitivityForPreset(
+    currentUser: CurrentUser,
+    promptPresetId: string,
+    isSensitive: boolean
+  ): Promise<void> {
+    if (isSensitive) {
+      await this.prisma.conversation.updateMany({
+        where: {
+          userId: currentUser.id,
+          promptPresetId,
+          deletedAt: null
+        },
+        data: {
+          usesSensitiveResource: true
+        }
+      });
+      return;
+    }
+
+    await this.prisma.conversation.updateMany({
+      where: {
+        userId: currentUser.id,
+        promptPresetId,
+        deletedAt: null,
+        character: {
+          isSensitive: false
+        },
+        promptPreset: {
+          isSensitive: false
+        },
+        OR: [{ personaId: null }, { persona: { is: { isSensitive: false } } }]
+      },
+      data: {
+        usesSensitiveResource: false
+      }
+    });
   }
 }

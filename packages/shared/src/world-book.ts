@@ -50,6 +50,8 @@ export type WorldBookResponse = {
   description: string;
   /** 是否启用。 */
   isEnabled: boolean;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
   /** 扫描深度（往前看多少条消息用于关键词命中）。 */
   scanDepth: number;
   /** 整本世界书的 token 预算。 */
@@ -77,6 +79,8 @@ export type WorldBookPayload = {
   description?: string;
   /** 是否启用。 */
   isEnabled?: boolean;
+  /** 是否标记为敏感内容；未传时默认 false。 */
+  isSensitive?: boolean;
   /** 扫描深度。 */
   scanDepth?: number;
   /** 整本世界书的 token 预算。 */

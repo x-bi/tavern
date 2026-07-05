@@ -36,6 +36,7 @@ export type WorldBookResponse = {
   name: string;
   description: string;
   isEnabled: boolean;
+  isSensitive: boolean;
   /** 扫描深度（扫描最近 N 条消息触发关键词）。 */
   scanDepth: number;
   /** token 预算（世界书最多占用多少 token）。 */

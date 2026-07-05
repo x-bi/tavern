@@ -28,6 +28,7 @@
 
       <div class="persona-editor__switches">
         <n-checkbox v-model:checked="form.isDefault">设为默认 Persona</n-checkbox>
+        <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
       </div>
 
       <n-space justify="end">
@@ -51,6 +52,7 @@ type PersonaFormState = {
   name: string;
   content: string;
   isDefault: boolean;
+  isSensitive: boolean;
 };
 
 const props = withDefaults(
@@ -114,7 +116,8 @@ async function handleSubmit() {
   emit('submit', {
     name: form.name.trim(),
     content: form.content.trim(),
-    isDefault: form.isDefault
+    isDefault: form.isDefault,
+    isSensitive: form.isSensitive
   });
 }
 
@@ -122,7 +125,8 @@ function createEmptyForm(): PersonaFormState {
   return {
     name: '',
     content: '',
-    isDefault: false
+    isDefault: false,
+    isSensitive: false
   };
 }
 
@@ -130,7 +134,8 @@ function toForm(persona: Persona): PersonaFormState {
   return {
     name: persona.name,
     content: persona.content,
-    isDefault: persona.isDefault
+    isDefault: persona.isDefault,
+    isSensitive: persona.isSensitive
   };
 }
 </script>

@@ -9,6 +9,7 @@ import type { Asset, Character } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import { CHARACTER_AVATAR_KIND } from '../assets/assets.constants';
 import type { CurrentUser } from '../users/user.types';
 import type {
@@ -46,7 +47,9 @@ export class CharactersService {
 
   constructor(
     @Inject(PrismaService)
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -59,10 +62,12 @@ export class CharactersService {
     // 分页参数兜底
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
       userId: currentUser.id,
       deletedAt: null,
+      ...(showSensitiveContent ? {} : { isSensitive: false }),
       // isArchived 未传时不加条件（查全部），传了则按值过滤归档/未归档
       ...(query.isArchived === undefined ? {} : { isArchived: query.isArchived }),
       // search 关键字：匹配 name/description/personality/scenario 任一包含
@@ -123,6 +128,7 @@ export class CharactersService {
         // exampleMessages / metadata 是结构化数据，序列化成 JSON 字符串存储
         exampleMessagesJson: this.stringifyNullable(dto.exampleMessages),
         metadataJson: this.stringifyNullable(dto.metadata),
+        isSensitive: dto.isSensitive ?? false,
         isArchived: dto.isArchived ?? false
       },
       include: {
@@ -201,6 +207,7 @@ export class CharactersService {
         firstMessage: preview.firstMessage,
         exampleMessagesJson: this.stringifyNullable(preview.exampleMessages),
         metadataJson: this.stringifyNullable(preview.metadata),
+        isSensitive: false,
         isArchived: false
       },
       include: {
@@ -287,12 +294,17 @@ export class CharactersService {
         ...(dto.metadata === undefined
           ? {}
           : { metadataJson: this.stringifyNullable(dto.metadata) }),
+        ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
         ...(dto.isArchived === undefined ? {} : { isArchived: dto.isArchived })
       },
       include: {
         avatarAsset: true
       }
     });
+
+    if (dto.isSensitive !== undefined) {
+      await this.refreshConversationSensitivityForCharacter(currentUser, id, dto.isSensitive);
+    }
 
     return this.toResponse(character);
   }
@@ -335,11 +347,13 @@ export class CharactersService {
     currentUser: CurrentUser,
     id: string
   ): Promise<CharacterWithAvatar> {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const character = await this.prisma.character.findFirst({
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false })
       },
       include: {
         avatarAsset: true
@@ -500,6 +514,7 @@ export class CharactersService {
       firstMessage: character.firstMessage,
       exampleMessages: this.parseExampleMessages(character.exampleMessagesJson),
       metadata: this.parseRecord(character.metadataJson),
+      isSensitive: character.isSensitive,
       isArchived: character.isArchived,
       createdAt: character.createdAt.toISOString(),
       updatedAt: character.updatedAt.toISOString()
@@ -553,5 +568,47 @@ export class CharactersService {
     } catch {
       return null;
     }
+  }
+
+  private async refreshConversationSensitivityForCharacter(
+    currentUser: CurrentUser,
+    characterId: string,
+    isSensitive: boolean
+  ): Promise<void> {
+    if (isSensitive) {
+      await this.prisma.conversation.updateMany({
+        where: {
+          userId: currentUser.id,
+          characterId,
+          deletedAt: null
+        },
+        data: {
+          usesSensitiveResource: true
+        }
+      });
+      return;
+    }
+
+    await this.prisma.conversation.updateMany({
+      where: {
+        userId: currentUser.id,
+        characterId,
+        deletedAt: null,
+        character: {
+          isSensitive: false
+        },
+        AND: [
+          {
+            OR: [{ promptPresetId: null }, { promptPreset: { is: { isSensitive: false } } }]
+          },
+          {
+            OR: [{ personaId: null }, { persona: { is: { isSensitive: false } } }]
+          }
+        ]
+      },
+      data: {
+        usesSensitiveResource: false
+      }
+    });
   }
 }

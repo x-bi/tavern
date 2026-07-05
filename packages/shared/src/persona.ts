@@ -14,6 +14,8 @@ export type PersonaResponse = {
   metadata: Record<string, unknown> | null;
   /** 是否为当前用户的默认 Persona。 */
   isDefault: boolean;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */
@@ -37,4 +39,6 @@ export type PersonaPayload = {
   metadata?: Record<string, unknown>;
   /** 是否设为默认 Persona。 */
   isDefault?: boolean;
+  /** 是否标记为敏感内容；未传时默认 false。 */
+  isSensitive?: boolean;
 };

@@ -36,6 +36,12 @@ export class QueryConversationsDto {
   @MaxLength(128)
   modelConfigId?: string;
 
+  /** 按模型链 ID 过滤。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  modelFallbackGroupId?: string;
+
   /** 按预设 ID 过滤。 */
   @IsOptional()
   @IsString()

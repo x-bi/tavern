@@ -12,6 +12,8 @@ export type ChatStreamPayload = {
   userMessage?: string;
   /** 要重新生成的 assistant 消息 ID；发新消息时不传。 */
   regenerateMessageId?: string;
+  /** 本次会话覆盖使用的模型链 ID；未传时用会话绑定的模型链。 */
+  modelFallbackGroupId?: string | null;
   /** 本次会话覆盖使用的模型配置 ID；未传时用会话绑定的模型配置。 */
   modelConfigId?: string | null;
   /** 本次会话覆盖使用的 Prompt 预设 ID；未传时用会话绑定的预设。 */

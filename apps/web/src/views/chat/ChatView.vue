@@ -37,6 +37,7 @@
         @delete="confirmDelete"
         @regenerate="handleRegenerate"
         @regenerate-latest="handleLatestRegeneratePlaceholder"
+        @preview-prompt="goPromptPreview"
       />
 
       <aside class="chat-view__side" aria-label="会话配置占位">
@@ -63,8 +64,8 @@
         <section class="chat-view__side-section">
           <h3>工具栏</h3>
           <div class="chat-view__tool-grid">
-            <n-button size="small" secondary disabled>Prompt</n-button>
-            <n-button size="small" secondary disabled>世界书</n-button>
+            <n-button size="small" secondary @click="goPromptPreview">Prompt</n-button>
+            <n-button size="small" secondary @click="goWorldBook">世界书</n-button>
             <n-button size="small" secondary disabled>导出</n-button>
           </div>
         </section>
@@ -111,6 +112,12 @@ const currentConversation = computed(() => {
 
 const conversationTitle = computed(() => currentConversation.value?.title ?? '聊天会话');
 const modelLabel = computed(() => {
+  const modelFallbackGroup = currentConversation.value?.modelFallbackGroup;
+
+  if (modelFallbackGroup) {
+    return `${modelFallbackGroup.name} / ${modelFallbackGroup.candidateCount} 个模型`;
+  }
+
   const modelConfig = currentConversation.value?.modelConfig;
 
   return modelConfig ? `${modelConfig.name} / ${modelConfig.modelName}` : '未选择';
@@ -154,6 +161,24 @@ function goConversations() {
   void router.push({ name: 'conversations' });
 }
 
+function goPromptPreview() {
+  if (!conversationId.value) {
+    return;
+  }
+
+  void router.push({
+    name: 'prompt-preview',
+    query: {
+      conversationId: conversationId.value,
+      userInput: chatStore.draft.trim()
+    }
+  });
+}
+
+function goWorldBook() {
+  void router.push({ name: 'worldbook' });
+}
+
 async function handleSend() {
   const activeConversationId = conversationId.value;
   const userMessage = chatStore.draft.trim();
@@ -167,6 +192,7 @@ async function handleSend() {
   await runChatStream(activeConversationId, {
     conversationId: activeConversationId,
     userMessage,
+    modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
     modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
     presetId: currentConversation.value?.promptPresetId ?? undefined
   });
@@ -198,6 +224,7 @@ async function handleRegenerate(target: Message) {
     await runChatStream(activeConversationId, {
       conversationId: activeConversationId,
       regenerateMessageId: regenerate.regenerateMessageId,
+      modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
       modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
       presetId: currentConversation.value?.promptPresetId ?? undefined
     });
@@ -354,7 +381,13 @@ function waitForAbortCleanup() {
 
 <style scoped>
 .chat-view {
-  align-content: start;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  /* 占满 app-content 可用高度：视口高 - app-header(72px) - app-content 上下 padding(48px) */
+  height: calc(100vh - 72px - 48px);
+  overflow: hidden;
+  align-content: stretch;
 }
 
 .chat-view__header {
@@ -367,6 +400,8 @@ function waitForAbortCleanup() {
   grid-template-columns: minmax(0, 1fr) 280px;
   gap: 16px;
   align-items: stretch;
+  /* 允许收缩，让内部 chat-room__messages 滚动生效 */
+  min-height: 0;
 }
 
 .chat-view__side {
@@ -417,6 +452,12 @@ function waitForAbortCleanup() {
 }
 
 @media (max-width: 1020px) {
+  .chat-view {
+    /* 小屏：解除固定高度，允许整页滚动，避免 aside 被裁剪 */
+    height: auto;
+    overflow: visible;
+  }
+
   .chat-view__layout {
     grid-template-columns: 1fr;
   }

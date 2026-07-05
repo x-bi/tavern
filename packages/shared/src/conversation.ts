@@ -43,6 +43,18 @@ export type ConversationModelConfigSummary = {
   isEnabled: boolean;
 };
 
+/** 会话关联模型链摘要。 */
+export type ConversationModelFallbackGroupSummary = {
+  /** 模型链 ID。 */
+  id: string;
+  /** 模型链名称。 */
+  name: string;
+  /** 是否启用。 */
+  isEnabled: boolean;
+  /** 候选模型数量。 */
+  candidateCount: number;
+};
+
 /** 会话关联 Prompt 预设的摘要信息。 */
 export type ConversationPromptPresetSummary = {
   /** 预设 ID。 */
@@ -61,6 +73,8 @@ export type ConversationResponse = {
   characterId: string;
   /** 关联模型配置 ID；未绑定或绑定后删除时为 null。 */
   modelConfigId: string | null;
+  /** 关联模型链 ID；未绑定或绑定后删除时为 null。 */
+  modelFallbackGroupId: string | null;
   /** 关联 Prompt 预设 ID；未绑定时为 null。 */
   promptPresetId: string | null;
   /** 关联 Persona ID；未绑定时为 null。 */
@@ -71,6 +85,8 @@ export type ConversationResponse = {
   status: ConversationStatus | string;
   /** 附加元数据；无则为 null。 */
   metadata: Record<string, unknown> | null;
+  /** 是否引用了敏感角色、预设或 Persona。 */
+  usesSensitiveResource: boolean;
   /** 最近一条消息时间（ISO 字符串）；新会话无消息时为 null。 */
   lastMessageAt: string | null;
   /** 关联角色摘要。 */
@@ -79,6 +95,8 @@ export type ConversationResponse = {
   persona: ConversationPersonaSummary | null;
   /** 关联模型配置摘要；未绑定时为 null。 */
   modelConfig: ConversationModelConfigSummary | null;
+  /** 关联模型链摘要；未绑定时为 null。 */
+  modelFallbackGroup: ConversationModelFallbackGroupSummary | null;
   /** 关联 Prompt 预设摘要；未绑定时为 null。 */
   promptPreset: ConversationPromptPresetSummary | null;
   /** 创建时间（ISO 字符串）。 */
@@ -98,6 +116,8 @@ export type ConversationPayload = {
   characterId: string;
   /** 关联模型配置 ID；未绑定时传 null 或省略。 */
   modelConfigId?: string | null;
+  /** 关联模型链 ID；未绑定时传 null 或省略。 */
+  modelFallbackGroupId?: string | null;
   /** 关联 Prompt 预设 ID；未绑定时传 null 或省略。 */
   promptPresetId?: string | null;
   /** 关联 Persona ID；未绑定时传 null 或省略。 */

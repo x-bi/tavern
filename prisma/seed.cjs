@@ -5,6 +5,10 @@ const prisma = new PrismaClient();
 const ids = {
   user: 'seed_user_demo',
   modelConfig: 'seed_model_openai_compatible',
+  modelProvider: 'seed_provider_openai_compatible',
+  providerModel: 'seed_provider_model_demo_chat',
+  fallbackGroup: 'seed_model_chain_default',
+  fallbackCandidate: 'seed_model_chain_candidate_demo_chat',
   promptPreset: 'seed_prompt_preset_balanced',
   persona: 'seed_persona_traveler',
   character: 'seed_character_librarian',
@@ -76,6 +80,115 @@ async function main() {
     }
   });
 
+  const modelProvider = await prisma.modelProvider.upsert({
+    where: {
+      userId_name: {
+        userId: user.id,
+        name: 'OpenAI-compatible Demo'
+      }
+    },
+    update: {
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyCiphertext: null,
+      apiKeyMask: null,
+      timeout: null,
+      isDefault: true,
+      isEnabled: true,
+      deletedAt: null
+    },
+    create: {
+      id: ids.modelProvider,
+      userId: user.id,
+      name: 'OpenAI-compatible Demo',
+      provider: 'openai-compatible',
+      baseUrl: 'https://api.openai.com/v1',
+      apiKeyCiphertext: null,
+      apiKeyMask: null,
+      timeout: null,
+      isDefault: true,
+      isEnabled: true
+    }
+  });
+
+  const providerModel = await prisma.providerModel.upsert({
+    where: {
+      providerId_model: {
+        providerId: modelProvider.id,
+        model: 'demo-chat-model'
+      }
+    },
+    update: {
+      name: 'Demo Chat Model',
+      defaultParamsJson: json({
+        temperature: 0.8,
+        maxTokens: 1200,
+        topP: 0.95
+      }),
+      contextLength: null,
+      notes: 'Seed model placeholder. Fill a real model name before use.',
+      sortOrder: 0,
+      isEnabled: true,
+      deletedAt: null
+    },
+    create: {
+      id: ids.providerModel,
+      providerId: modelProvider.id,
+      name: 'Demo Chat Model',
+      model: 'demo-chat-model',
+      defaultParamsJson: json({
+        temperature: 0.8,
+        maxTokens: 1200,
+        topP: 0.95
+      }),
+      contextLength: null,
+      notes: 'Seed model placeholder. Fill a real model name before use.',
+      sortOrder: 0,
+      isEnabled: true
+    }
+  });
+
+  const fallbackGroup = await prisma.modelFallbackGroup.upsert({
+    where: {
+      userId_name: {
+        userId: user.id,
+        name: 'Default Demo Model Chain'
+      }
+    },
+    update: {
+      isDefault: true,
+      isEnabled: true,
+      deletedAt: null
+    },
+    create: {
+      id: ids.fallbackGroup,
+      userId: user.id,
+      name: 'Default Demo Model Chain',
+      isDefault: true,
+      isEnabled: true
+    }
+  });
+
+  await prisma.modelFallbackCandidate.upsert({
+    where: {
+      groupId_modelId: {
+        groupId: fallbackGroup.id,
+        modelId: providerModel.id
+      }
+    },
+    update: {
+      priority: 1,
+      isEnabled: true
+    },
+    create: {
+      id: ids.fallbackCandidate,
+      groupId: fallbackGroup.id,
+      modelId: providerModel.id,
+      priority: 1,
+      isEnabled: true
+    }
+  });
+
   const promptPreset = await prisma.promptPreset.upsert({
     where: {
       userId_name: {
@@ -98,6 +211,7 @@ async function main() {
         seed: true
       }),
       isDefault: true,
+      isSensitive: false,
       deletedAt: null
     },
     create: {
@@ -117,7 +231,8 @@ async function main() {
       metadataJson: json({
         seed: true
       }),
-      isDefault: true
+      isDefault: true,
+      isSensitive: false
     }
   });
 
@@ -135,6 +250,7 @@ async function main() {
         seed: true
       }),
       isDefault: true,
+      isSensitive: false,
       deletedAt: null
     },
     create: {
@@ -146,7 +262,8 @@ async function main() {
       metadataJson: json({
         seed: true
       }),
-      isDefault: true
+      isDefault: true,
+      isSensitive: false
     }
   });
 
@@ -179,6 +296,7 @@ async function main() {
         seed: true,
         tags: ['fantasy', 'mystery', 'cozy']
       }),
+      isSensitive: false,
       isArchived: false,
       deletedAt: null
     },
@@ -209,6 +327,7 @@ async function main() {
         seed: true,
         tags: ['fantasy', 'mystery', 'cozy']
       }),
+      isSensitive: false,
       isArchived: false
     }
   });
@@ -226,6 +345,7 @@ async function main() {
       metadataJson: json({
         seed: true
       }),
+      isSensitive: false,
       deletedAt: null
     },
     create: {
@@ -239,7 +359,8 @@ async function main() {
       tokenBudget: 800,
       metadataJson: json({
         seed: true
-      })
+      }),
+      isSensitive: false
     }
   });
 
@@ -343,6 +464,7 @@ async function main() {
   console.log('Seed completed:', {
     user: user.username,
     modelConfig: modelConfig.name,
+    modelChain: fallbackGroup.name,
     promptPreset: promptPreset.name,
     persona: persona.name,
     character: character.name,

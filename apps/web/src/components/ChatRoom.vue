@@ -10,7 +10,7 @@
       </n-button>
     </header>
 
-    <div ref="messageListRef" class="chat-room__messages" aria-label="消息列表">
+    <div ref="messageListRef" class="chat-room__messages" aria-label="消息列表" @scroll="handleScroll">
       <LoadingState v-if="loading" text="正在加载消息" />
 
       <ErrorState v-else-if="error" title="消息加载失败" :description="error" />
@@ -58,12 +58,13 @@
       @send="$emit('send')"
       @stop="$emit('stop')"
       @regenerate="$emit('regenerate-latest')"
+      @preview-prompt="$emit('preview-prompt')"
     />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 import type { Message } from '../api/messages';
 import ChatInput from './ChatInput.vue';
@@ -109,42 +110,93 @@ defineEmits<{
   delete: [message: Message];
   regenerate: [message: Message];
   'regenerate-latest': [];
+  'preview-prompt': [];
 }>();
 
 const messageListRef = ref<HTMLElement | null>(null);
 const subtitle = computed(() => props.characterName ?? '未选择角色');
+// 用户是否贴近底部：true 时随消息增长自动滚到底；用户向上滚阅读历史时置 false，不被打断
+const stickToBottom = ref(true);
 const messageSignature = computed(() =>
   props.messages.map((message) => `${message.id}:${message.status}:${message.content.length}`).join('|')
 );
 
-watch(
-  () => messageSignature.value,
-  () => {
-    void scrollToBottom();
-  },
-  {
-    flush: 'post'
-  }
-);
+/** 贴底判定阈值（px）：距底部小于该值视为“在底部”。 */
+const STICK_TO_BOTTOM_THRESHOLD = 80;
+let pendingScrollRaf = 0;
 
-async function scrollToBottom() {
-  await nextTick();
-
+function handleScroll() {
   const element = messageListRef.value;
 
   if (!element) {
     return;
   }
 
-  element.scrollTop = element.scrollHeight;
+  // 用户主动滚动后重新判定是否贴底：贴近则锁定跟随，远离则解锁
+  stickToBottom.value =
+    element.scrollHeight - element.scrollTop - element.clientHeight < STICK_TO_BOTTOM_THRESHOLD;
 }
+
+watch(
+  () => messageSignature.value,
+  () => {
+    scrollToBottom();
+  },
+  {
+    flush: 'post'
+  }
+);
+
+function scrollToBottom() {
+  const element = messageListRef.value;
+
+  // 贴底才跟随：用户正在向上阅读历史时不强制拉回底部
+  if (!element || !stickToBottom.value) {
+    return;
+  }
+
+  // 用 rAF 节流：流式 delta 高频触发时只保留最后一帧，等布局稳定后再滚动
+  if (pendingScrollRaf) {
+    cancelAnimationFrame(pendingScrollRaf);
+  }
+
+  pendingScrollRaf = requestAnimationFrame(() => {
+    pendingScrollRaf = 0;
+
+    const target = messageListRef.value;
+
+    if (target) {
+      target.scrollTop = target.scrollHeight;
+    }
+  });
+}
+
+watch(
+  () => props.isGenerating,
+  (generating, wasGenerating) => {
+    // 开始新一轮生成（发送 / 重新生成）：用户主动发起，显然要看最新回复，强制贴底
+    if (generating && !wasGenerating) {
+      stickToBottom.value = true;
+      scrollToBottom();
+    }
+  }
+);
+
+onBeforeUnmount(() => {
+  if (pendingScrollRaf) {
+    cancelAnimationFrame(pendingScrollRaf);
+    pendingScrollRaf = 0;
+  }
+});
 </script>
 
 <style scoped>
 .chat-room {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto auto;
-  min-height: min(720px, calc(100vh - 150px));
+  /* 占满父 grid cell（grid 默认 stretch），不设 max-height/align-self，
+     大屏也精确填满，不再有下方留白 */
+  min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line-subtle);
   border-radius: 8px;
@@ -183,9 +235,31 @@ async function scrollToBottom() {
   display: grid;
   align-content: start;
   gap: 14px;
-  min-height: 320px;
+  min-height: 0;
   overflow-y: auto;
   padding: 18px;
+  /* Firefox：细滚动条，半透明融合深色面板 */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+/* WebKit：细、半透明、圆角，hover 加深；不抢占内容宽度 */
+.chat-room__messages::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.chat-room__messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.chat-room__messages::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+}
+
+.chat-room__messages::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .chat-room__send-error {
@@ -193,8 +267,9 @@ async function scrollToBottom() {
 }
 
 @media (max-width: 720px) {
+  /* 小屏：chat-view 高度已转为 auto，这里让 chat-room 占首屏、内部滚动 */
   .chat-room {
-    min-height: calc(100vh - 150px);
+    max-height: calc(100vh - 150px);
   }
 
   .chat-room__header {

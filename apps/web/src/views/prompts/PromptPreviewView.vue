@@ -85,11 +85,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
+import { useRoute } from 'vue-router';
 
 import PromptPreview from '../../components/PromptPreview.vue';
 import { useConversationStore } from '../../stores/conversation';
 import { usePromptStore } from '../../stores/prompt';
 
+const route = useRoute();
 const conversationStore = useConversationStore();
 const promptStore = usePromptStore();
 const message = useMessage();
@@ -115,9 +117,26 @@ const canPreview = computed(() => {
 });
 
 onMounted(async () => {
+  const queryConversationId =
+    typeof route.query.conversationId === 'string' ? route.query.conversationId : '';
+  const queryUserInput = typeof route.query.userInput === 'string' ? route.query.userInput : '';
+
+  if (queryUserInput) {
+    userInput.value = queryUserInput;
+  }
+
   await conversationStore.loadConversations({ page: 1, pageSize: 100, status: 'active' });
 
-  if (!selectedConversationId.value && conversationStore.items[0]) {
+  if (
+    queryConversationId &&
+    conversationStore.items.some((conversation) => conversation.id === queryConversationId)
+  ) {
+    selectedConversationId.value = queryConversationId;
+
+    return;
+  }
+
+  if (conversationStore.items[0]) {
     selectedConversationId.value = conversationStore.items[0].id;
   }
 });

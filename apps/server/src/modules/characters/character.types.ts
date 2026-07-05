@@ -23,6 +23,8 @@ export type CharacterResponse = {
   exampleMessages: ExampleMessage[];
   /** 扩展元数据，可为 null。 */
   metadata: Record<string, unknown> | null;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

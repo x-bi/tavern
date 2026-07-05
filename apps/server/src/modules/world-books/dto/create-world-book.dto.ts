@@ -33,6 +33,11 @@ export class CreateWorldBookDto {
   @IsBoolean()
   isEnabled?: boolean;
 
+  /** 是否标记为敏感内容，可选，默认 false。 */
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
+
   /** 扫描深度 1~200，可选，默认 6。 */
   @IsOptional()
   @Type(() => Number)

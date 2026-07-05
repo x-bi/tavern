@@ -27,6 +27,14 @@ export type ConversationModelConfigSummary = {
   isEnabled: boolean;
 };
 
+/** 会话关联的模型链摘要。 */
+export type ConversationModelFallbackGroupSummary = {
+  id: string;
+  name: string;
+  isEnabled: boolean;
+  candidateCount: number;
+};
+
 /** 会话关联的预设摘要。 */
 export type ConversationPromptPresetSummary = {
   id: string;
@@ -39,16 +47,20 @@ export type ConversationResponse = {
   userId: string;
   characterId: string;
   modelConfigId: string | null;
+  modelFallbackGroupId: string | null;
   promptPresetId: string | null;
   personaId: string | null;
   title: string;
   status: string;
   metadata: Record<string, unknown> | null;
+  /** 是否引用了敏感角色、预设或 Persona。 */
+  usesSensitiveResource: boolean;
   /** 最后一条消息时间，无消息时为 null。 */
   lastMessageAt: string | null;
   character: ConversationCharacterSummary;
   persona: ConversationPersonaSummary | null;
   modelConfig: ConversationModelConfigSummary | null;
+  modelFallbackGroup: ConversationModelFallbackGroupSummary | null;
   promptPreset: ConversationPromptPresetSummary | null;
   createdAt: string;
   updatedAt: string;

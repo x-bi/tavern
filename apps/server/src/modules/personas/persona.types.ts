@@ -7,6 +7,7 @@ export type PersonaResponse = {
   /** 扩展元数据，可为 null。 */
   metadata: Record<string, unknown> | null;
   isDefault: boolean;
+  isSensitive: boolean;
   createdAt: string;
   updatedAt: string;
 };

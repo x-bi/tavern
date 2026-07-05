@@ -90,3 +90,101 @@ export type ModelConfigPayload = {
   /** 是否启用。 */
   isEnabled?: boolean;
 };
+
+export type ModelProviderResponse = {
+  id: string;
+  userId: string;
+  name: string;
+  providerName: string;
+  baseUrl: string;
+  apiKeyMask: string | null;
+  hasApiKey: boolean;
+  timeout: number | null;
+  isDefault: boolean;
+  isEnabled: boolean;
+  modelCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelProviderListResponse = PageResult<ModelProviderResponse>;
+
+export type ModelProviderPayload = {
+  name: string;
+  providerName: string;
+  baseUrl: string;
+  apiKey?: string | null;
+  timeout?: number | null;
+  isDefault?: boolean;
+  isEnabled?: boolean;
+};
+
+export type ProviderModelResponse = {
+  id: string;
+  providerId: string;
+  providerName: string;
+  providerDisplayName: string;
+  name: string;
+  modelName: string;
+  temperature: number | null;
+  topP: number | null;
+  maxTokens: number | null;
+  timeout: number | null;
+  contextLength: number | null;
+  notes: string | null;
+  sortOrder: number;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProviderModelListResponse = PageResult<ProviderModelResponse>;
+
+export type ProviderModelPayload = {
+  providerId: string;
+  name: string;
+  modelName: string;
+  temperature?: number | null;
+  topP?: number | null;
+  maxTokens?: number | null;
+  timeout?: number | null;
+  contextLength?: number | null;
+  notes?: string | null;
+  sortOrder?: number;
+  isEnabled?: boolean;
+};
+
+export type ModelFallbackCandidateResponse = {
+  id: string;
+  groupId: string;
+  modelId: string;
+  priority: number;
+  isEnabled: boolean;
+  model: ProviderModelResponse;
+};
+
+export type ModelFallbackGroupResponse = {
+  id: string;
+  userId: string;
+  name: string;
+  isDefault: boolean;
+  isEnabled: boolean;
+  candidates: ModelFallbackCandidateResponse[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelFallbackGroupListResponse = PageResult<ModelFallbackGroupResponse>;
+
+export type ModelFallbackCandidatePayload = {
+  modelId: string;
+  priority: number;
+  isEnabled?: boolean;
+};
+
+export type ModelFallbackGroupPayload = {
+  name: string;
+  isDefault?: boolean;
+  isEnabled?: boolean;
+  candidates: ModelFallbackCandidatePayload[];
+};

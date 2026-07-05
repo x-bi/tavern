@@ -762,6 +762,7 @@ export class BackupsService {
         `${path}.exampleMessagesJson`
       ),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
+      isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
       isArchived: this.requiredBoolean(record, 'isArchived', `${path}.isArchived`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
@@ -833,6 +834,7 @@ export class BackupsService {
       parametersJson: this.optionalString(record, 'parametersJson', `${path}.parametersJson`),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
       isDefault: this.requiredBoolean(record, 'isDefault', `${path}.isDefault`),
+      isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
       deletedAt: null
@@ -858,6 +860,7 @@ export class BackupsService {
       content: this.requiredString(record, 'content', `${path}.content`),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
       isDefault: this.requiredBoolean(record, 'isDefault', `${path}.isDefault`),
+      isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
       deletedAt: null
@@ -926,6 +929,12 @@ export class BackupsService {
       title: this.requiredString(record, 'title', `${path}.title`),
       status: this.requiredString(record, 'status', `${path}.status`),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
+      usesSensitiveResource: this.optionalBoolean(
+        record,
+        'usesSensitiveResource',
+        false,
+        `${path}.usesSensitiveResource`
+      ),
       lastMessageAt: this.optionalDate(record, 'lastMessageAt', `${path}.lastMessageAt`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
@@ -997,6 +1006,7 @@ export class BackupsService {
       name: this.requiredString(record, 'name', `${path}.name`),
       description: this.requiredString(record, 'description', `${path}.description`),
       isEnabled: this.requiredBoolean(record, 'isEnabled', `${path}.isEnabled`),
+      isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
       scanDepth: this.requiredInteger(record, 'scanDepth', `${path}.scanDepth`),
       tokenBudget: this.requiredInteger(record, 'tokenBudget', `${path}.tokenBudget`),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
@@ -1232,6 +1242,33 @@ export class BackupsService {
 
     if (typeof value !== 'boolean') {
       throw this.invalidFormat(`${path} must be a boolean.`);
+    }
+
+    return value;
+  }
+
+  /**
+   * 取可选布尔字段；null/undefined 返回默认值，非布尔报错。
+   * @param record 备份记录。
+   * @param field 字段名。
+   * @param defaultValue 默认值。
+   * @param path 字段路径。
+   * @returns 字段值或默认值。
+   */
+  private optionalBoolean(
+    record: BackupJsonRecord,
+    field: string,
+    defaultValue: boolean,
+    path: string
+  ): boolean {
+    const value = record[field];
+
+    if (value === null || value === undefined) {
+      return defaultValue;
+    }
+
+    if (typeof value !== 'boolean') {
+      throw this.invalidFormat(`${path} must be a boolean when present.`);
     }
 
     return value;

@@ -42,6 +42,8 @@ export type Character = {
   metadata: CharacterMetadata | null;
   /** 是否已归档。 */
   isArchived: boolean;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */

@@ -5,24 +5,11 @@
  * 由本模块转成 SettingsApiUnsupportedError 供上层降级处理。
  * 因需要区分 404 与普通失败，这里用原生 fetch 而非 requestJson。
  */
-import type { ApiResponse } from '@tavern/shared';
+import type { ApiResponse, ApplicationSettings, ApplicationSettingsPayload } from '@tavern/shared';
 
 import { toApiUrl } from './http';
 
-/** 应用设置结构。 */
-export type ApplicationSettings = {
-  /** 工作台名称。 */
-  workspaceName: string;
-  /** 是否自动打开上次会话。 */
-  autoOpenLastConversation: boolean;
-  /** 是否启用紧凑列表模式。 */
-  compactListMode: boolean;
-  /** 默认历史消息条数上限。 */
-  defaultHistoryLimit: number;
-};
-
-/** 设置载荷与响应同构。 */
-export type ApplicationSettingsPayload = ApplicationSettings;
+export type { ApplicationSettings, ApplicationSettingsPayload };
 
 /**
  * 后端未启用设置 API 时抛出（GET /settings 返回 404）。

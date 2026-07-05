@@ -319,6 +319,7 @@ export class ContentPacksService {
             firstMessage: character.firstMessage,
             exampleMessagesJson: this.stringifyNullable(character.exampleMessages),
             metadataJson: this.stringifyNullable(character.metadata),
+            isSensitive: false,
             isArchived: false
           }
         });
@@ -347,7 +348,8 @@ export class ContentPacksService {
             name: persona.finalName,
             content: persona.content,
             metadataJson: this.stringifyNullable(persona.metadata),
-            isDefault: persona.isDefault
+            isDefault: persona.isDefault,
+            isSensitive: false
           }
         });
 
@@ -378,7 +380,8 @@ export class ContentPacksService {
             outputRules: preset.outputRules,
             parametersJson: this.stringifyNullable(preset.parameters),
             metadataJson: this.stringifyNullable(preset.metadata),
-            isDefault: preset.isDefault
+            isDefault: preset.isDefault,
+            isSensitive: false
           }
         });
 
@@ -396,6 +399,7 @@ export class ContentPacksService {
             name: worldBook.finalName,
             description: worldBook.description,
             isEnabled: worldBook.isEnabled,
+            isSensitive: false,
             scanDepth: worldBook.scanDepth,
             tokenBudget: worldBook.tokenBudget,
             metadataJson: this.stringifyNullable(worldBook.metadata)
@@ -438,6 +442,7 @@ export class ContentPacksService {
               : null,
             title: conversation.title,
             status: 'active',
+            usesSensitiveResource: false,
             metadataJson: this.stringifyNullable(conversation.metadata),
             lastMessageAt: conversation.messages.length > 0 ? now : null
           }

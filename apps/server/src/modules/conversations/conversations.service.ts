@@ -4,6 +4,8 @@ import {
   type Asset,
   type Character,
   type Conversation,
+  type ModelFallbackGroup,
+  type ModelFallbackCandidate,
   type ModelConfig,
   type PromptPreset,
   type UserPersona
@@ -11,6 +13,7 @@ import {
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import type {
   ConversationClearResponse,
@@ -26,6 +29,11 @@ type ConversationWithRelations = Conversation & {
   character: Character & {
     avatarAsset: Asset | null;
   };
+  modelFallbackGroup:
+    | (ModelFallbackGroup & {
+        candidates: ModelFallbackCandidate[];
+      })
+    | null;
   modelConfig: ModelConfig | null;
   promptPreset: PromptPreset | null;
   persona: UserPersona | null;
@@ -42,7 +50,9 @@ type ConversationWithRelations = Conversation & {
 export class ConversationsService {
   constructor(
     @Inject(PrismaService)
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -57,13 +67,18 @@ export class ConversationsService {
   ): Promise<ConversationListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where: Prisma.ConversationWhereInput = {
       userId: currentUser.id,
       deletedAt: null,
+      ...(showSensitiveContent ? {} : { usesSensitiveResource: false }),
       // 各关联 ID 未传时不加条件，传了则按值过滤
       ...(query.characterId === undefined ? {} : { characterId: query.characterId }),
       ...(query.modelConfigId === undefined ? {} : { modelConfigId: query.modelConfigId }),
+      ...(query.modelFallbackGroupId === undefined
+        ? {}
+        : { modelFallbackGroupId: query.modelFallbackGroupId }),
       ...(query.promptPresetId === undefined ? {} : { promptPresetId: query.promptPresetId }),
       ...(query.personaId === undefined ? {} : { personaId: query.personaId }),
       ...(query.status === undefined ? {} : { status: query.status }),
@@ -118,18 +133,29 @@ export class ConversationsService {
     // 逐一校验关联实体归属（characterId 必填，其余可选）
     await this.resolveCharacterId(currentUser, dto.characterId);
     const modelConfigId = await this.resolveModelConfigId(currentUser, dto.modelConfigId);
+    const modelFallbackGroupId = await this.resolveModelFallbackGroupId(
+      currentUser,
+      dto.modelFallbackGroupId
+    );
     const promptPresetId = await this.resolvePromptPresetId(currentUser, dto.promptPresetId);
     const personaId = await this.resolvePersonaId(currentUser, dto.personaId);
+    const usesSensitiveResource = await this.calculateUsesSensitiveResource(currentUser, {
+      characterId: dto.characterId,
+      promptPresetId,
+      personaId
+    });
 
     const conversation = await this.prisma.conversation.create({
       data: {
         userId: currentUser.id,
         characterId: dto.characterId,
         modelConfigId,
+        modelFallbackGroupId,
         promptPresetId,
         personaId,
         title: dto.title,
         status: dto.status ?? 'active',
+        usesSensitiveResource,
         metadataJson: this.stringifyNullable(dto.metadata)
       },
       include: this.relationInclude()
@@ -164,7 +190,7 @@ export class ConversationsService {
     dto: UpdateConversationDto
   ): Promise<ConversationResponse> {
     // 先校验会话存在且属于当前用户
-    await this.findOwnedActiveConversation(currentUser, id);
+    const existing = await this.findOwnedActiveConversation(currentUser, id);
     // 各关联 ID：未传(undefined)不动，传了则校验归属（null 表示解绑，不需校验）
     const characterId =
       dto.characterId === undefined
@@ -174,6 +200,10 @@ export class ConversationsService {
       dto.modelConfigId === undefined
         ? undefined
         : await this.resolveModelConfigId(currentUser, dto.modelConfigId);
+    const modelFallbackGroupId =
+      dto.modelFallbackGroupId === undefined
+        ? undefined
+        : await this.resolveModelFallbackGroupId(currentUser, dto.modelFallbackGroupId);
     const promptPresetId =
       dto.promptPresetId === undefined
         ? undefined
@@ -182,6 +212,15 @@ export class ConversationsService {
       dto.personaId === undefined
         ? undefined
         : await this.resolvePersonaId(currentUser, dto.personaId);
+    const nextCharacterId = characterId === undefined ? existing.characterId : characterId;
+    const nextPromptPresetId =
+      promptPresetId === undefined ? existing.promptPresetId : promptPresetId;
+    const nextPersonaId = personaId === undefined ? existing.personaId : personaId;
+    const usesSensitiveResource = await this.calculateUsesSensitiveResource(currentUser, {
+      characterId: nextCharacterId,
+      promptPresetId: nextPromptPresetId,
+      personaId: nextPersonaId
+    });
 
     // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
     const conversation = await this.prisma.conversation.update({
@@ -190,9 +229,11 @@ export class ConversationsService {
         ...(dto.title === undefined ? {} : { title: dto.title }),
         ...(characterId === undefined ? {} : { characterId }),
         ...(modelConfigId === undefined ? {} : { modelConfigId }),
+        ...(modelFallbackGroupId === undefined ? {} : { modelFallbackGroupId }),
         ...(promptPresetId === undefined ? {} : { promptPresetId }),
         ...(personaId === undefined ? {} : { personaId }),
         ...(dto.status === undefined ? {} : { status: dto.status }),
+        usesSensitiveResource,
         ...(dto.metadata === undefined ? {} : { metadataJson: this.stringifyNullable(dto.metadata) })
       },
       include: this.relationInclude()
@@ -289,11 +330,13 @@ export class ConversationsService {
     currentUser: CurrentUser,
     id: string
   ): Promise<ConversationWithRelations> {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const conversation = await this.prisma.conversation.findFirst({
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { usesSensitiveResource: false })
       },
       include: this.relationInclude()
     });
@@ -316,11 +359,13 @@ export class ConversationsService {
    * @throws BadRequestException 角色不存在或不属于该用户。
    */
   private async resolveCharacterId(currentUser: CurrentUser, id: string): Promise<string> {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const character = await this.prisma.character.findFirst({
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false })
       },
       select: {
         id: true
@@ -374,6 +419,41 @@ export class ConversationsService {
   }
 
   /**
+   * 校验模型链归属并返回其 ID；传空值不校验返回 null。
+   * @param currentUser 当前登录用户。
+   * @param id 模型链 ID，为空返回 null。
+   * @returns 校验通过的模型链 ID，或 null。
+   */
+  private async resolveModelFallbackGroupId(
+    currentUser: CurrentUser,
+    id: string | null | undefined
+  ): Promise<string | null> {
+    if (!id) {
+      return null;
+    }
+
+    const group = await this.prisma.modelFallbackGroup.findFirst({
+      where: {
+        id,
+        userId: currentUser.id,
+        deletedAt: null
+      },
+      select: {
+        id: true
+      }
+    });
+
+    if (!group) {
+      throw new BadRequestException({
+        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
+        message: 'Model fallback group not found.'
+      });
+    }
+
+    return group.id;
+  }
+
+  /**
    * 校验预设归属并返回其 ID；传空值不校验返回 null。
    * @param currentUser 当前登录用户。
    * @param id 预设 ID，为空返回 null。
@@ -392,7 +472,10 @@ export class ConversationsService {
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
       },
       select: {
         id: true
@@ -428,7 +511,10 @@ export class ConversationsService {
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
       },
       select: {
         id: true
@@ -456,6 +542,11 @@ export class ConversationsService {
           avatarAsset: true
         }
       },
+      modelFallbackGroup: {
+        include: {
+          candidates: true
+        }
+      },
       modelConfig: true,
       promptPreset: true,
       persona: true
@@ -473,11 +564,13 @@ export class ConversationsService {
       userId: conversation.userId,
       characterId: conversation.characterId,
       modelConfigId: conversation.modelConfigId,
+      modelFallbackGroupId: conversation.modelFallbackGroupId,
       promptPresetId: conversation.promptPresetId,
       personaId: conversation.personaId,
       title: conversation.title,
       status: conversation.status,
       metadata: this.parseRecord(conversation.metadataJson),
+      usesSensitiveResource: conversation.usesSensitiveResource,
       lastMessageAt: conversation.lastMessageAt?.toISOString() ?? null,
       character: {
         id: conversation.character.id,
@@ -501,6 +594,14 @@ export class ConversationsService {
             apiKeyMask: conversation.modelConfig.apiKeyMask,
             hasApiKey: Boolean(conversation.modelConfig.apiKeyCiphertext),
             isEnabled: conversation.modelConfig.isEnabled
+          }
+        : null,
+      modelFallbackGroup: conversation.modelFallbackGroup
+        ? {
+            id: conversation.modelFallbackGroup.id,
+            name: conversation.modelFallbackGroup.name,
+            isEnabled: conversation.modelFallbackGroup.isEnabled,
+            candidateCount: conversation.modelFallbackGroup.candidates.length
           }
         : null,
       promptPreset: conversation.promptPreset
@@ -542,5 +643,53 @@ export class ConversationsService {
     } catch {
       return null;
     }
+  }
+
+  private async calculateUsesSensitiveResource(
+    currentUser: CurrentUser,
+    refs: {
+      characterId: string;
+      promptPresetId: string | null;
+      personaId: string | null;
+    }
+  ): Promise<boolean> {
+    const [character, promptPreset, persona] = await Promise.all([
+      this.prisma.character.findFirst({
+        where: {
+          id: refs.characterId,
+          userId: currentUser.id,
+          deletedAt: null
+        },
+        select: {
+          isSensitive: true
+        }
+      }),
+      refs.promptPresetId
+        ? this.prisma.promptPreset.findFirst({
+            where: {
+              id: refs.promptPresetId,
+              userId: currentUser.id,
+              deletedAt: null
+            },
+            select: {
+              isSensitive: true
+            }
+          })
+        : Promise.resolve(null),
+      refs.personaId
+        ? this.prisma.userPersona.findFirst({
+            where: {
+              id: refs.personaId,
+              userId: currentUser.id,
+              deletedAt: null
+            },
+            select: {
+              isSensitive: true
+            }
+          })
+        : Promise.resolve(null)
+    ]);
+
+    return Boolean(character?.isSensitive || promptPreset?.isSensitive || persona?.isSensitive);
   }
 }

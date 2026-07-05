@@ -20,6 +20,8 @@ export type PromptPresetResponse = {
   maxTokens: number | null;
   /** 是否为默认预设。 */
   isDefault: boolean;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */
@@ -45,4 +47,6 @@ export type PromptPresetPayload = {
   maxTokens?: number;
   /** 是否设为默认预设。 */
   isDefault?: boolean;
+  /** 是否标记为敏感内容；未传时默认 false。 */
+  isSensitive?: boolean;
 };

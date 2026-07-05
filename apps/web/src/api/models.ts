@@ -8,11 +8,23 @@ import type {
   ModelConfigListResponse,
   ModelConfigPayload,
   ModelConfigResponse,
-  ModelConfigTestResponse
+  ModelConfigTestResponse,
+  ModelFallbackGroupListResponse,
+  ModelFallbackGroupPayload,
+  ModelFallbackGroupResponse,
+  ModelProviderListResponse,
+  ModelProviderPayload,
+  ModelProviderResponse,
+  ProviderModelListResponse,
+  ProviderModelPayload,
+  ProviderModelResponse
 } from '@tavern/shared';
 
 /** 模型配置数据（shared 类型别名）。 */
 export type ModelConfig = ModelConfigResponse;
+export type ModelProvider = ModelProviderResponse;
+export type ProviderModel = ProviderModelResponse;
+export type ModelFallbackGroup = ModelFallbackGroupResponse;
 /**
  * 模型配置更新载荷：在 shared 全量载荷基础上放宽为部分更新，
  * 并允许 name 等核心字段可选（编辑场景可能只改部分字段）。
@@ -23,6 +35,9 @@ export type ModelConfigMutationPayload = Partial<ModelConfigPayload> & {
   baseUrl?: string;
   modelName?: string;
 };
+export type ModelProviderMutationPayload = Partial<ModelProviderPayload>;
+export type ProviderModelMutationPayload = Partial<ProviderModelPayload>;
+export type ModelFallbackGroupMutationPayload = Partial<ModelFallbackGroupPayload>;
 
 /** 模型配置列表查询参数，所有字段可选。 */
 export type ModelConfigListParams = {
@@ -173,6 +188,189 @@ export async function testModelConfigConnection(id: string): Promise<ModelConfig
       response.error.code,
       response.error.details
     );
+  }
+
+  return response.data;
+}
+
+export async function fetchModelProviders(
+  params: ModelConfigListParams = {}
+): Promise<ModelProviderListResponse> {
+  const response = await requestJson<ModelProviderListResponse>(
+    `/model-providers${toQueryString(params)}`
+  );
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function createModelProvider(
+  payload: ModelProviderPayload
+): Promise<ModelProviderResponse> {
+  const response = await requestJson<ModelProviderResponse>('/model-providers', {
+    method: 'POST',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function updateModelProvider(
+  id: string,
+  payload: ModelProviderMutationPayload
+): Promise<ModelProviderResponse> {
+  const response = await requestJson<ModelProviderResponse>(`/model-providers/${id}`, {
+    method: 'PUT',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function deleteModelProvider(id: string): Promise<ModelConfigDeleteResult> {
+  const response = await requestJson<ModelConfigDeleteResult>(`/model-providers/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function fetchProviderModels(
+  params: ModelConfigListParams = {}
+): Promise<ProviderModelListResponse> {
+  const response = await requestJson<ProviderModelListResponse>(
+    `/provider-models${toQueryString(params)}`
+  );
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function createProviderModel(
+  payload: ProviderModelPayload
+): Promise<ProviderModelResponse> {
+  const response = await requestJson<ProviderModelResponse>('/provider-models', {
+    method: 'POST',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function updateProviderModel(
+  id: string,
+  payload: ProviderModelMutationPayload
+): Promise<ProviderModelResponse> {
+  const response = await requestJson<ProviderModelResponse>(`/provider-models/${id}`, {
+    method: 'PUT',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function deleteProviderModel(id: string): Promise<ModelConfigDeleteResult> {
+  const response = await requestJson<ModelConfigDeleteResult>(`/provider-models/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function testProviderModelConnection(id: string): Promise<ModelConfigTestResponse> {
+  const response = await requestJson<ModelConfigTestResponse>(`/provider-models/${id}/test`, {
+    method: 'POST'
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function fetchModelFallbackGroups(
+  params: ModelConfigListParams = {}
+): Promise<ModelFallbackGroupListResponse> {
+  const response = await requestJson<ModelFallbackGroupListResponse>(
+    `/model-fallback-groups${toQueryString(params)}`
+  );
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function createModelFallbackGroup(
+  payload: ModelFallbackGroupPayload
+): Promise<ModelFallbackGroupResponse> {
+  const response = await requestJson<ModelFallbackGroupResponse>('/model-fallback-groups', {
+    method: 'POST',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function updateModelFallbackGroup(
+  id: string,
+  payload: ModelFallbackGroupMutationPayload
+): Promise<ModelFallbackGroupResponse> {
+  const response = await requestJson<ModelFallbackGroupResponse>(`/model-fallback-groups/${id}`, {
+    method: 'PUT',
+    body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function deleteModelFallbackGroup(id: string): Promise<ModelConfigDeleteResult> {
+  const response = await requestJson<ModelConfigDeleteResult>(`/model-fallback-groups/${id}`, {
+    method: 'DELETE'
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
   return response.data;

@@ -71,12 +71,12 @@
             />
           </n-form-item>
 
-          <n-form-item label="模型配置">
+          <n-form-item label="模型链">
             <NSelect
-              v-model:value="form.modelConfigId"
+              v-model:value="form.modelFallbackGroupId"
               clearable
               filterable
-              :options="modelOptions"
+              :options="modelFallbackGroupOptions"
               placeholder="可选"
             />
           </n-form-item>
@@ -137,7 +137,7 @@ import type { ConversationPayload } from '@tavern/shared';
 type ConversationFormState = {
   title: string;
   characterId: string | null;
-  modelConfigId: string | null;
+  modelFallbackGroupId: string | null;
   personaId: string | null;
   promptPresetId: string | null;
 };
@@ -158,7 +158,7 @@ const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 const form = reactive<ConversationFormState>({
   title: '',
   characterId: null,
-  modelConfigId: null,
+  modelFallbackGroupId: null,
   personaId: null,
   promptPresetId: null
 });
@@ -170,13 +170,13 @@ const characterOptions = computed<SelectOption[]>(() =>
   }))
 );
 
-const modelOptions = computed<SelectOption[]>(() =>
-  modelStore.items.map((modelConfig) => ({
-    label: `${modelConfig.name} / ${modelConfig.modelName}${
-      modelConfig.isEnabled ? '' : '（停用）'
+const modelFallbackGroupOptions = computed<SelectOption[]>(() =>
+  modelStore.fallbackGroups.map((group) => ({
+    label: `${group.name} / ${group.candidates.length} 个模型${
+      group.isEnabled ? '' : '（停用）'
     }`,
-    value: modelConfig.id,
-    disabled: !modelConfig.isEnabled
+    value: group.id,
+    disabled: !group.isEnabled
   }))
 );
 
@@ -202,7 +202,7 @@ async function loadInitialData() {
   await Promise.allSettled([
     conversationStore.loadConversations(),
     characterStore.loadCharacters({ page: 1, pageSize: 100, search: '' }),
-    modelStore.loadModelConfigs({ page: 1, pageSize: 100, search: '' }),
+    modelStore.loadModelResources({ page: 1, pageSize: 100, search: '' }),
     personaStore.loadPersonas({ page: 1, pageSize: 100, search: '' }),
     presetStore.loadPresets({ page: 1, pageSize: 100, search: '' })
   ]);
@@ -236,8 +236,8 @@ function resetForm() {
 
   form.characterId = firstCharacter?.id ?? null;
   form.title = firstCharacter ? `${firstCharacter.name} 的会话` : '';
-  form.modelConfigId =
-    modelStore.items.find((item) => item.isDefault && item.isEnabled)?.id ?? null;
+  form.modelFallbackGroupId =
+    modelStore.fallbackGroups.find((item) => item.isDefault && item.isEnabled)?.id ?? null;
   form.personaId = personaStore.items.find((item) => item.isDefault)?.id ?? null;
   form.promptPresetId = presetStore.items.find((item) => item.isDefault)?.id ?? null;
   conversationStore.saveError = null;
@@ -271,7 +271,7 @@ async function submitCreate() {
   const payload: ConversationPayload = {
     title: form.title.trim(),
     characterId: form.characterId,
-    modelConfigId: form.modelConfigId,
+    modelFallbackGroupId: form.modelFallbackGroupId,
     personaId: form.personaId,
     promptPresetId: form.promptPresetId,
     status: 'active'

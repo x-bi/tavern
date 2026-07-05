@@ -27,6 +27,7 @@ import {
 } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { WorldBookContext, WorldBookEntryContext } from '../../services/prompt-builder/types';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreateWorldBookEntryDto } from './dto/create-world-book-entry.dto';
 import type { CreateWorldBookDto } from './dto/create-world-book.dto';
@@ -96,7 +97,9 @@ type WorldBookEntryWithBook = WorldBookEntry & {
 export class WorldBooksService {
   constructor(
     @Inject(PrismaService)
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -108,10 +111,12 @@ export class WorldBooksService {
   async list(currentUser: CurrentUser, query: QueryWorldBooksDto): Promise<WorldBookListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
       userId: currentUser.id,
       deletedAt: null,
+      ...(showSensitiveContent ? {} : { isSensitive: false }),
       // characterId/isEnabled 未传时不加条件，传了则按值过滤
       ...(query.characterId === undefined ? {} : { characterId: query.characterId }),
       ...(query.isEnabled === undefined ? {} : { isEnabled: query.isEnabled }),
@@ -168,6 +173,9 @@ export class WorldBooksService {
       where: {
         userId: currentUser.id,
         deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false }),
         // 全局世界书（characterId=null）或绑定该角色的
         OR: [{ characterId: null }, { characterId }]
       },
@@ -202,6 +210,7 @@ export class WorldBooksService {
         name: dto.name,
         description: dto.description ?? '',
         isEnabled: dto.isEnabled ?? true,
+        isSensitive: dto.isSensitive ?? false,
         scanDepth: dto.scanDepth ?? 6,
         tokenBudget: dto.tokenBudget ?? 1000,
         metadataJson: this.stringifyNullable(dto.metadata)
@@ -264,6 +273,7 @@ export class WorldBooksService {
           name,
           description: normalized.description,
           isEnabled: normalized.isEnabled,
+          isSensitive: false,
           scanDepth: normalized.scanDepth,
           tokenBudget: normalized.tokenBudget,
           metadataJson: this.stringifyNullable(normalized.metadata)
@@ -354,6 +364,7 @@ export class WorldBooksService {
         ...(characterId === undefined ? {} : { characterId }),
         ...(dto.description === undefined ? {} : { description: dto.description }),
         ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled }),
+        ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
         ...(dto.scanDepth === undefined ? {} : { scanDepth: dto.scanDepth }),
         ...(dto.tokenBudget === undefined ? {} : { tokenBudget: dto.tokenBudget }),
         ...(dto.metadata === undefined
@@ -696,7 +707,10 @@ export class WorldBooksService {
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
       },
       include: {
         entries: {
@@ -729,6 +743,7 @@ export class WorldBooksService {
     currentUser: CurrentUser,
     id: string
   ): Promise<WorldBookEntryWithBook> {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const entry = await this.prisma.worldBookEntry.findFirst({
       where: {
         id,
@@ -736,7 +751,8 @@ export class WorldBooksService {
         // 通过 worldBook 关联校验：世界书必须属于当前用户
         worldBook: {
           userId: currentUser.id,
-          deletedAt: null
+          deletedAt: null,
+          ...(showSensitiveContent ? {} : { isSensitive: false })
         }
       },
       include: {
@@ -800,6 +816,7 @@ export class WorldBooksService {
       name: worldBook.name,
       description: worldBook.description,
       isEnabled: worldBook.isEnabled,
+      isSensitive: worldBook.isSensitive,
       scanDepth: worldBook.scanDepth,
       tokenBudget: worldBook.tokenBudget,
       metadata: this.parseRecord(worldBook.metadataJson),
@@ -822,6 +839,7 @@ export class WorldBooksService {
       name: worldBook.name,
       description: worldBook.description,
       isEnabled: worldBook.isEnabled,
+      isSensitive: worldBook.isSensitive,
       scanDepth: worldBook.scanDepth,
       tokenBudget: worldBook.tokenBudget,
       metadata: this.parseRecord(worldBook.metadataJson),

@@ -18,6 +18,12 @@ export class CreateConversationDto {
   @MaxLength(128)
   modelConfigId?: string | null;
 
+  /** 关联模型链 ID，可选；传 null 表示不绑定。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  modelFallbackGroupId?: string | null;
+
   /** 关联预设 ID，可选。 */
   @IsOptional()
   @IsString()

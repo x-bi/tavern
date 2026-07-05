@@ -72,6 +72,7 @@
 
       <div class="prompt-preset-form__switches">
         <n-checkbox v-model:checked="form.isDefault">设为默认预设</n-checkbox>
+        <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
       </div>
 
       <n-space justify="end">
@@ -99,6 +100,7 @@ type PromptPresetFormState = {
   topP: number | null;
   maxTokens: number | null;
   isDefault: boolean;
+  isSensitive: boolean;
 };
 
 const props = withDefaults(
@@ -182,7 +184,8 @@ async function handleSubmit() {
     temperature: form.temperature ?? undefined,
     topP: form.topP ?? undefined,
     maxTokens: form.maxTokens ?? undefined,
-    isDefault: form.isDefault
+    isDefault: form.isDefault,
+    isSensitive: form.isSensitive
   });
 }
 
@@ -194,7 +197,8 @@ function createEmptyForm(): PromptPresetFormState {
     temperature: null,
     topP: null,
     maxTokens: null,
-    isDefault: false
+    isDefault: false,
+    isSensitive: false
   };
 }
 
@@ -206,7 +210,8 @@ function toForm(preset: PromptPreset): PromptPresetFormState {
     temperature: preset.temperature,
     topP: preset.topP,
     maxTokens: preset.maxTokens,
-    isDefault: preset.isDefault
+    isDefault: preset.isDefault,
+    isSensitive: preset.isSensitive
   };
 }
 </script>

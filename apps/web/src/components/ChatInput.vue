@@ -13,7 +13,7 @@
     <footer class="chat-input__toolbar">
       <div class="chat-input__placeholder-actions">
         <n-button size="small" secondary disabled>附件</n-button>
-        <n-button size="small" secondary disabled>Prompt 预览</n-button>
+        <n-button size="small" secondary @click="$emit('previewPrompt')">Prompt 预览</n-button>
       </div>
 
       <div class="chat-input__submit-actions">
@@ -48,6 +48,7 @@ defineEmits<{
   send: [];
   stop: [];
   regenerate: [];
+  previewPrompt: [];
 }>();
 </script>
 

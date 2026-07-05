@@ -20,6 +20,12 @@ export class UpdateConversationDto {
   @MaxLength(128)
   modelConfigId?: string | null;
 
+  /** 关联模型链 ID；传 null 解绑。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  modelFallbackGroupId?: string | null;
+
   /** 关联预设 ID；传 null 解绑。 */
   @IsOptional()
   @IsString()

@@ -52,10 +52,68 @@ export type ModelConfigTestResponse = {
 
 /** 调用模型网关所需的配置（含解密后的 apiKey 明文，仅内部使用）。 */
 export type ModelGatewayConfig = {
-  modelConfigId: string;
+  modelConfigId: string | null;
+  providerModelId?: string | null;
+  modelFallbackGroupId?: string | null;
+  displayName?: string;
   providerName: string;
   baseUrl: string;
   modelName: string;
   apiKey: string | null;
   params: ModelConfigParams;
+};
+
+export type ModelProviderResponse = {
+  id: string;
+  userId: string;
+  name: string;
+  providerName: string;
+  baseUrl: string;
+  apiKeyMask: string | null;
+  hasApiKey: boolean;
+  timeout: number | null;
+  isDefault: boolean;
+  isEnabled: boolean;
+  modelCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProviderModelResponse = {
+  id: string;
+  providerId: string;
+  providerName: string;
+  providerDisplayName: string;
+  name: string;
+  modelName: string;
+  temperature: number | null;
+  topP: number | null;
+  maxTokens: number | null;
+  timeout: number | null;
+  contextLength: number | null;
+  notes: string | null;
+  sortOrder: number;
+  isEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ModelFallbackCandidateResponse = {
+  id: string;
+  groupId: string;
+  modelId: string;
+  priority: number;
+  isEnabled: boolean;
+  model: ProviderModelResponse;
+};
+
+export type ModelFallbackGroupResponse = {
+  id: string;
+  userId: string;
+  name: string;
+  isDefault: boolean;
+  isEnabled: boolean;
+  candidates: ModelFallbackCandidateResponse[];
+  createdAt: string;
+  updatedAt: string;
 };

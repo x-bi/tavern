@@ -13,7 +13,8 @@ export const DEFAULT_APPLICATION_SETTINGS: ApplicationSettings = {
   workspaceName: 'Tavern Lite',
   autoOpenLastConversation: true,
   compactListMode: false,
-  defaultHistoryLimit: 20
+  defaultHistoryLimit: 20,
+  showSensitiveContent: false
 };
 
 type SettingSource = 'api' | 'local';
@@ -123,7 +124,11 @@ function normalizeSettings(settings: Partial<ApplicationSettings>): ApplicationS
       typeof settings.compactListMode === 'boolean'
         ? settings.compactListMode
         : DEFAULT_APPLICATION_SETTINGS.compactListMode,
-    defaultHistoryLimit: clampHistoryLimit(settings.defaultHistoryLimit)
+    defaultHistoryLimit: clampHistoryLimit(settings.defaultHistoryLimit),
+    showSensitiveContent:
+      typeof settings.showSensitiveContent === 'boolean'
+        ? settings.showSensitiveContent
+        : DEFAULT_APPLICATION_SETTINGS.showSensitiveContent
   };
 }
 

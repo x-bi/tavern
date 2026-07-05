@@ -15,6 +15,7 @@ import {
   type ModuleJsonImportWarning
 } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreatePersonaDto } from './dto/create-persona.dto';
 import type { QueryPersonasDto } from './dto/query-personas.dto';
@@ -55,7 +56,9 @@ type NormalizedPersonaImport = {
 export class PersonasService {
   constructor(
     @Inject(PrismaService)
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(SettingsService)
+    private readonly settingsService: SettingsService
   ) {}
 
   /**
@@ -67,10 +70,12 @@ export class PersonasService {
   async list(currentUser: CurrentUser, query: QueryPersonasDto): Promise<PersonaListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
       userId: currentUser.id,
       deletedAt: null,
+      ...(showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
       ...(query.isDefault === undefined ? {} : { isDefault: query.isDefault }),
       // search 关键字：匹配 name/content 任一包含
@@ -114,7 +119,8 @@ export class PersonasService {
       // 可选字段未传时落库为空串；metadata 序列化成 JSON 存储
       content: dto.content ?? '',
       metadataJson: this.stringifyNullable(dto.metadata),
-      isDefault: dto.isDefault ?? false
+      isDefault: dto.isDefault ?? false,
+      isSensitive: dto.isSensitive ?? false
     };
 
     try {
@@ -207,7 +213,8 @@ export class PersonasService {
                 name,
                 content: normalized.content,
                 metadataJson: this.stringifyNullable(normalized.metadata),
-                isDefault: normalized.isDefault
+                isDefault: normalized.isDefault,
+                isSensitive: false
               }
             });
           })
@@ -217,7 +224,8 @@ export class PersonasService {
               name,
               content: normalized.content,
               metadataJson: this.stringifyNullable(normalized.metadata),
-              isDefault: normalized.isDefault
+              isDefault: normalized.isDefault,
+              isSensitive: false
             }
           });
 
@@ -257,6 +265,7 @@ export class PersonasService {
       ...(dto.name === undefined ? {} : { name: dto.name }),
       ...(dto.content === undefined ? {} : { content: dto.content }),
       ...(dto.metadata === undefined ? {} : { metadataJson: this.stringifyNullable(dto.metadata) }),
+      ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
       ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault })
     };
 
@@ -287,6 +296,10 @@ export class PersonasService {
             where: { id },
             data
           });
+
+      if (dto.isSensitive !== undefined) {
+        await this.refreshConversationSensitivityForPersona(currentUser, id, dto.isSensitive);
+      }
 
       return this.toResponse(persona);
     } catch (error) {
@@ -413,7 +426,10 @@ export class PersonasService {
       where: {
         id,
         userId: currentUser.id,
-        deletedAt: null
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
       }
     });
 
@@ -440,6 +456,7 @@ export class PersonasService {
       content: persona.content,
       metadata: this.parseRecord(persona.metadataJson),
       isDefault: persona.isDefault,
+      isSensitive: persona.isSensitive,
       createdAt: persona.createdAt.toISOString(),
       updatedAt: persona.updatedAt.toISOString()
     };
@@ -486,5 +503,43 @@ export class PersonasService {
         message: 'Persona name already exists.'
       });
     }
+  }
+
+  private async refreshConversationSensitivityForPersona(
+    currentUser: CurrentUser,
+    personaId: string,
+    isSensitive: boolean
+  ): Promise<void> {
+    if (isSensitive) {
+      await this.prisma.conversation.updateMany({
+        where: {
+          userId: currentUser.id,
+          personaId,
+          deletedAt: null
+        },
+        data: {
+          usesSensitiveResource: true
+        }
+      });
+      return;
+    }
+
+    await this.prisma.conversation.updateMany({
+      where: {
+        userId: currentUser.id,
+        personaId,
+        deletedAt: null,
+        character: {
+          isSensitive: false
+        },
+        persona: {
+          isSensitive: false
+        },
+        OR: [{ promptPresetId: null }, { promptPreset: { is: { isSensitive: false } } }]
+      },
+      data: {
+        usesSensitiveResource: false
+      }
+    });
   }
 }

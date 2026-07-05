@@ -90,6 +90,10 @@
         />
       </n-form-item>
 
+      <div class="character-editor__switches">
+        <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
+      </div>
+
       <n-form-item label="示例对话">
         <n-input
           v-model:value="form.exampleMessagesText"
@@ -229,7 +233,8 @@ async function handleSubmit() {
     scenario: form.scenario.trim(),
     firstMessage: form.firstMessage.trim(),
     exampleMessages: parsedExamples,
-    metadata: createMetadata(form)
+    metadata: createMetadata(form),
+    isSensitive: form.isSensitive
   });
 }
 
@@ -244,7 +249,8 @@ function createEmptyForm(): CharacterEditorForm {
     scenario: '',
     firstMessage: '',
     systemPrompt: '',
-    exampleMessagesText: ''
+    exampleMessagesText: '',
+    isSensitive: false
   };
 }
 
@@ -266,7 +272,8 @@ function toForm(character: Character): CharacterEditorForm {
         : '',
     exampleMessagesText: character.exampleMessages
       .map((message) => `${message.role}: ${message.content}`)
-      .join('\n')
+      .join('\n'),
+    isSensitive: character.isSensitive
   };
 }
 
@@ -356,6 +363,13 @@ function parseExampleMessages(value: string): ExampleMessage[] | string {
 
 .character-editor__error {
   margin-bottom: 16px;
+}
+
+.character-editor__switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
 @media (max-width: 720px) {

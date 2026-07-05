@@ -47,6 +47,8 @@ export type CharacterEditorForm = {
   systemPrompt: string;
   /** 对话示例的多行文本（提交时解析为 ExampleMessage[]）。 */
   exampleMessagesText: string;
+  /** 是否标记为敏感内容。 */
+  isSensitive: boolean;
 };
 
 /**
@@ -71,4 +73,6 @@ export type CharacterMutationPayload = {
   exampleMessages: ExampleMessage[];
   /** 角色元数据。 */
   metadata: CharacterMetadata;
+  /** 是否标记为敏感内容。 */
+  isSensitive?: boolean;
 };

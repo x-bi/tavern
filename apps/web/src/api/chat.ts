@@ -1,6 +1,10 @@
-import type { ChatStreamPayload } from '@tavern/shared';
+import type {
+  ChatStreamPayload,
+  ChatSuggestionPayload,
+  ChatSuggestionResult
+} from '@tavern/shared';
 
-import { toApiUrl } from './http';
+import { requestJson, toApiUrl } from './http';
 
 /** startChatStream 的请求选项。 */
 export type StartChatStreamOptions = {
@@ -60,6 +64,26 @@ export async function startChatStream(
   }
 
   return response;
+}
+
+/**
+ * 生成用户下一轮候选发言。POST /chat/suggestions
+ *
+ * 返回的文本可直接填入聊天输入框，但不会自动发送。
+ */
+export async function fetchChatSuggestions(
+  payload: ChatSuggestionPayload
+): Promise<ChatSuggestionResult> {
+  const response = await requestJson<ChatSuggestionResult>('/chat/suggestions', {
+    method: 'POST',
+    body: payload
+  });
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message ?? '生成候选发言失败。');
+  }
+
+  return response.data;
 }
 
 /**

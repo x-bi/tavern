@@ -34,6 +34,9 @@ export type {
   CharacterImportWarning
 } from './character-import';
 export type {
+  ChatSuggestion,
+  ChatSuggestionPayload,
+  ChatSuggestionResult,
   ChatStreamDeltaEvent,
   ChatStreamDoneEvent,
   ChatStreamErrorEvent,

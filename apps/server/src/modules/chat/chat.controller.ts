@@ -8,6 +8,7 @@ import type { CurrentUser as CurrentUserType } from '../users/user.types';
 import { ChatService } from './chat.service';
 import type { ChatResponseLike } from './chat.types';
 import { StreamChatDto } from './dto/stream-chat.dto';
+import { SuggestChatRepliesDto } from './dto/suggest-chat-replies.dto';
 
 /**
  * 聊天控制器，路由前缀 `/chat`，需登录。
@@ -36,5 +37,18 @@ export class ChatController {
     @Res() response: ChatResponseLike
   ): Promise<void> {
     await this.chatService.stream(currentUser, dto, response);
+  }
+
+  /**
+   * 生成用户下一句候选。POST /chat/suggestions
+   *
+   * 返回普通 JSON，走全局 ApiResponse 包装；不创建消息，不改变会话历史。
+   */
+  @Post('suggestions')
+  async suggestReplies(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Body(new DtoValidationPipe(SuggestChatRepliesDto)) dto: SuggestChatRepliesDto
+  ) {
+    return this.chatService.suggestReplies(currentUser, dto);
   }
 }

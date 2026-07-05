@@ -35,6 +35,7 @@ import type {
   ChatTask
 } from './chat.types';
 import { StreamChatDto } from './dto/stream-chat.dto';
+import { SuggestChatRepliesDto } from './dto/suggest-chat-replies.dto';
 
 /** 流式聊天准备好的消息集：当前用户消息 + assistant 占位 + 历史。 */
 type PreparedChatStreamMessages = {
@@ -47,6 +48,16 @@ type ChatTemplateVariables = {
   characterName: string;
   userName: string;
 };
+
+type ChatSuggestionResult = {
+  suggestions: Array<{
+    id: string;
+    text: string;
+  }>;
+};
+
+const DEFAULT_CHAT_SUGGESTION_COUNT = 3;
+const MAX_CHAT_SUGGESTION_COUNT = 5;
 
 /**
  * 聊天服务：SSE 流式对话的核心。
@@ -360,6 +371,105 @@ export class ChatService {
   }
 
   /**
+   * 生成用户下一轮可选发言。
+   *
+   * 该流程只读取会话上下文并调用模型，不创建 user/assistant 消息，也不更新 lastMessageAt。
+   * @param currentUser 当前登录用户。
+   * @param dto 候选生成入参。
+   * @returns 三条左右可直接放入输入框的候选用户发言。
+   */
+  async suggestReplies(
+    currentUser: CurrentUser,
+    dto: SuggestChatRepliesDto
+  ): Promise<ChatSuggestionResult> {
+    if (this.conversationTasks.has(dto.conversationId)) {
+      throw new ConflictException({
+        code: ERROR_CODES.CHAT_CONVERSATION_BUSY,
+        message: 'Conversation is already generating a response.'
+      });
+    }
+
+    const count = Math.min(
+      Math.max(dto.count ?? DEFAULT_CHAT_SUGGESTION_COUNT, 1),
+      MAX_CHAT_SUGGESTION_COUNT
+    );
+    const conversation = await this.findOwnedActiveConversation(currentUser, dto.conversationId);
+    const templateVariables = this.createTemplateVariables(conversation);
+    const modelCandidates = await this.modelsService.getGatewayCandidates({
+      currentUser,
+      modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId,
+      modelConfigId: dto.modelConfigId ?? conversation.modelConfigId
+    });
+    const modelConfig = modelCandidates[0];
+
+    if (!modelConfig) {
+      throw new BadRequestException({
+        code: ERROR_CODES.CHAT_MODEL_CONFIG_REQUIRED,
+        message: 'At least one model config is required before generating suggestions.'
+      });
+    }
+
+    const promptPreset = await this.resolvePromptPreset(currentUser, dto, conversation);
+    const worldBooks = await this.worldBooksService.listPromptContexts(
+      currentUser,
+      conversation.characterId
+    );
+    const historyTake = this.resolveHistoryTake(dto.historyLimit, worldBooks);
+    const history = await this.listRecentMessages(conversation.id, historyTake);
+
+    this.assertModelCandidatesReady(modelCandidates);
+
+    const prompt = this.promptBuilder.build(
+      this.toBuildPromptInput({
+        currentUser,
+        conversation,
+        history,
+        currentUserMessage: this.createSuggestionPromptMessage(conversation.id, count),
+        promptPreset,
+        modelConfig,
+        worldBooks,
+        dto
+      })
+    );
+
+    let lastError: { code: string; message: string } | null = null;
+
+    for (const candidate of modelCandidates) {
+      try {
+        const result = await this.modelGateway.chat(prompt.finalMessages, {
+          providerName: candidate.providerName,
+          baseUrl: candidate.baseUrl,
+          modelName: candidate.modelName,
+          apiKey: candidate.apiKey,
+          ...this.toSuggestionModelParams(this.mergeModelParams(candidate.params, promptPreset))
+        });
+        const suggestions = this.parseSuggestionTexts(result.text, count, templateVariables);
+
+        if (suggestions.length > 0) {
+          return {
+            suggestions: suggestions.map((text, index) => ({
+              id: `suggestion-${index + 1}`,
+              text
+            }))
+          };
+        }
+
+        lastError = {
+          code: ERROR_CODES.MODEL_GATEWAY_INVALID_RESPONSE,
+          message: '模型返回成功，但没有解析出可用候选。'
+        };
+      } catch (error) {
+        lastError = this.toModelGatewayErrorPayload(error);
+      }
+    }
+
+    throw new BadRequestException({
+      code: lastError?.code ?? ERROR_CODES.MODEL_GATEWAY_REQUEST_FAILED,
+      message: lastError?.message ?? '生成候选发言失败。'
+    });
+  }
+
+  /**
    * 设置 SSE 响应头（事件流、禁缓存、禁代理缓冲）。
    * @param response Express 响应对象。
    */
@@ -529,6 +639,180 @@ export class ChatService {
         message: 'Provide either userMessage or regenerateMessageId.'
       });
     }
+  }
+
+  /**
+   * 构造只存在于内存中的候选生成指令消息。
+   * @param conversationId 会话 ID。
+   * @param count 期望候选条数。
+   * @returns PromptBuilder 可消费的 Message 形态。
+   */
+  private createSuggestionPromptMessage(conversationId: string, count: number): Message {
+    const now = new Date();
+
+    return {
+      id: `suggestion-request-${now.getTime()}`,
+      conversationId,
+      role: 'user',
+      content: [
+        `请根据上面的角色设定、Persona、世界书和最近对话，站在用户视角生成 ${count} 条下一轮可以直接发送的用户发言。`,
+        '要求：每条 1 到 2 句话；自然口语；不要替 assistant 回复；不要解释；不要包含序号以外的额外说明。',
+        '只输出 JSON 字符串数组，例如 ["第一条", "第二条", "第三条"]。'
+      ].join('\n'),
+      status: 'complete',
+      metadataJson: this.stringifyNullable({
+        source: 'chat-suggestions',
+        transient: true
+      }),
+      tokenCount: null,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null
+    };
+  }
+
+  /**
+   * 将聊天模型参数压缩成候选生成适用范围。
+   * @param params 已合并的模型参数。
+   * @returns 候选生成调用参数。
+   */
+  private toSuggestionModelParams(params: PromptModelParameters): PromptModelParameters {
+    return {
+      ...params,
+      temperature: Math.max(params.temperature ?? 0.85, 0.75),
+      maxTokens: Math.min(Math.max(params.maxTokens ?? 240, 120), 500)
+    };
+  }
+
+  /**
+   * 解析模型返回的候选发言，兼容 JSON 数组、对象字段和编号列表。
+   * @param rawText 模型原始文本。
+   * @param count 期望条数。
+   * @param variables 模板变量上下文。
+   * @returns 去重、裁剪后的候选文本。
+   */
+  private parseSuggestionTexts(
+    rawText: string,
+    count: number,
+    variables: ChatTemplateVariables
+  ): string[] {
+    const candidates = this.extractSuggestionCandidates(rawText);
+    const seen = new Set<string>();
+    const suggestions: string[] = [];
+
+    for (const candidate of candidates) {
+      const text = this.normalizeSuggestionText(
+        this.resolveTemplateVariables(candidate, variables)
+      );
+
+      if (!text || seen.has(text)) {
+        continue;
+      }
+
+      seen.add(text);
+      suggestions.push(text);
+
+      if (suggestions.length >= count) {
+        break;
+      }
+    }
+
+    return suggestions;
+  }
+
+  /**
+   * 从模型输出中提取候选字符串集合。
+   * @param rawText 模型原始输出。
+   * @returns 原始候选文本数组。
+   */
+  private extractSuggestionCandidates(rawText: string): string[] {
+    const withoutFence = rawText
+      .trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+    const jsonSlice = this.sliceJsonLikeText(withoutFence);
+    const parsed = jsonSlice ? this.parseJson(jsonSlice) : null;
+
+    if (Array.isArray(parsed)) {
+      return parsed.filter((item): item is string => typeof item === 'string');
+    }
+
+    if (this.isRecord(parsed)) {
+      const list = parsed.suggestions ?? parsed.options ?? parsed.replies;
+
+      if (Array.isArray(list)) {
+        return list
+          .map((item) => (typeof item === 'string' ? item : this.isRecord(item) ? item.text : null))
+          .filter((item): item is string => typeof item === 'string');
+      }
+    }
+
+    return withoutFence
+      .split(/\r?\n/)
+      .map((line) => line.replace(/^\s*(?:[-*]|\d+[.)、])\s*/, ''))
+      .filter(Boolean);
+  }
+
+  /**
+   * 从文本中截出最可能的 JSON 数组或对象。
+   * @param value 原始文本。
+   * @returns JSON 片段，找不到则返回 null。
+   */
+  private sliceJsonLikeText(value: string): string | null {
+    const arrayStart = value.indexOf('[');
+    const arrayEnd = value.lastIndexOf(']');
+
+    if (arrayStart !== -1 && arrayEnd > arrayStart) {
+      return value.slice(arrayStart, arrayEnd + 1);
+    }
+
+    const objectStart = value.indexOf('{');
+    const objectEnd = value.lastIndexOf('}');
+
+    if (objectStart !== -1 && objectEnd > objectStart) {
+      return value.slice(objectStart, objectEnd + 1);
+    }
+
+    return null;
+  }
+
+  /**
+   * 清理单条候选文本。
+   * @param value 原始候选。
+   * @returns 可展示文本。
+   */
+  private normalizeSuggestionText(value: string): string {
+    return value
+      .replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 240);
+  }
+
+  /**
+   * 将模型网关异常转成业务错误载荷。
+   * @param error 任意异常。
+   * @returns code/message。
+   */
+  private toModelGatewayErrorPayload(error: unknown): { code: string; message: string } {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      typeof (error as { code?: unknown }).code === 'string' &&
+      error instanceof Error
+    ) {
+      return {
+        code: (error as { code: string }).code,
+        message: error.message
+      };
+    }
+
+    return {
+      code: ERROR_CODES.MODEL_GATEWAY_REQUEST_FAILED,
+      message: error instanceof Error && error.message ? error.message : '生成候选发言失败。'
+    };
   }
 
   /**
@@ -1147,10 +1431,7 @@ export class ChatService {
    */
   private resolveTemplateVariables(value: string, variables: ChatTemplateVariables): string {
     return value
-      .replace(
-        /\{\{\s*(char|character|bot|assistant|char_name)\s*\}\}/gi,
-        variables.characterName
-      )
+      .replace(/\{\{\s*(char|character|bot|assistant|char_name)\s*\}\}/gi, variables.characterName)
       .replace(/\{\{\s*(user|persona|user_name)\s*\}\}/gi, variables.userName)
       .replace(/<BOT>/gi, variables.characterName)
       .replace(/<USER>/gi, variables.userName);

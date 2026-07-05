@@ -24,6 +24,29 @@ export type ChatStreamPayload = {
   maxHistoryCharacters?: number;
 };
 
+/** 聊天候选用户发言请求入参（POST /chat/suggestions）。 */
+export type ChatSuggestionPayload = Omit<
+  ChatStreamPayload,
+  'userMessage' | 'regenerateMessageId'
+> & {
+  /** 希望生成的候选条数，默认 3。 */
+  count?: number;
+};
+
+/** 单条候选用户发言。 */
+export type ChatSuggestion = {
+  /** 前端展示和选择用的稳定序号。 */
+  id: string;
+  /** 可直接放入聊天输入框的文本。 */
+  text: string;
+};
+
+/** 聊天候选用户发言响应。 */
+export type ChatSuggestionResult = {
+  /** 候选用户发言列表。 */
+  suggestions: ChatSuggestion[];
+};
+
 /** SSE 增量帧：模型生成的一个文本片段。 */
 export type ChatStreamDeltaEvent = {
   /** 本次增量的文本片段。 */

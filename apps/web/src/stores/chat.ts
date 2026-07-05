@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia';
+import type { ChatSuggestion, ChatSuggestionPayload } from '@tavern/shared';
 
+import { fetchChatSuggestions } from '../api/chat';
 import {
   deleteMessage,
   fetchConversationMessages,
@@ -29,6 +31,9 @@ type ChatState = {
   regeneratingMessageId: string | null;
   mutatingMessageIds: string[];
   operationError: string | null;
+  suggestions: ChatSuggestion[];
+  suggestionsLoading: boolean;
+  suggestionsError: string | null;
 };
 
 export const useChatStore = defineStore('chat', {
@@ -50,7 +55,10 @@ export const useChatStore = defineStore('chat', {
     currentStreamTaskId: null,
     regeneratingMessageId: null,
     mutatingMessageIds: [],
-    operationError: null
+    operationError: null,
+    suggestions: [],
+    suggestionsLoading: false,
+    suggestionsError: null
   }),
   getters: {
     visibleMessages: (state): Message[] => [
@@ -87,6 +95,37 @@ export const useChatStore = defineStore('chat', {
       this.regeneratingMessageId = null;
       this.mutatingMessageIds = [];
       this.operationError = null;
+      this.suggestions = [];
+      this.suggestionsLoading = false;
+      this.suggestionsError = null;
+    },
+    clearSuggestions() {
+      this.suggestions = [];
+      this.suggestionsError = null;
+    },
+    applySuggestion(text: string) {
+      this.draft = text;
+      this.clearSuggestions();
+    },
+    async loadSuggestions(payload: ChatSuggestionPayload) {
+      if (this.isGenerating || this.suggestionsLoading) {
+        return;
+      }
+
+      this.suggestionsLoading = true;
+      this.suggestionsError = null;
+
+      try {
+        const result = await fetchChatSuggestions(payload);
+        this.suggestions = result.suggestions;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '生成候选发言失败。';
+        this.suggestionsError = message;
+        this.suggestions = [];
+        throw new Error(message);
+      } finally {
+        this.suggestionsLoading = false;
+      }
     },
     beginStreaming(conversationId: string, userMessage: string) {
       const content = userMessage.trim();
@@ -112,6 +151,7 @@ export const useChatStore = defineStore('chat', {
       });
       this.sendError = null;
       this.draft = '';
+      this.clearSuggestions();
       this.sending = true;
       this.isStreaming = true;
       this.stopping = false;

@@ -10,7 +10,12 @@
       </n-button>
     </header>
 
-    <div ref="messageListRef" class="chat-room__messages" aria-label="消息列表" @scroll="handleScroll">
+    <div
+      ref="messageListRef"
+      class="chat-room__messages"
+      aria-label="消息列表"
+      @scroll="handleScroll"
+    >
       <LoadingState v-if="loading" text="正在加载消息" />
 
       <ErrorState v-else-if="error" title="消息加载失败" :description="error" />
@@ -54,17 +59,23 @@
       :is-generating="isGenerating"
       :can-stop="canStop"
       :stopping="stopping"
+      :suggestions="suggestions"
+      :suggestions-loading="suggestionsLoading"
+      :suggestions-error="suggestionsError"
       @update:model-value="$emit('update:draft', $event)"
       @send="$emit('send')"
       @stop="$emit('stop')"
       @regenerate="$emit('regenerate-latest')"
       @preview-prompt="$emit('preview-prompt')"
+      @request-suggestions="$emit('request-suggestions')"
+      @apply-suggestion="$emit('apply-suggestion', $event)"
     />
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import type { ChatSuggestion } from '@tavern/shared';
 
 import type { Message } from '../api/messages';
 import ChatInput from './ChatInput.vue';
@@ -75,21 +86,25 @@ import LoadingState from './LoadingState.vue';
 
 const props = withDefaults(
   defineProps<{
-  title: string;
-  characterName?: string | null;
-  messages: Message[];
-  draft: string;
-  loading?: boolean;
-  error?: string | null;
-  sendError?: string | null;
-  sending?: boolean;
-  isGenerating?: boolean;
-  canStop?: boolean;
-  stopping?: boolean;
-  mutatingMessageIds?: string[];
+    title: string;
+    characterName?: string | null;
+    messages: Message[];
+    draft: string;
+    loading?: boolean;
+    error?: string | null;
+    sendError?: string | null;
+    sending?: boolean;
+    isGenerating?: boolean;
+    canStop?: boolean;
+    stopping?: boolean;
+    mutatingMessageIds?: string[];
+    suggestions?: ChatSuggestion[];
+    suggestionsLoading?: boolean;
+    suggestionsError?: string | null;
   }>(),
   {
-    mutatingMessageIds: () => []
+    mutatingMessageIds: () => [],
+    suggestions: () => []
   }
 );
 
@@ -111,6 +126,8 @@ defineEmits<{
   regenerate: [message: Message];
   'regenerate-latest': [];
   'preview-prompt': [];
+  'request-suggestions': [];
+  'apply-suggestion': [value: string];
 }>();
 
 const messageListRef = ref<HTMLElement | null>(null);
@@ -118,7 +135,9 @@ const subtitle = computed(() => props.characterName ?? '未选择角色');
 // 用户是否贴近底部：true 时随消息增长自动滚到底；用户向上滚阅读历史时置 false，不被打断
 const stickToBottom = ref(true);
 const messageSignature = computed(() =>
-  props.messages.map((message) => `${message.id}:${message.status}:${message.content.length}`).join('|')
+  props.messages
+    .map((message) => `${message.id}:${message.status}:${message.content.length}`)
+    .join('|')
 );
 
 /** 贴底判定阈值（px）：距底部小于该值视为“在底部”。 */

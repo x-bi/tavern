@@ -29,6 +29,39 @@ type PromptTemplateVariables = {
   userName: string;
 };
 
+type RoleplaySegmentKind = 'dialogue' | 'self_action' | 'character_action' | 'narration';
+
+type RoleplaySegment = {
+  kind: RoleplaySegmentKind;
+  content: string;
+};
+
+const ROLEPLAY_SEGMENT_ALIASES: Record<string, RoleplaySegmentKind> = {
+  台词: 'dialogue',
+  对话: 'dialogue',
+  说话: 'dialogue',
+  我的动作: 'self_action',
+  动作: 'self_action',
+  想法: 'self_action',
+  心理: 'self_action',
+  内心: 'self_action',
+  对方动作: 'character_action',
+  对面动作: 'character_action',
+  对面角色动作: 'character_action',
+  角色动作: 'character_action',
+  角色状态: 'character_action',
+  旁白: 'narration',
+  叙述: 'narration',
+  场景: 'narration'
+};
+
+const ROLEPLAY_SEGMENT_TITLES: Record<RoleplaySegmentKind, string> = {
+  dialogue: '用户台词',
+  self_action: '用户动作/想法',
+  character_action: '对方角色动作/状态',
+  narration: '旁白/场景'
+};
+
 /**
  * Prompt Builder 服务：把会话上下文组装成发给模型的最终消息序列。
  *
@@ -129,7 +162,7 @@ export class PromptBuilderService {
         kind: 'history',
         source: 'message',
         title: `History ${message.role}`,
-        content: this.resolveTemplateVariables(message.content, variables),
+        content: this.formatConversationMessageContent(message, variables),
         sourceId: message.id
       })
     );
@@ -148,7 +181,7 @@ export class PromptBuilderService {
       kind: 'current_user_input',
       source: 'message',
       title: 'Current user input',
-      content: this.resolveTemplateVariables(input.currentUserMessage.content, variables),
+      content: this.formatConversationMessageContent(input.currentUserMessage, variables),
       sourceId: input.currentUserMessage.id
     });
     worldBookSections.after_current_user_input = this.addWorldBookSections(
@@ -580,6 +613,120 @@ export class PromptBuilderService {
   }
 
   /**
+   * 格式化对话消息内容。
+   *
+   * 用户消息可使用行首段落标记，例如 `[台词]`、`[我的动作]`、`[对方动作]`、`[旁白]`。
+   * 只有显式标记时才转换成结构化块；普通消息保持原始纯文本形态，避免影响既有对话。
+   *
+   * @param message 历史或当前消息。
+   * @param variables Prompt 模板变量。
+   * @returns 发给模型的消息内容。
+   */
+  private formatConversationMessageContent(
+    message: ChatMessageLike,
+    variables: PromptTemplateVariables
+  ): string {
+    const content = this.resolveTemplateVariables(message.content, variables);
+
+    if (message.role !== 'user') {
+      return content;
+    }
+
+    const segments = this.parseRoleplaySegments(content);
+
+    if (!segments || segments.length === 0) {
+      return content;
+    }
+
+    return [
+      '用户输入包含分段标记。请按下面标签理解每段含义，不要把标签原样复述：',
+      ...segments.map((segment) =>
+        this.formatTitledBlock(ROLEPLAY_SEGMENT_TITLES[segment.kind], segment.content)
+      )
+    ]
+      .filter((line) => line.length > 0)
+      .join('\n');
+  }
+
+  /**
+   * 解析行首角色扮演段落标记。
+   *
+   * 标记行格式：`[台词] 内容`。未带新标记的后续行会追加到上一段；
+   * 第一段之前的未标记文本按用户台词处理，避免误删输入。
+   *
+   * @param content 用户消息内容。
+   * @returns 解析出的段落；没有任何显式标记时返回 null。
+   */
+  private parseRoleplaySegments(content: string): RoleplaySegment[] | null {
+    const lines = content.split(/\r?\n/);
+    const segments: RoleplaySegment[] = [];
+    let currentSegment: RoleplaySegment | null = null;
+    let hasExplicitMarker = false;
+
+    lines.forEach((line) => {
+      const marker = this.parseRoleplayMarker(line);
+
+      if (marker) {
+        hasExplicitMarker = true;
+        currentSegment = {
+          kind: marker.kind,
+          content: marker.content
+        };
+        segments.push(currentSegment);
+
+        return;
+      }
+
+      if (!currentSegment) {
+        currentSegment = {
+          kind: 'dialogue',
+          content: line
+        };
+        segments.push(currentSegment);
+
+        return;
+      }
+
+      currentSegment.content = `${currentSegment.content}\n${line}`;
+    });
+
+    if (!hasExplicitMarker) {
+      return null;
+    }
+
+    return segments
+      .map((segment) => ({
+        ...segment,
+        content: segment.content.trim()
+      }))
+      .filter((segment) => segment.content.length > 0);
+  }
+
+  /**
+   * 解析单行是否以角色扮演标记开头。
+   * @param line 原始行。
+   * @returns 标记种类和行内内容；不是标记行时返回 null。
+   */
+  private parseRoleplayMarker(line: string): RoleplaySegment | null {
+    const match = line.match(/^\s*\[([^\]]{1,12})\]\s*(.*)$/u);
+
+    if (!match) {
+      return null;
+    }
+
+    const kind = ROLEPLAY_SEGMENT_ALIASES[match[1].trim()];
+
+    if (!kind) {
+      return null;
+    }
+
+    return {
+      kind,
+      content: match[2]
+    };
+  }
+
+  /**
    * 把 section 格式化成消息内的一段。
    *
    * 对话类 section（history / current_user_input）返回纯内容，不加标题：
@@ -620,10 +767,7 @@ export class PromptBuilderService {
    */
   private resolveTemplateVariables(value: string, variables: PromptTemplateVariables): string {
     return value
-      .replace(
-        /\{\{\s*(char|character|bot|assistant|char_name)\s*\}\}/gi,
-        variables.characterName
-      )
+      .replace(/\{\{\s*(char|character|bot|assistant|char_name)\s*\}\}/gi, variables.characterName)
       .replace(/\{\{\s*(user|persona|user_name)\s*\}\}/gi, variables.userName)
       .replace(/<BOT>/gi, variables.characterName)
       .replace(/<USER>/gi, variables.userName)

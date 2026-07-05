@@ -28,6 +28,9 @@
         :can-stop="chatStore.canStop"
         :stopping="chatStore.stopping"
         :mutating-message-ids="chatStore.mutatingMessageIds"
+        :suggestions="chatStore.suggestions"
+        :suggestions-loading="chatStore.suggestionsLoading"
+        :suggestions-error="chatStore.suggestionsError"
         @update:draft="chatStore.setDraft"
         @reload="reloadMessages"
         @send="handleSend"
@@ -38,6 +41,8 @@
         @regenerate="handleRegenerate"
         @regenerate-latest="handleLatestRegeneratePlaceholder"
         @preview-prompt="goPromptPreview"
+        @request-suggestions="handleSuggestions"
+        @apply-suggestion="chatStore.applySuggestion"
       />
 
       <aside class="chat-view__side" aria-label="会话配置占位">
@@ -230,6 +235,26 @@ async function handleRegenerate(target: Message) {
     });
   } catch (error) {
     message.error(error instanceof Error ? error.message : '重新生成失败。');
+  }
+}
+
+async function handleSuggestions() {
+  const activeConversationId = conversationId.value;
+
+  if (!activeConversationId || chatStore.isGenerating) {
+    return;
+  }
+
+  try {
+    await chatStore.loadSuggestions({
+      conversationId: activeConversationId,
+      count: 3,
+      modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
+      modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
+      presetId: currentConversation.value?.promptPresetId ?? undefined
+    });
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '生成候选发言失败。');
   }
 }
 

@@ -5,7 +5,10 @@
         <h2>参数预设</h2>
         <p>维护对话生成参数和输出风格约束，后续聊天页会从这里选择预设。</p>
       </div>
-      <n-button type="primary" @click="openCreate">新建预设</n-button>
+      <n-space justify="end">
+        <n-button secondary @click="openImport">导入 JSON</n-button>
+        <n-button type="primary" @click="openCreate">新建预设</n-button>
+      </n-space>
     </header>
 
     <section class="preset-view__toolbar">
@@ -103,6 +106,18 @@
         />
       </n-drawer-content>
     </n-drawer>
+
+    <ModuleJsonImportDrawer
+      v-model:show="importDrawerVisible"
+      title="导入参数预设 JSON"
+      format-label="tavern-lite.prompt-preset.v1"
+      :preview="importPreview"
+      :previewing="importPreviewing"
+      :importing="importing"
+      :error="importError"
+      @preview="previewPresetImport"
+      @commit="commitPresetImport"
+    />
   </main>
 </template>
 
@@ -110,13 +125,22 @@
 import { computed, onMounted, ref } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
-import type { PromptPreset, PromptPresetMutationPayload } from '../../api/presets';
+import {
+  importPromptPresetJson,
+  type PromptPreset,
+  type PromptPresetMutationPayload
+} from '../../api/presets';
 import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
+import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import PromptPresetForm from '../../components/PromptPresetForm.vue';
 import { usePresetStore } from '../../stores/preset';
-import type { PromptPresetPayload } from '@tavern/shared';
+import type {
+  ModuleImportDuplicateNameStrategy,
+  PromptPresetImportPreview,
+  PromptPresetPayload
+} from '@tavern/shared';
 
 const presetStore = usePresetStore();
 const dialog = useDialog();
@@ -126,6 +150,11 @@ const drawerVisible = ref(false);
 const editingPreset = ref<PromptPreset | null>(null);
 const deletingId = ref<string | null>(null);
 const settingDefaultId = ref<string | null>(null);
+const importDrawerVisible = ref(false);
+const importPreview = ref<PromptPresetImportPreview | null>(null);
+const importError = ref<string | null>(null);
+const importPreviewing = ref(false);
+const importing = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 
 onMounted(() => {
@@ -144,6 +173,12 @@ function openCreate() {
   editingPreset.value = null;
   presetStore.saveError = null;
   drawerVisible.value = true;
+}
+
+function openImport() {
+  importPreview.value = null;
+  importError.value = null;
+  importDrawerVisible.value = true;
 }
 
 function openEdit(preset: PromptPreset) {
@@ -167,6 +202,51 @@ async function handleSubmit(payload: PromptPresetPayload | PromptPresetMutationP
 
   message.success(editingPreset.value ? '参数预设已保存' : '参数预设已创建');
   closeDrawer();
+}
+
+async function previewPresetImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: ModuleImportDuplicateNameStrategy;
+}) {
+  importPreviewing.value = true;
+  importError.value = null;
+
+  try {
+    const result = await importPromptPresetJson(payload.rawJson, {
+      commit: false,
+      duplicateNameStrategy: payload.duplicateNameStrategy
+    });
+
+    importPreview.value = result.preview;
+  } catch (error) {
+    importError.value = error instanceof Error ? error.message : '参数预设 JSON 预览失败。';
+  } finally {
+    importPreviewing.value = false;
+  }
+}
+
+async function commitPresetImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: ModuleImportDuplicateNameStrategy;
+}) {
+  importing.value = true;
+  importError.value = null;
+
+  try {
+    const result = await importPromptPresetJson(payload.rawJson, {
+      commit: true,
+      duplicateNameStrategy: payload.duplicateNameStrategy
+    });
+
+    await presetStore.loadPresets({ page: 1 });
+    importPreview.value = result.preview;
+    importDrawerVisible.value = false;
+    message.success(`参数预设“${result.preview.name}”已导入`);
+  } catch (error) {
+    importError.value = error instanceof Error ? error.message : '参数预设 JSON 导入失败。';
+  } finally {
+    importing.value = false;
+  }
 }
 
 function confirmDelete(preset: PromptPreset) {

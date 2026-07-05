@@ -25,6 +25,7 @@ Content-Type: application/json
 - `rawJson` 是合法 JSON。
 - `formatVersion` 必须是 `tavern-lite.backup.v1`。
 - 顶层 `data`、`resources.assets` 和核心数组存在。
+- 请求体大小上限由服务端 `REQUEST_BODY_LIMIT` 统一控制，默认 `5mb`。
 - 核心记录有必要字段和可解析时间。
 - 记录 ID、模型配置名、预设名、Persona 名、设置 `scope/key` 没有重复。
 - 会话、消息、世界书、头像资源等引用能在备份文件内找到。

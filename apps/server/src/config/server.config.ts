@@ -13,6 +13,8 @@ export type ServerConfig = {
   port: number;
   /** API 路由前缀，默认 api（最终路径形如 /api/...）。 */
   apiPrefix: string;
+  /** JSON / urlencoded 请求体大小上限，默认 5mb。 */
+  requestBodyLimit: string;
   /** 允许的 CORS 来源列表，从 CORS_ORIGINS 逗号分隔得到。 */
   corsOrigins: string[];
 };
@@ -30,6 +32,7 @@ export default registerAs('server', (): ServerConfig => {
     host: process.env.SERVER_HOST ?? '127.0.0.1',
     port: Number(process.env.SERVER_PORT ?? 3100),
     apiPrefix: process.env.API_PREFIX ?? 'api',
+    requestBodyLimit: process.env.REQUEST_BODY_LIMIT ?? '5mb',
     corsOrigins: corsOrigins
       .split(',')
       .map((origin) => origin.trim())

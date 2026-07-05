@@ -5,7 +5,10 @@
         <h2>Persona</h2>
         <p>维护用户身份、偏好和表达方式，后续 Prompt Builder 会从这里读取。</p>
       </div>
-      <n-button type="primary" @click="openCreate">新建 Persona</n-button>
+      <n-space justify="end">
+        <n-button secondary @click="openImport">导入 JSON</n-button>
+        <n-button type="primary" @click="openCreate">新建 Persona</n-button>
+      </n-space>
     </header>
 
     <section class="persona-view__toolbar">
@@ -103,6 +106,18 @@
         />
       </n-drawer-content>
     </n-drawer>
+
+    <ModuleJsonImportDrawer
+      v-model:show="importDrawerVisible"
+      title="导入 Persona JSON"
+      format-label="tavern-lite.persona.v1"
+      :preview="importPreview"
+      :previewing="importPreviewing"
+      :importing="importing"
+      :error="importError"
+      @preview="previewPersonaImport"
+      @commit="commitPersonaImport"
+    />
   </main>
 </template>
 
@@ -110,13 +125,18 @@
 import { computed, onMounted, ref } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
-import type { Persona, PersonaMutationPayload } from '../../api/personas';
+import { importPersonaJson, type Persona, type PersonaMutationPayload } from '../../api/personas';
 import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
+import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import PersonaEditor from '../../components/PersonaEditor.vue';
 import { usePersonaStore } from '../../stores/persona';
-import type { PersonaPayload } from '@tavern/shared';
+import type {
+  ModuleImportDuplicateNameStrategy,
+  PersonaImportPreview,
+  PersonaPayload
+} from '@tavern/shared';
 
 const personaStore = usePersonaStore();
 const dialog = useDialog();
@@ -126,6 +146,11 @@ const drawerVisible = ref(false);
 const editingPersona = ref<Persona | null>(null);
 const deletingId = ref<string | null>(null);
 const settingDefaultId = ref<string | null>(null);
+const importDrawerVisible = ref(false);
+const importPreview = ref<PersonaImportPreview | null>(null);
+const importError = ref<string | null>(null);
+const importPreviewing = ref(false);
+const importing = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 
 onMounted(() => {
@@ -144,6 +169,12 @@ function openCreate() {
   editingPersona.value = null;
   personaStore.saveError = null;
   drawerVisible.value = true;
+}
+
+function openImport() {
+  importPreview.value = null;
+  importError.value = null;
+  importDrawerVisible.value = true;
 }
 
 function openEdit(persona: Persona) {
@@ -167,6 +198,51 @@ async function handleSubmit(payload: PersonaPayload | PersonaMutationPayload) {
 
   message.success(editingPersona.value ? 'Persona 已保存' : 'Persona 已创建');
   closeDrawer();
+}
+
+async function previewPersonaImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: ModuleImportDuplicateNameStrategy;
+}) {
+  importPreviewing.value = true;
+  importError.value = null;
+
+  try {
+    const result = await importPersonaJson(payload.rawJson, {
+      commit: false,
+      duplicateNameStrategy: payload.duplicateNameStrategy
+    });
+
+    importPreview.value = result.preview;
+  } catch (error) {
+    importError.value = error instanceof Error ? error.message : 'Persona JSON 预览失败。';
+  } finally {
+    importPreviewing.value = false;
+  }
+}
+
+async function commitPersonaImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: ModuleImportDuplicateNameStrategy;
+}) {
+  importing.value = true;
+  importError.value = null;
+
+  try {
+    const result = await importPersonaJson(payload.rawJson, {
+      commit: true,
+      duplicateNameStrategy: payload.duplicateNameStrategy
+    });
+
+    await personaStore.loadPersonas({ page: 1 });
+    importPreview.value = result.preview;
+    importDrawerVisible.value = false;
+    message.success(`Persona“${result.preview.name}”已导入`);
+  } catch (error) {
+    importError.value = error instanceof Error ? error.message : 'Persona JSON 导入失败。';
+  } finally {
+    importing.value = false;
+  }
 }
 
 function confirmDelete(persona: Persona) {

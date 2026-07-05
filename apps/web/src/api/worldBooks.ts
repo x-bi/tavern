@@ -6,9 +6,11 @@
  */
 import { requestJson } from './http';
 import type {
+  ModuleImportDuplicateNameStrategy,
   WorldBookEntryPayload,
   WorldBookEntryResponse,
   WorldBookEntryUpdatePayload,
+  WorldBookImportResponse,
   WorldBookListResponse,
   WorldBookPayload,
   WorldBookResponse,
@@ -107,6 +109,39 @@ export async function createWorldBook(payload: WorldBookPayload): Promise<WorldB
     method: 'POST',
     body: payload
   });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/**
+ * 导入世界书 JSON。POST /world-books/import
+ * @param rawJson 原始 JSON 文本。
+ * @param options commit=false 为预览，commit=true 才落库。
+ * @returns 导入预览或正式导入结果。
+ * @throws ApiClientError 后端返回失败时抛出。
+ */
+export async function importWorldBookJson(
+  rawJson: string,
+  options: {
+    commit?: boolean;
+    duplicateNameStrategy?: ModuleImportDuplicateNameStrategy;
+  } = {}
+): Promise<WorldBookImportResponse<WorldBookResponse>> {
+  const response = await requestJson<WorldBookImportResponse<WorldBookResponse>>(
+    '/world-books/import',
+    {
+      method: 'POST',
+      body: {
+        rawJson,
+        commit: options.commit ?? false,
+        duplicateNameStrategy: options.duplicateNameStrategy ?? 'reject'
+      }
+    }
+  );
 
   if (!response.success) {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);

@@ -2,12 +2,48 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { Prisma, type UserPersona } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
+import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
+import {
+  createAvailableName,
+  limitText,
+  optionalBoolean,
+  optionalRecord,
+  optionalString,
+  parseModuleJson,
+  requiredString,
+  type JsonRecord,
+  type ModuleJsonImportWarning
+} from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreatePersonaDto } from './dto/create-persona.dto';
 import type { QueryPersonasDto } from './dto/query-personas.dto';
 import type { UpdatePersonaDto } from './dto/update-persona.dto';
 import type { PersonaListResponse, PersonaResponse } from './persona.types';
+
+type PersonaImportPreview = {
+  name: string;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  isDefault: boolean;
+  warnings: ModuleJsonImportWarning[];
+  nameConflict: boolean;
+  suggestedName: string | null;
+};
+
+type PersonaImportResponse = {
+  imported: boolean;
+  preview: PersonaImportPreview;
+  persona: PersonaResponse | null;
+};
+
+type NormalizedPersonaImport = {
+  name: string;
+  content: string;
+  metadata: Record<string, unknown> | null;
+  isDefault: boolean;
+  warnings: ModuleJsonImportWarning[];
+};
 
 /**
  * 人设服务：用户人设的 CRUD + 设为默认。
@@ -103,6 +139,97 @@ export class PersonasService {
       return this.toResponse(persona);
     } catch (error) {
       // 捕获唯一名冲突（P2002）转成 409
+      this.throwIfUniqueNameConflict(error);
+      throw error;
+    }
+  }
+
+  /**
+   * 导入 Persona JSON：commit=false 只返回预览，commit=true 才创建记录。
+   * @param currentUser 当前登录用户。
+   * @param dto 导入入参，含 rawJson、commit 和同名处理策略。
+   * @returns PersonaImportResponse，正式导入时包含新建 Persona。
+   * @throws BadRequestException JSON 非法、格式不符或含敏感字段时抛 400。
+   * @throws ConflictException 同名冲突且策略为 reject 时抛 409。
+   */
+  async importJson(
+    currentUser: CurrentUser,
+    dto: ImportModuleJsonDto
+  ): Promise<PersonaImportResponse> {
+    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.persona.v1');
+    const normalized = this.normalizePersonaImport(parsed);
+    const existingNames = await this.loadExistingNames(currentUser);
+    const nameConflict = existingNames.has(normalized.name);
+    const suggestedName = nameConflict ? createAvailableName(normalized.name, existingNames) : null;
+    const preview: PersonaImportPreview = {
+      ...normalized,
+      nameConflict,
+      suggestedName
+    };
+
+    if (!dto.commit) {
+      return {
+        imported: false,
+        preview,
+        persona: null
+      };
+    }
+
+    if (nameConflict && dto.duplicateNameStrategy !== 'rename') {
+      throw new ConflictException({
+        code: ERROR_CODES.MODULE_IMPORT_NAME_EXISTS,
+        message: 'Persona name already exists.',
+        details: {
+          suggestedName
+        }
+      });
+    }
+
+    const name = nameConflict && suggestedName ? suggestedName : normalized.name;
+
+    try {
+      const persona = normalized.isDefault
+        ? await this.prisma.$transaction(async (tx) => {
+            await tx.userPersona.updateMany({
+              where: {
+                userId: currentUser.id,
+                deletedAt: null,
+                isDefault: true
+              },
+              data: {
+                isDefault: false
+              }
+            });
+
+            return tx.userPersona.create({
+              data: {
+                userId: currentUser.id,
+                name,
+                content: normalized.content,
+                metadataJson: this.stringifyNullable(normalized.metadata),
+                isDefault: normalized.isDefault
+              }
+            });
+          })
+        : await this.prisma.userPersona.create({
+            data: {
+              userId: currentUser.id,
+              name,
+              content: normalized.content,
+              metadataJson: this.stringifyNullable(normalized.metadata),
+              isDefault: normalized.isDefault
+            }
+          });
+
+      return {
+        imported: true,
+        preview: {
+          ...preview,
+          name
+        },
+        persona: this.toResponse(persona)
+      };
+    } catch (error) {
       this.throwIfUniqueNameConflict(error);
       throw error;
     }
@@ -232,16 +359,56 @@ export class PersonasService {
   }
 
   /**
+   * 归一化 Persona 导入 JSON。
+   * @param record 原始 JSON 对象。
+   * @returns 可写入数据库的 Persona 导入数据。
+   */
+  private normalizePersonaImport(record: JsonRecord): NormalizedPersonaImport {
+    const warnings: ModuleJsonImportWarning[] = [];
+    const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
+    const content = limitText(
+      optionalString(record, 'content', 'content') ?? '',
+      10000,
+      'content',
+      warnings
+    );
+
+    return {
+      name,
+      content,
+      metadata: optionalRecord(record, 'metadata', 'metadata'),
+      isDefault: optionalBoolean(record, 'isDefault', false, 'isDefault'),
+      warnings
+    };
+  }
+
+  /**
+   * 读取当前用户已有 Persona 名称集合。
+   * @param currentUser 当前登录用户。
+   * @returns 当前用户未删除 Persona 的名称集合。
+   */
+  private async loadExistingNames(currentUser: CurrentUser): Promise<Set<string>> {
+    const items = await this.prisma.userPersona.findMany({
+      where: {
+        userId: currentUser.id,
+        deletedAt: null
+      },
+      select: {
+        name: true
+      }
+    });
+
+    return new Set(items.map((item) => item.name));
+  }
+
+  /**
    * 查询人设并校验所有权：限定 id + 当前用户 + 未删除。
    * @param currentUser 当前登录用户。
    * @param id 人设 ID。
    * @returns 校验通过的人设记录。
    * @throws NotFoundException 不存在/不属于该用户/已删除。
    */
-  private async findOwnedActivePersona(
-    currentUser: CurrentUser,
-    id: string
-  ): Promise<UserPersona> {
+  private async findOwnedActivePersona(currentUser: CurrentUser, id: string): Promise<UserPersona> {
     const persona = await this.prisma.userPersona.findFirst({
       where: {
         id,

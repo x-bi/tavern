@@ -1,7 +1,30 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import type { Character, WorldBook, WorldBookEntry } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
+import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
+import {
+  createAvailableName,
+  invalidModuleFormat,
+  limitText,
+  optionalBoolean,
+  optionalInteger,
+  optionalNullableInteger,
+  optionalRecord,
+  optionalString,
+  optionalStringArray,
+  parseModuleJson,
+  requiredString,
+  requiredStringArray,
+  type JsonRecord,
+  type ModuleJsonImportWarning
+} from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { WorldBookContext, WorldBookEntryContext } from '../../services/prompt-builder/types';
 import type { CurrentUser } from '../users/user.types';
@@ -17,6 +40,41 @@ import type {
   WorldBookListResponse,
   WorldBookResponse
 } from './world-book.types';
+
+type WorldBookEntryImportPreview = {
+  title: string;
+  content: string;
+  keywords: string[];
+  secondaryKeywords: string[];
+  isEnabled: boolean;
+  priority: number;
+  insertionOrder: WorldBookEntryInsertionOrder;
+  tokenBudget: number | null;
+  caseSensitive: boolean;
+  metadata: Record<string, unknown> | null;
+};
+
+type WorldBookImportPreview = {
+  name: string;
+  description: string;
+  characterId: string | null;
+  isEnabled: boolean;
+  scanDepth: number;
+  tokenBudget: number;
+  metadata: Record<string, unknown> | null;
+  entries: WorldBookEntryImportPreview[];
+  warnings: ModuleJsonImportWarning[];
+  nameConflict: boolean;
+  suggestedName: string | null;
+};
+
+type WorldBookImportResponse = {
+  imported: boolean;
+  preview: WorldBookImportPreview;
+  worldBook: WorldBookResponse | null;
+};
+
+type NormalizedWorldBookImport = Omit<WorldBookImportPreview, 'nameConflict' | 'suggestedName'>;
 
 /** 世界书 + 其条目（include 后的形态）。 */
 type WorldBookWithEntries = WorldBook & {
@@ -154,6 +212,105 @@ export class WorldBooksService {
     });
 
     return this.toWorldBookResponse(worldBook);
+  }
+
+  /**
+   * 导入世界书 JSON：commit=false 只返回预览，commit=true 创建世界书和全部条目。
+   * @param currentUser 当前登录用户。
+   * @param dto 导入入参，含 rawJson、commit 和同名处理策略。
+   * @returns WorldBookImportResponse，正式导入时包含新建世界书。
+   * @throws BadRequestException JSON 非法、格式不符、角色不存在或含敏感字段时抛 400。
+   * @throws ConflictException 同名冲突且策略为 reject 时抛 409。
+   */
+  async importJson(
+    currentUser: CurrentUser,
+    dto: ImportModuleJsonDto
+  ): Promise<WorldBookImportResponse> {
+    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.world-book.v1');
+    const normalized = await this.normalizeWorldBookImport(currentUser, parsed);
+    const existingNames = await this.loadExistingNames(currentUser);
+    const nameConflict = existingNames.has(normalized.name);
+    const suggestedName = nameConflict ? createAvailableName(normalized.name, existingNames) : null;
+    const preview: WorldBookImportPreview = {
+      ...normalized,
+      nameConflict,
+      suggestedName
+    };
+
+    if (!dto.commit) {
+      return {
+        imported: false,
+        preview,
+        worldBook: null
+      };
+    }
+
+    if (nameConflict && dto.duplicateNameStrategy !== 'rename') {
+      throw new ConflictException({
+        code: ERROR_CODES.MODULE_IMPORT_NAME_EXISTS,
+        message: 'World book name already exists.',
+        details: {
+          suggestedName
+        }
+      });
+    }
+
+    const name = nameConflict && suggestedName ? suggestedName : normalized.name;
+    const worldBook = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.worldBook.create({
+        data: {
+          userId: currentUser.id,
+          characterId: normalized.characterId,
+          name,
+          description: normalized.description,
+          isEnabled: normalized.isEnabled,
+          scanDepth: normalized.scanDepth,
+          tokenBudget: normalized.tokenBudget,
+          metadataJson: this.stringifyNullable(normalized.metadata)
+        }
+      });
+
+      if (normalized.entries.length > 0) {
+        await tx.worldBookEntry.createMany({
+          data: normalized.entries.map((entry) => ({
+            worldBookId: created.id,
+            title: entry.title,
+            content: entry.content,
+            keywordsJson: JSON.stringify(entry.keywords),
+            secondaryKeywordsJson: this.stringifyNullable(entry.secondaryKeywords),
+            isEnabled: entry.isEnabled,
+            priority: entry.priority,
+            position: entry.insertionOrder,
+            tokenBudget: entry.tokenBudget,
+            caseSensitive: entry.caseSensitive,
+            metadataJson: this.stringifyNullable(entry.metadata)
+          }))
+        });
+      }
+
+      return tx.worldBook.findFirstOrThrow({
+        where: {
+          id: created.id
+        },
+        include: {
+          entries: {
+            where: {
+              deletedAt: null
+            },
+            orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          }
+        }
+      });
+    });
+
+    return {
+      imported: true,
+      preview: {
+        ...preview,
+        name
+      },
+      worldBook: this.toWorldBookResponse(worldBook)
+    };
   }
 
   /**
@@ -351,6 +508,177 @@ export class WorldBooksService {
       deleted: true,
       id
     };
+  }
+
+  /**
+   * 归一化世界书导入 JSON。
+   * @param currentUser 当前登录用户。
+   * @param record 原始 JSON 对象。
+   * @returns 可写入数据库的世界书导入数据。
+   */
+  private async normalizeWorldBookImport(
+    currentUser: CurrentUser,
+    record: JsonRecord
+  ): Promise<NormalizedWorldBookImport> {
+    const warnings: ModuleJsonImportWarning[] = [];
+    const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
+    const characterId = await this.resolveCharacterId(
+      currentUser,
+      optionalString(record, 'characterId', 'characterId')
+    );
+
+    return {
+      name,
+      description: limitText(
+        optionalString(record, 'description', 'description') ?? '',
+        10000,
+        'description',
+        warnings
+      ),
+      characterId,
+      isEnabled: optionalBoolean(record, 'isEnabled', true, 'isEnabled'),
+      scanDepth: optionalInteger(record, 'scanDepth', 6, 'scanDepth'),
+      tokenBudget: optionalInteger(record, 'tokenBudget', 1000, 'tokenBudget'),
+      metadata: optionalRecord(record, 'metadata', 'metadata'),
+      entries: this.normalizeWorldBookEntries(record.entries, warnings),
+      warnings
+    };
+  }
+
+  /**
+   * 归一化世界书条目数组。
+   * @param value 原始 entries 字段。
+   * @param warnings 告警收集数组。
+   * @returns 条目导入预览列表。
+   */
+  private normalizeWorldBookEntries(
+    value: unknown,
+    warnings: ModuleJsonImportWarning[]
+  ): WorldBookEntryImportPreview[] {
+    if (value === undefined || value === null) {
+      return [];
+    }
+
+    if (!Array.isArray(value)) {
+      throw invalidModuleFormat('entries must be an array when present.');
+    }
+
+    return value.map((item, index) => {
+      if (typeof item !== 'object' || item === null || Array.isArray(item)) {
+        throw invalidModuleFormat(`entries[${index}] must be an object.`);
+      }
+
+      const record = item as JsonRecord;
+      const keywords = requiredStringArray(record, 'keywords', `entries[${index}].keywords`);
+
+      if (keywords.length === 0) {
+        throw invalidModuleFormat(`entries[${index}].keywords must contain at least one string.`);
+      }
+
+      return {
+        title: limitText(
+          requiredString(record, 'title', `entries[${index}].title`),
+          120,
+          `entries[${index}].title`,
+          warnings
+        ),
+        content: limitText(
+          requiredString(record, 'content', `entries[${index}].content`),
+          10000,
+          `entries[${index}].content`,
+          warnings
+        ),
+        keywords,
+        secondaryKeywords: optionalStringArray(
+          record,
+          'secondaryKeywords',
+          `entries[${index}].secondaryKeywords`
+        ),
+        isEnabled: optionalBoolean(record, 'isEnabled', true, `entries[${index}].isEnabled`),
+        priority: optionalInteger(record, 'priority', 0, `entries[${index}].priority`),
+        insertionOrder: this.normalizeInsertionOrder(
+          record.insertionOrder,
+          `entries[${index}].insertionOrder`,
+          warnings
+        ),
+        tokenBudget: optionalNullableInteger(
+          record,
+          'tokenBudget',
+          `entries[${index}].tokenBudget`
+        ),
+        caseSensitive: optionalBoolean(
+          record,
+          'caseSensitive',
+          false,
+          `entries[${index}].caseSensitive`
+        ),
+        metadata: optionalRecord(record, 'metadata', `entries[${index}].metadata`)
+      };
+    });
+  }
+
+  /**
+   * 归一化导入条目的插入位置，兼容旧提示词里的 message 命名。
+   * @param value 原始 insertionOrder。
+   * @param path 字段路径。
+   * @param warnings 告警收集数组。
+   * @returns 世界书条目插入位置。
+   */
+  private normalizeInsertionOrder(
+    value: unknown,
+    path: string,
+    warnings: ModuleJsonImportWarning[]
+  ): WorldBookEntryInsertionOrder {
+    if (value === undefined || value === null || value === '') {
+      return 'before_history';
+    }
+
+    if (typeof value !== 'string') {
+      throw invalidModuleFormat(`${path} must be a string when present.`);
+    }
+
+    if (value === 'before_current_user_message') {
+      warnings.push({
+        code: 'INSERTION_ORDER_ALIAS_NORMALIZED',
+        field: path,
+        message: 'before_current_user_message 已归一化为 before_current_user_input。'
+      });
+      return 'before_current_user_input';
+    }
+
+    if (value === 'after_current_user_message') {
+      warnings.push({
+        code: 'INSERTION_ORDER_ALIAS_NORMALIZED',
+        field: path,
+        message: 'after_current_user_message 已归一化为 after_current_user_input。'
+      });
+      return 'after_current_user_input';
+    }
+
+    if ((WORLD_BOOK_ENTRY_INSERTION_ORDERS as readonly string[]).includes(value)) {
+      return value as WorldBookEntryInsertionOrder;
+    }
+
+    throw invalidModuleFormat(`${path} has unsupported insertion order: ${value}.`);
+  }
+
+  /**
+   * 读取当前用户已有世界书名称集合。
+   * @param currentUser 当前登录用户。
+   * @returns 当前用户未删除世界书的名称集合。
+   */
+  private async loadExistingNames(currentUser: CurrentUser): Promise<Set<string>> {
+    const items = await this.prisma.worldBook.findMany({
+      where: {
+        userId: currentUser.id,
+        deletedAt: null
+      },
+      select: {
+        name: true
+      }
+    });
+
+    return new Set(items.map((item) => item.name));
   }
 
   /**

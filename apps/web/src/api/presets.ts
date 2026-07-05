@@ -5,6 +5,8 @@
  */
 import { requestJson } from './http';
 import type {
+  ModuleImportDuplicateNameStrategy,
+  PromptPresetImportResponse,
   PromptPresetListResponse,
   PromptPresetPayload,
   PromptPresetResponse
@@ -84,6 +86,39 @@ export async function createPromptPreset(
     method: 'POST',
     body: payload
   });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/**
+ * 导入 Prompt 预设 JSON。POST /prompt-presets/import
+ * @param rawJson 原始 JSON 文本。
+ * @param options commit=false 为预览，commit=true 才落库。
+ * @returns 导入预览或正式导入结果。
+ * @throws ApiClientError 后端返回失败时抛出。
+ */
+export async function importPromptPresetJson(
+  rawJson: string,
+  options: {
+    commit?: boolean;
+    duplicateNameStrategy?: ModuleImportDuplicateNameStrategy;
+  } = {}
+): Promise<PromptPresetImportResponse<PromptPresetResponse>> {
+  const response = await requestJson<PromptPresetImportResponse<PromptPresetResponse>>(
+    '/prompt-presets/import',
+    {
+      method: 'POST',
+      body: {
+        rawJson,
+        commit: options.commit ?? false,
+        duplicateNameStrategy: options.duplicateNameStrategy ?? 'reject'
+      }
+    }
+  );
 
   if (!response.success) {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);

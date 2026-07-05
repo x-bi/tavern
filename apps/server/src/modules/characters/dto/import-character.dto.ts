@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 
 /**
  * 导入角色卡 JSON 入参。
@@ -8,9 +8,8 @@ import { IsBoolean, IsIn, IsOptional, IsString, MaxLength } from 'class-validato
  * - commit=true：正式落库，若名称冲突按 duplicateNameStrategy 处理。
  */
 export class ImportCharacterDto {
-  /** 原始角色卡 JSON 文本，最长 100 万字符。 */
+  /** 原始角色卡 JSON 文本；大小上限由 REQUEST_BODY_LIMIT 统一控制。 */
   @IsString()
-  @MaxLength(1_000_000)
   rawJson!: string;
 
   /** 是否正式提交导入；不传默认 false（仅预览）。 */

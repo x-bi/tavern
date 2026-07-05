@@ -5,7 +5,10 @@
         <h2>世界书</h2>
         <p>维护世界书与条目数据，后续阶段会基于这些字段接入命中和注入流程。</p>
       </div>
-      <n-button type="primary" @click="openCreate">新建世界书</n-button>
+      <n-space justify="end">
+        <n-button secondary @click="openImport">导入 JSON</n-button>
+        <n-button type="primary" @click="openCreate">新建世界书</n-button>
+      </n-space>
     </header>
 
     <section class="world-book-view__toolbar">
@@ -178,6 +181,18 @@
         </n-form>
       </n-drawer-content>
     </n-drawer>
+
+    <ModuleJsonImportDrawer
+      v-model:show="importDrawerVisible"
+      title="导入世界书 JSON"
+      format-label="tavern-lite.world-book.v1"
+      :preview="importPreview"
+      :previewing="importPreviewing"
+      :importing="importing"
+      :error="importError"
+      @preview="previewWorldBookImport"
+      @commit="commitWorldBookImport"
+    />
   </main>
 </template>
 
@@ -192,12 +207,19 @@ import type {
   WorldBookEntryMutationPayload,
   WorldBookMutationPayload
 } from '../../api/worldBooks';
+import { importWorldBookJson } from '../../api/worldBooks';
 import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
+import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import WorldBookEditor from '../../components/WorldBookEditor.vue';
 import { useWorldBookStore } from '../../stores/worldBook';
-import type { WorldBookEntryPayload, WorldBookPayload } from '@tavern/shared';
+import type {
+  ModuleImportDuplicateNameStrategy,
+  WorldBookEntryPayload,
+  WorldBookImportPreview,
+  WorldBookPayload
+} from '@tavern/shared';
 
 type CreateWorldBookFormState = {
   name: string;
@@ -215,6 +237,11 @@ const searchText = ref(worldBookStore.search);
 const drawerVisible = ref(false);
 const deletingWorldBookId = ref<string | null>(null);
 const deletingEntryId = ref<string | null>(null);
+const importDrawerVisible = ref(false);
+const importPreview = ref<WorldBookImportPreview | null>(null);
+const importError = ref<string | null>(null);
+const importPreviewing = ref(false);
+const importing = ref(false);
 const createFormRef = ref<FormInst | null>(null);
 const editorRef = ref<InstanceType<typeof WorldBookEditor> | null>(null);
 const drawerWidth = computed(() => Math.min(620, window.innerWidth));
@@ -267,6 +294,12 @@ function openCreate() {
   drawerVisible.value = true;
 }
 
+function openImport() {
+  importPreview.value = null;
+  importError.value = null;
+  importDrawerVisible.value = true;
+}
+
 function closeCreate() {
   drawerVisible.value = false;
 }
@@ -293,6 +326,56 @@ async function submitCreateWorldBook() {
 
   message.success('世界书已创建');
   closeCreate();
+}
+
+async function previewWorldBookImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: ModuleImportDuplicateNameStrategy;
+}) {
+  importPreviewing.value = true;
+  importError.value = null;
+
+  try {
+    const result = await importWorldBookJson(payload.rawJson, {
+      commit: false,
+      duplicateNameStrategy: payload.duplicateNameStrategy
+    });
+
+    importPreview.value = result.preview;
+  } catch (error) {
+    importError.value = error instanceof Error ? error.message : '世界书 JSON 预览失败。';
+  } finally {
+    importPreviewing.value = false;
+  }
+}
+
+async function commitWorldBookImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: ModuleImportDuplicateNameStrategy;
+}) {
+  importing.value = true;
+  importError.value = null;
+
+  try {
+    const result = await importWorldBookJson(payload.rawJson, {
+      commit: true,
+      duplicateNameStrategy: payload.duplicateNameStrategy
+    });
+
+    await worldBookStore.loadWorldBooks({ page: 1 });
+
+    if (result.worldBook) {
+      worldBookStore.selectWorldBook(result.worldBook.id);
+    }
+
+    importPreview.value = result.preview;
+    importDrawerVisible.value = false;
+    message.success(`世界书“${result.preview.name}”已导入`);
+  } catch (error) {
+    importError.value = error instanceof Error ? error.message : '世界书 JSON 导入失败。';
+  } finally {
+    importing.value = false;
+  }
 }
 
 async function saveWorldBook(payload: WorldBookPayload | WorldBookMutationPayload) {

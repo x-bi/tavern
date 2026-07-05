@@ -13,6 +13,7 @@ import {
   UseGuards
 } from '@nestjs/common';
 
+import { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
 import { DtoValidationPipe } from '../../common/pipes/dto-validation.pipe';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -52,6 +53,15 @@ export class WorldBooksController {
     @Body(new DtoValidationPipe(CreateWorldBookDto)) dto: CreateWorldBookDto
   ) {
     return this.worldBooksService.create(currentUser, dto);
+  }
+
+  /** 导入世界书 JSON。POST /world-books/import（支持预览/正式提交两阶段）。 */
+  @Post('world-books/import')
+  importJson(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Body(new DtoValidationPipe(ImportModuleJsonDto)) dto: ImportModuleJsonDto
+  ) {
+    return this.worldBooksService.importJson(currentUser, dto);
   }
 
   /** 获取单个世界书。GET /world-books/:id */

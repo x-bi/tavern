@@ -13,6 +13,7 @@ import {
   UseGuards
 } from '@nestjs/common';
 
+import { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
 import { DtoValidationPipe } from '../../common/pipes/dto-validation.pipe';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -50,6 +51,15 @@ export class PersonasController {
     @Body(new DtoValidationPipe(CreatePersonaDto)) dto: CreatePersonaDto
   ) {
     return this.personasService.create(currentUser, dto);
+  }
+
+  /** 导入人设 JSON。POST /personas/import（支持预览/正式提交两阶段）。 */
+  @Post('import')
+  importJson(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Body(new DtoValidationPipe(ImportModuleJsonDto)) dto: ImportModuleJsonDto
+  ) {
+    return this.personasService.importJson(currentUser, dto);
   }
 
   /** 更新人设。PUT /personas/:id */

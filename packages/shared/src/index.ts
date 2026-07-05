@@ -39,6 +39,26 @@ export type {
   ChatStreamErrorEvent,
   ChatStreamPayload
 } from './chat';
+export { CONTENT_PACK_FORMAT_VERSION } from './content-pack';
+export type {
+  ContentPackCharacter,
+  ContentPackDocument,
+  ContentPackDuplicateStrategy,
+  ContentPackImportConflict,
+  ContentPackImportPayload,
+  ContentPackImportPreview,
+  ContentPackImportResponse,
+  ContentPackImportResult,
+  ContentPackImportSummary,
+  ContentPackImportWarning,
+  ContentPackMessage,
+  ContentPackMessageRole,
+  ContentPackPersona,
+  ContentPackPromptPreset,
+  ContentPackStarterConversation,
+  ContentPackWorldBook,
+  ContentPackWorldBookEntry
+} from './content-pack';
 export type {
   ConversationCharacterSummary,
   ConversationClearResponse,
@@ -70,6 +90,19 @@ export type {
   ModelGatewayStreamPingEvent,
   ModelGatewayTokenUsage
 } from './model-gateway';
+export type {
+  ModuleImportDuplicateNameStrategy,
+  ModuleImportPayload,
+  ModuleImportPreviewBase,
+  ModuleImportWarning,
+  PersonaImportPreview,
+  PersonaImportResponse,
+  PromptPresetImportPreview,
+  PromptPresetImportResponse,
+  WorldBookEntryImportPreview,
+  WorldBookImportPreview,
+  WorldBookImportResponse
+} from './module-import';
 export type {
   MessageListResponse,
   MessageRegenerateResponse,

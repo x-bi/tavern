@@ -18,6 +18,7 @@ import CharacterEditView from '../views/characters/CharacterEditView.vue';
 import CharacterListView from '../views/characters/CharacterListView.vue';
 import ChatView from '../views/chat/ChatView.vue';
 import ConversationView from '../views/conversations/ConversationView.vue';
+import ContentPackImportView from '../views/content-packs/ContentPackImportView.vue';
 import LoginView from '../views/LoginView.vue';
 import ModelConfigView from '../views/models/ModelConfigView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
@@ -159,6 +160,14 @@ export const router = createRouter({
           component: BackupView,
           meta: {
             title: '备份导入导出'
+          }
+        },
+        {
+          path: 'content-packs/import',
+          name: 'content-pack-import',
+          component: ContentPackImportView,
+          meta: {
+            title: '内容包导入'
           }
         }
       ]

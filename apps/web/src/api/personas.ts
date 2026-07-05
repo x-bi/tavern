@@ -4,7 +4,13 @@
  * 提供 CRUD 与设为默认；类型主要复用 shared 包。
  */
 import { requestJson } from './http';
-import type { PersonaListResponse, PersonaPayload, PersonaResponse } from '@tavern/shared';
+import type {
+  ModuleImportDuplicateNameStrategy,
+  PersonaImportResponse,
+  PersonaListResponse,
+  PersonaPayload,
+  PersonaResponse
+} from '@tavern/shared';
 
 /** Persona 数据（shared 类型别名）。 */
 export type Persona = PersonaResponse;
@@ -53,9 +59,7 @@ export class ApiClientError extends Error {
  * @returns Persona 列表分页结果。
  * @throws ApiClientError 后端返回失败时抛出。
  */
-export async function fetchPersonas(
-  params: PersonaListParams = {}
-): Promise<PersonaListResponse> {
+export async function fetchPersonas(params: PersonaListParams = {}): Promise<PersonaListResponse> {
   const response = await requestJson<PersonaListResponse>(`/personas${toQueryString(params)}`);
 
   if (!response.success) {
@@ -75,6 +79,36 @@ export async function createPersona(payload: PersonaPayload): Promise<PersonaRes
   const response = await requestJson<PersonaResponse>('/personas', {
     method: 'POST',
     body: payload
+  });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/**
+ * 导入 Persona JSON。POST /personas/import
+ * @param rawJson 原始 JSON 文本。
+ * @param options commit=false 为预览，commit=true 才落库。
+ * @returns 导入预览或正式导入结果。
+ * @throws ApiClientError 后端返回失败时抛出。
+ */
+export async function importPersonaJson(
+  rawJson: string,
+  options: {
+    commit?: boolean;
+    duplicateNameStrategy?: ModuleImportDuplicateNameStrategy;
+  } = {}
+): Promise<PersonaImportResponse<PersonaResponse>> {
+  const response = await requestJson<PersonaImportResponse<PersonaResponse>>('/personas/import', {
+    method: 'POST',
+    body: {
+      rawJson,
+      commit: options.commit ?? false,
+      duplicateNameStrategy: options.duplicateNameStrategy ?? 'reject'
+    }
   });
 
   if (!response.success) {

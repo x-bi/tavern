@@ -45,6 +45,10 @@ export const navigationItems: NavigationItem[] = [
     label: '设置'
   },
   {
+    path: '/content-packs/import',
+    label: '内容包'
+  },
+  {
     path: '/backup',
     label: '备份'
   }

@@ -19,11 +19,19 @@ import { UPLOADS_ROOT } from './modules/assets/assets.constants';
  * 任一环节失败会直接抛错退出。
  */
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false
+  });
   const configService = app.get(ConfigService);
   // 取 server 命名空间配置（在 app.module 经 load: [serverConfig] 注册）
   const serverConfig = configService.getOrThrow<ServerConfig>('server');
 
+  // JSON 导入内容可能明显超过 Express 默认 100kb，统一使用配置项限制。
+  app.useBodyParser('json', { limit: serverConfig.requestBodyLimit });
+  app.useBodyParser('urlencoded', {
+    extended: true,
+    limit: serverConfig.requestBodyLimit
+  });
   // 全局 API 前缀：所有路由变为 /{apiPrefix}/...
   app.setGlobalPrefix(serverConfig.apiPrefix);
   // 静态资源：把 uploads 目录映射到 /uploads/ 路径（供前端访问上传的文件）

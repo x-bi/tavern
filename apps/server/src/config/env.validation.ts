@@ -6,6 +6,7 @@ export type ValidatedEnv = {
   SERVER_HOST: string;
   SERVER_PORT: string;
   API_PREFIX: string;
+  REQUEST_BODY_LIMIT: string;
   CORS_ORIGINS: string;
   AUTH_MODE: string;
   AUTH_REQUIRE_PASSWORD: string;
@@ -22,6 +23,7 @@ const DEFAULT_ENV: ValidatedEnv = {
   SERVER_HOST: '127.0.0.1',
   SERVER_PORT: '3100',
   API_PREFIX: 'api',
+  REQUEST_BODY_LIMIT: '5mb',
   CORS_ORIGINS: 'http://127.0.0.1:5173,http://localhost:5173',
   AUTH_MODE: 'single_user',
   AUTH_REQUIRE_PASSWORD: 'false',
@@ -55,6 +57,10 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     throw new Error('SERVER_PORT must be an integer between 1 and 65535.');
   }
 
+  if (!/^[1-9]\d*(b|kb|mb)$/i.test(merged.REQUEST_BODY_LIMIT)) {
+    throw new Error('REQUEST_BODY_LIMIT must use a positive b/kb/mb value, such as 5mb.');
+  }
+
   // 当前仅支持单用户模式，其它值会让后续认证逻辑无所适从
   if (merged.AUTH_MODE !== 'single_user') {
     throw new Error('AUTH_MODE currently only supports single_user.');
@@ -82,6 +88,7 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     SERVER_HOST: merged.SERVER_HOST,
     SERVER_PORT: String(port),
     API_PREFIX: normalizeApiPrefix(merged.API_PREFIX),
+    REQUEST_BODY_LIMIT: merged.REQUEST_BODY_LIMIT.toLowerCase(),
     CORS_ORIGINS: merged.CORS_ORIGINS,
     AUTH_MODE: merged.AUTH_MODE,
     AUTH_REQUIRE_PASSWORD: merged.AUTH_REQUIRE_PASSWORD,

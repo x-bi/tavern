@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { CharactersModule } from './modules/characters/characters.module';
+import { ContentPacksModule } from './modules/content-packs/content-packs.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { HealthModule } from './modules/health/health.module';
 import { MessagesModule } from './modules/messages/messages.module';
@@ -39,6 +40,7 @@ import { PrismaModule } from './prisma/prisma.module';
     BackupsModule,
     CharactersModule,
     ChatModule,
+    ContentPacksModule,
     ConversationsModule,
     MessagesModule,
     ModelsModule,

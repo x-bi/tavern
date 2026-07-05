@@ -1,0 +1,42 @@
+{
+  "format": "tavern-lite.world-book.v1",
+  "name": "雾港与钟楼",
+  "description": "用于雾港调查线的地点、组织和传闻设定。",
+  "characterId": null,
+  "isEnabled": true,
+  "scanDepth": 8,
+  "tokenBudget": 1400,
+  "metadata": {
+    "tags": ["雾港", "钟楼", "调查"]
+  },
+  "entries": [
+    {
+      "title": "雾港",
+      "content": "雾港是一座常年潮湿的海港城市。夜晚的街灯会在雾中拉出很长的光晕，旧城区居民通常避免在午夜后靠近钟楼。",
+      "keywords": ["雾港", "海港", "旧城区"],
+      "secondaryKeywords": ["钟楼", "午夜"],
+      "isEnabled": true,
+      "priority": 100,
+      "insertionOrder": "before_current_user_input",
+      "tokenBudget": 320,
+      "caseSensitive": false,
+      "metadata": {
+        "kind": "location"
+      }
+    },
+    {
+      "title": "钟楼巡夜人",
+      "content": "钟楼巡夜人名义上负责维护旧钟楼，实际上会记录每个午夜靠近钟楼的人。当地传闻他们与失踪案有关。",
+      "keywords": ["巡夜人", "旧钟楼", "失踪案"],
+      "secondaryKeywords": [],
+      "isEnabled": true,
+      "priority": 80,
+      "insertionOrder": "before_current_user_input",
+      "tokenBudget": 280,
+      "caseSensitive": false,
+      "metadata": {
+        "kind": "faction"
+      }
+    }
+  ]
+}

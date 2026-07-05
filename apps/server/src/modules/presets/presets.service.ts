@@ -2,6 +2,18 @@ import { ConflictException, Inject, Injectable, NotFoundException } from '@nestj
 import { Prisma, type PromptPreset } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
+import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
+import {
+  createAvailableName,
+  limitText,
+  optionalBoolean,
+  optionalRecord,
+  optionalString,
+  parseModuleJson,
+  requiredString,
+  type JsonRecord,
+  type ModuleJsonImportWarning
+} from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreatePromptPresetDto } from './dto/create-prompt-preset.dto';
@@ -12,6 +24,36 @@ import type {
   PromptPresetParams,
   PromptPresetResponse
 } from './prompt-preset.types';
+
+type PromptPresetImportPreview = {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  outputRules: string;
+  parameters: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  isDefault: boolean;
+  warnings: ModuleJsonImportWarning[];
+  nameConflict: boolean;
+  suggestedName: string | null;
+};
+
+type PromptPresetImportResponse = {
+  imported: boolean;
+  preview: PromptPresetImportPreview;
+  promptPreset: PromptPresetResponse | null;
+};
+
+type NormalizedPromptPresetImport = {
+  name: string;
+  description: string;
+  systemPrompt: string;
+  outputRules: string;
+  parameters: PromptPresetParams;
+  metadata: Record<string, unknown> | null;
+  isDefault: boolean;
+  warnings: ModuleJsonImportWarning[];
+};
 
 /**
  * 预设服务：提示词预设的 CRUD。
@@ -126,6 +168,92 @@ export class PresetsService {
   }
 
   /**
+   * 导入 Prompt 预设 JSON：commit=false 只返回预览，commit=true 才创建记录。
+   * @param currentUser 当前登录用户。
+   * @param dto 导入入参，含 rawJson、commit 和同名处理策略。
+   * @returns PromptPresetImportResponse，正式导入时包含新建预设。
+   * @throws BadRequestException JSON 非法、格式不符或含敏感字段时抛 400。
+   * @throws ConflictException 同名冲突且策略为 reject 时抛 409。
+   */
+  async importJson(
+    currentUser: CurrentUser,
+    dto: ImportModuleJsonDto
+  ): Promise<PromptPresetImportResponse> {
+    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.prompt-preset.v1');
+    const normalized = this.normalizePromptPresetImport(parsed);
+    const existingNames = await this.loadExistingNames(currentUser);
+    const nameConflict = existingNames.has(normalized.name);
+    const suggestedName = nameConflict ? createAvailableName(normalized.name, existingNames) : null;
+    const preview: PromptPresetImportPreview = {
+      ...normalized,
+      parameters: Object.keys(normalized.parameters).length > 0 ? normalized.parameters : null,
+      nameConflict,
+      suggestedName
+    };
+
+    if (!dto.commit) {
+      return {
+        imported: false,
+        preview,
+        promptPreset: null
+      };
+    }
+
+    if (nameConflict && dto.duplicateNameStrategy !== 'rename') {
+      throw new ConflictException({
+        code: ERROR_CODES.MODULE_IMPORT_NAME_EXISTS,
+        message: 'Prompt preset name already exists.',
+        details: {
+          suggestedName
+        }
+      });
+    }
+
+    const name = nameConflict && suggestedName ? suggestedName : normalized.name;
+
+    try {
+      const data = {
+        userId: currentUser.id,
+        name,
+        description: normalized.description,
+        systemPrompt: normalized.systemPrompt,
+        outputRules: normalized.outputRules,
+        parametersJson: this.stringifyParams(normalized.parameters),
+        metadataJson: this.stringifyNullable(normalized.metadata),
+        isDefault: normalized.isDefault
+      };
+      const preset = data.isDefault
+        ? await this.prisma.$transaction(async (tx) => {
+            await tx.promptPreset.updateMany({
+              where: {
+                userId: currentUser.id,
+                deletedAt: null,
+                isDefault: true
+              },
+              data: {
+                isDefault: false
+              }
+            });
+
+            return tx.promptPreset.create({ data });
+          })
+        : await this.prisma.promptPreset.create({ data });
+
+      return {
+        imported: true,
+        preview: {
+          ...preview,
+          name
+        },
+        promptPreset: this.toResponse(preset)
+      };
+    } catch (error) {
+      this.throwIfUniqueNameConflict(error);
+      throw error;
+    }
+  }
+
+  /**
    * 更新预设（部分更新）。
    * @param currentUser 当前登录用户。
    * @param id 预设 ID。
@@ -211,6 +339,61 @@ export class PresetsService {
       deleted: true,
       id
     };
+  }
+
+  /**
+   * 归一化 Prompt 预设导入 JSON。
+   * @param record 原始 JSON 对象。
+   * @returns 可写入数据库的预设导入数据。
+   */
+  private normalizePromptPresetImport(record: JsonRecord): NormalizedPromptPresetImport {
+    const warnings: ModuleJsonImportWarning[] = [];
+    const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
+
+    return {
+      name,
+      description: limitText(
+        optionalString(record, 'description', 'description') ?? '',
+        500,
+        'description',
+        warnings
+      ),
+      systemPrompt: limitText(
+        optionalString(record, 'systemPrompt', 'systemPrompt') ?? '',
+        10000,
+        'systemPrompt',
+        warnings
+      ),
+      outputRules: limitText(
+        optionalString(record, 'outputRules', 'outputRules') ?? '',
+        4000,
+        'outputRules',
+        warnings
+      ),
+      parameters: this.normalizeImportParams(optionalRecord(record, 'parameters', 'parameters')),
+      metadata: optionalRecord(record, 'metadata', 'metadata'),
+      isDefault: optionalBoolean(record, 'isDefault', false, 'isDefault'),
+      warnings
+    };
+  }
+
+  /**
+   * 读取当前用户已有预设名称集合。
+   * @param currentUser 当前登录用户。
+   * @returns 当前用户未删除预设的名称集合。
+   */
+  private async loadExistingNames(currentUser: CurrentUser): Promise<Set<string>> {
+    const items = await this.prisma.promptPreset.findMany({
+      where: {
+        userId: currentUser.id,
+        deletedAt: null
+      },
+      select: {
+        name: true
+      }
+    });
+
+    return new Set(items.map((item) => item.name));
   }
 
   /**
@@ -310,6 +493,45 @@ export class PresetsService {
    */
   private stringifyParams(params: PromptPresetParams): string | null {
     return Object.keys(params).length > 0 ? JSON.stringify(params) : null;
+  }
+
+  /**
+   * 导入参数对象归一化，兼容 camelCase 与 OpenAI 风格 snake_case。
+   * @param value 原始 parameters 对象。
+   * @returns 预设参数对象。
+   */
+  private normalizeImportParams(value: JsonRecord | null): PromptPresetParams {
+    if (!value) {
+      return {};
+    }
+
+    const params: PromptPresetParams = {};
+    const temperature = value.temperature;
+    const topP = value.topP ?? value.top_p;
+    const maxTokens = value.maxTokens ?? value.max_tokens;
+
+    if (typeof temperature === 'number' && Number.isFinite(temperature)) {
+      params.temperature = temperature;
+    }
+
+    if (typeof topP === 'number' && Number.isFinite(topP)) {
+      params.topP = topP;
+    }
+
+    if (typeof maxTokens === 'number' && Number.isFinite(maxTokens)) {
+      params.maxTokens = Math.trunc(maxTokens);
+    }
+
+    return params;
+  }
+
+  /**
+   * 把结构化数据序列化成 JSON 字符串；undefined/null 返回 null。
+   * @param value 任意值。
+   * @returns JSON 字符串，undefined/null 返回 null。
+   */
+  private stringifyNullable(value: unknown): string | null {
+    return value === undefined || value === null ? null : JSON.stringify(value);
   }
 
   /**

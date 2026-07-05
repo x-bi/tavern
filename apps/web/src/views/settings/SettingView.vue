@@ -97,6 +97,26 @@
       <section class="setting-section">
         <div class="setting-section__head">
           <div>
+            <h3>内容包导入</h3>
+            <p>导入 AI 生成的角色、世界书、Persona、预设和开局会话，不覆盖现有数据。</p>
+          </div>
+          <n-tag size="small" type="success" :bordered="false">增量创建</n-tag>
+        </div>
+
+        <div class="backup-entry">
+          <div>
+            <strong>AI 设定内容包</strong>
+            <p>适合从其它聊天模型生成 tavern-lite.content-pack.v1 JSON 后直接预览和导入。</p>
+          </div>
+          <div class="backup-entry__actions">
+            <n-button type="primary" @click="goTo('content-pack-import')"> 导入内容包 </n-button>
+          </div>
+        </div>
+      </section>
+
+      <section class="setting-section">
+        <div class="setting-section__head">
+          <div>
             <h3>备份与恢复</h3>
             <p>导出当前逻辑备份，或进入备份页执行覆盖导入。</p>
           </div>
@@ -249,7 +269,7 @@ async function exportBackup() {
   }
 }
 
-function goTo(name: 'models' | 'persona' | 'presets' | 'backup') {
+function goTo(name: 'models' | 'persona' | 'presets' | 'backup' | 'content-pack-import') {
   void router.push({ name });
 }
 

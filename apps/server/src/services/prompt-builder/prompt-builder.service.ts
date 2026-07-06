@@ -141,6 +141,10 @@ export class PromptBuilderService {
       input,
       warnings
     );
+    // 历史去重：连续多条 assistant 用相似开头时只保留最近 2 条。
+    // 同质化历史是模型陷入套话循环的主因——历史里堆 5 条雷同回复，模型会认定这是角色固定语气并复刻。
+    const dedupedHistory = this.dedupeSimilarAssistantHistory(historyResult.history, warnings);
+    historyResult.history = dedupedHistory;
     // 匹配世界书（扫描最近消息触发关键词）
     const worldBook = matchWorldBookEntries({
       worldBooks: input.worldBooks,
@@ -276,12 +280,65 @@ export class PromptBuilderService {
     this.pushSectionMessage(messages, 'system', params.worldBookSections.after_history);
     this.pushSectionMessage(messages, 'system', params.worldBookSections.before_current_user_input);
 
-    // 6. 当前用户输入（user 消息）
+    // 6. 动态反重复提示：提取最近一条 assistant 回复的开头，明确禁止本轮复用相同/相近开头或句式。
+    //    这是针对"模型每轮复刻同一开头"最直接的约束——告诉模型上轮以 X 开头，本轮禁止雷同。
+    this.pushAntiRepeatMessage(messages, params.history);
+
+    // 7. 当前用户输入（user 消息）
     messages.push(this.toLogicalMessage('user', [params.currentUserSection]));
-    // 7. 世界书 after_current_user_input 插入点
+    // 8. 世界书 after_current_user_input 插入点
     this.pushSectionMessage(messages, 'system', params.worldBookSections.after_current_user_input);
 
     return messages;
+  }
+
+  /**
+   * 构造并推入动态反重复 system 消息。
+   *
+   * 不把上一轮原文片段写入提示，避免模型把被禁止文本当成可模仿样本。
+   * 只给出结构性约束：承认上一轮已发生，并要求从新动作或新观察切入。
+   *
+   * @param messages 逻辑消息数组（就地推入）。
+   * @param history 裁剪后的历史消息（正序，最后一条为最近）。
+   */
+  private pushAntiRepeatMessage(
+    messages: PromptBuilderMessage[],
+    history: ChatMessageLike[]
+  ): void {
+    // 从后往前找最近一条 assistant 历史回复
+    let lastAssistant: ChatMessageLike | null = null;
+
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].role === 'assistant' && this.hasContent(history[index].content)) {
+        lastAssistant = history[index];
+
+        break;
+      }
+    }
+
+    if (!lastAssistant) {
+      return;
+    }
+
+    const content = [
+      '【本轮反重复约束】',
+      '上一轮 assistant 回复已经发生，本轮不得重写、续写同一个开头段落，或复述上一轮已表达过的动作、台词和旁白结构。',
+      '请从当前用户输入造成的新变化切入，只保留必要承接；优先写新的动作、观察、决策、位置变化或关系推进。',
+      '除非用户明确要求总结，否则不要回放完整历史，不要把其他未在当前场景行动的角色逐个点名。'
+    ].join('\n');
+
+    messages.push({
+      role: 'system',
+      content,
+      sectionIds: [],
+      tokenEstimate: this.estimateTokens(content),
+      metadata: {
+        sectionKinds: ['anti_repeat'],
+        antiRepeat: {
+          sourceMessageId: lastAssistant.id
+        }
+      }
+    });
   }
 
   /**
@@ -426,6 +483,92 @@ export class PromptBuilderService {
         ...characterTruncated.map((message) => this.toTruncatedHistoryItem(message, 'token_budget'))
       ]
     };
+  }
+
+  /**
+   * 去重连续相似开头的 assistant 历史：只保留最近 2 条相似回复，更早的移除。
+   *
+   * 同质化 assistant 历史是模型陷入套话循环的主因。当历史里连续多条 assistant 回复
+   * 用相似开头（如都以"纱织微微一笑，眼中闪过一丝温柔的光芒"起笔），模型会把它当成
+   * 角色固定语气复刻。保留最近 2 条足够提供角色语气样例，更早的雷同回复只会强化模仿。
+   *
+   * user 消息一律保留（保上下文/剧情推进）；只移除 assistant，并在 warnings 里记录移除计数。
+   *
+   * @param history 裁剪后的历史（正序，会被原地替换为新数组）。
+   * @param warnings 警告收集。
+   * @returns 去重后的历史（新数组）。
+   */
+  private dedupeSimilarAssistantHistory(
+    history: ChatMessageLike[],
+    warnings: PromptBuildWarning[]
+  ): ChatMessageLike[] {
+    const SIMILAR_PREFIX_LENGTH = 12; // 开头比较长度（字符）
+    const MAX_SIMILAR_KEEP = 2; // 连续相似 assistant 最多保留条数
+
+    // 收集 assistant 消息及其开头前缀
+    const assistantEntries = history
+      .map((message, index) => ({
+        index,
+        message,
+        prefix: this.normalizePrefixForCompare(message.content, SIMILAR_PREFIX_LENGTH)
+      }))
+      .filter((entry) => entry.message.role === 'assistant' && entry.prefix.length > 0);
+
+    if (assistantEntries.length <= MAX_SIMILAR_KEEP) {
+      return history;
+    }
+
+    // 从后往前聚类：连续 prefix 相同的 assistant 归为一组，每组只保留最近 MAX_SIMILAR_KEEP 条
+    const removeIndices = new Set<number>();
+    let groupStart = assistantEntries.length; // 当前相似组的起始下标（assistantEntries 内）
+
+    for (let i = assistantEntries.length - 1; i >= 0; i -= 1) {
+      const current = assistantEntries[i];
+      const next = assistantEntries[i + 1];
+
+      // 与下一条（更晚的）prefix 不同 → 开启新组
+      if (!next || next.prefix !== current.prefix) {
+        groupStart = i + 1;
+      }
+
+      // 当前组大小 = groupStart - i（含当前）
+      const groupSize = groupStart - i;
+
+      // 超出保留数的更早条目标记移除
+      if (groupSize > MAX_SIMILAR_KEEP) {
+        removeIndices.add(current.index);
+      }
+    }
+
+    if (removeIndices.size === 0) {
+      return history;
+    }
+
+    warnings.push({
+      code: 'PROMPT_HISTORY_SIMILAR_DEDUPLICATED',
+      message: `Removed ${removeIndices.size} consecutive assistant history message(s) with similar openings to break repetition loops.`,
+      details: {
+        removedCount: removeIndices.size,
+        prefixLength: SIMILAR_PREFIX_LENGTH,
+        keptMax: MAX_SIMILAR_KEEP
+      }
+    });
+
+    return history.filter((_, index) => !removeIndices.has(index));
+  }
+
+  /**
+   * 归一化消息开头用于相似度比较：去空白/模板变量后取前 N 字。
+   * @param content 消息内容。
+   * @param length 比较长度。
+   * @returns 归一化后的前缀（小写、无空白）。
+   */
+  private normalizePrefixForCompare(content: string, length: number): string {
+    return content
+      .trim()
+      .replace(/\s+/g, '')
+      .slice(0, length)
+      .toLowerCase();
   }
 
   /**

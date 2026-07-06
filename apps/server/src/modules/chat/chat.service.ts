@@ -1309,9 +1309,11 @@ export class ChatService {
     options: { isRegenerate?: boolean } = {}
   ): PromptModelParameters {
     const merged: PromptModelParameters = {
-      // 防重复默认值：模型配置/预设可覆盖
-      frequencyPenalty: 0.6,
-      presencePenalty: 0.4,
+      // 防重复默认值：模型配置/预设可覆盖。
+      // 调高（freq 0.6→1.0, pres 0.4→0.6）：长会话下历史堆叠同质化 assistant 回复，
+      // 模型会陷入句式级模仿（每轮复刻同一开头），token 级 penalty 必须够强才能压住。
+      frequencyPenalty: 1.0,
+      presencePenalty: 0.6,
       ...modelParams,
       ...(promptPreset ? (this.parseParams(promptPreset.parametersJson) ?? {}) : {})
     };

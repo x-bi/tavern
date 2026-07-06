@@ -16,7 +16,7 @@ type MatchCandidate = WorldBookMatchedEntry & {
  *
  * 算法流程：
  * 1. 取启用世界书，算出最大扫描深度 scanDepth；
- * 2. 选出要扫描的消息（最近 scanDepth 条历史 + 当前用户输入）；
+ * 2. 选出要扫描的用户消息（最近 scanDepth 条用户历史 + 当前用户输入）；
  * 3. 遍历所有条目，逐条判定：
  *    - 禁用（世界书或条目未启用）→ skipped(disabled)；
  *    - 条目自身 token 超条目预算 → skipped(token_budget_exceeded)；
@@ -190,7 +190,11 @@ export function matchWorldBookEntries(input: {
 }
 
 /**
- * 选出要扫描的消息：最近 scanDepth 条历史（不含当前消息）+ 当前用户输入。
+ * 选出要扫描的消息：最近 scanDepth 条用户历史（不含当前消息）+ 当前用户输入。
+ *
+ * 世界书关键词由用户输入触发，不能由 assistant 上轮回复反向触发。
+ * 否则 assistant 每轮提到的角色名、设定名会在下一轮持续命中世界书，
+ * 再把同一批条目塞回 system，形成上下文自激循环。
  * @param input 历史消息、当前消息、扫描深度。
  * @returns 待扫描的消息数组（按时间正序）。
  */
@@ -202,7 +206,7 @@ function selectScannedMessages(input: {
   const scanDepth = Math.max(0, input.scanDepth);
   // 历史中排除当前消息（当前消息单独加入）
   const historyWithoutCurrent = input.history.filter(
-    (message) => message.id !== input.currentUserMessage.id
+    (message) => message.id !== input.currentUserMessage.id && message.role === 'user'
   );
   // scanDepth=0 表示只扫当前消息；否则取最近 scanDepth 条历史
   const recentHistory = scanDepth === 0 ? [] : historyWithoutCurrent.slice(-scanDepth);

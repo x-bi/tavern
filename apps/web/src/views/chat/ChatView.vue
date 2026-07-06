@@ -3,7 +3,7 @@
     <header class="page-shell__header chat-view__header">
       <div>
         <h2>聊天</h2>
-        <p>发送用户消息后，assistant 回复会在消息列表中流式增长。</p>
+        <p>发送用户消息后，角色回复会在消息列表中流式增长。</p>
       </div>
       <n-button secondary @click="goConversations">返回会话</n-button>
     </header>
@@ -18,6 +18,8 @@
       <ChatRoom
         :title="conversationTitle"
         :character-name="currentConversation?.character.name"
+        :character-avatar-url="currentConversation?.character.avatarUrl"
+        :user-name="currentConversation?.persona?.name"
         :messages="chatStore.visibleMessages"
         :draft="chatStore.draft"
         :loading="chatStore.loading"
@@ -211,7 +213,7 @@ async function handleRegenerate(target: Message) {
   }
 
   if (target.role !== 'assistant') {
-    message.warning('只能重新生成 assistant 回复。');
+    message.warning('只能重新生成角色回复。');
 
     return;
   }

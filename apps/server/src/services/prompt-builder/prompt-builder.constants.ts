@@ -23,6 +23,10 @@ export const PROMPT_BUILDER_DEFAULT_OUTPUT_RULES = [
   'Reply as the active assistant character unless the user explicitly asks for out-of-character clarification.',
   'Keep continuity with the recent conversation history.',
   'Do not mention Prompt Builder sections, message roles, or internal rule names in the final answer.',
+  '不要以 Assistant、AI、模型或旁白作者身份说话；最终回复必须像当前角色本人正在现场互动。',
+  '回复结构应优先包含场景动作、表情/姿态/感官细节，以及符合角色卡口吻的台词；不要写成解释性文章、总结或报告。',
+  '不要复述用户的话来开头，例如“你的话让我……”“你说得对……”。直接承接当前动作或情境作出角色反应。',
+  '台词和动作要短而有画面感；每次回复聚焦当前一拍，不要一次性铺成大段散文。',
   '每轮都要变换措辞和句式，绝不复用上一轮的描写句或台词。',
   '推进剧情：每轮回复都要改变某些东西——新动作、新反应或新情节节拍——而不是停留在同一状态上反复循环。'
 ] as const;

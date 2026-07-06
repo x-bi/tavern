@@ -1,10 +1,13 @@
 <template>
   <article class="chat-message" :class="messageClass">
-    <div class="chat-message__avatar" aria-hidden="true">{{ avatarText }}</div>
+    <div class="chat-message__avatar" aria-hidden="true">
+      <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" />
+      <span v-else>{{ avatarText }}</span>
+    </div>
 
     <div class="chat-message__body">
       <header class="chat-message__meta">
-        <strong>{{ roleLabel }}</strong>
+        <strong>{{ displayName }}</strong>
         <span>{{ formattedTime }}</span>
         <n-tag v-if="message.status !== 'complete'" size="small" :bordered="false">
           {{ statusLabel }}
@@ -71,6 +74,9 @@ import type { Message } from '../api/messages';
 
 const props = defineProps<{
   message: Message;
+  assistantName?: string | null;
+  assistantAvatarUrl?: string | null;
+  userName?: string | null;
   regenerateDisabled?: boolean;
   operationPending?: boolean;
   editDisabled?: boolean;
@@ -102,12 +108,12 @@ const messageClass = computed(() => ({
   'chat-message--system': props.message.role !== 'user' && props.message.role !== 'assistant'
 }));
 
-const roleLabel = computed(() => {
+const fallbackRoleLabel = computed(() => {
   switch (props.message.role) {
     case 'user':
       return '用户';
     case 'assistant':
-      return 'Assistant';
+      return '角色';
     case 'system':
       return 'System';
     case 'tool':
@@ -117,6 +123,17 @@ const roleLabel = computed(() => {
   }
 });
 
+const displayName = computed(() => {
+  if (props.message.role === 'assistant') {
+    return props.assistantName?.trim() || fallbackRoleLabel.value;
+  }
+
+  if (props.message.role === 'user') {
+    return props.userName?.trim() || fallbackRoleLabel.value;
+  }
+
+  return fallbackRoleLabel.value;
+});
 const statusLabel = computed(() => {
   switch (props.message.status) {
     case 'edited':
@@ -134,7 +151,10 @@ const statusLabel = computed(() => {
   }
 });
 
-const avatarText = computed(() => (props.message.role === 'user' ? 'U' : 'A'));
+const avatarUrl = computed(() =>
+  props.message.role === 'assistant' ? props.assistantAvatarUrl || null : null
+);
+const avatarText = computed(() => displayName.value.trim().slice(0, 1).toUpperCase());
 const isLocalMessage = computed(() => Boolean(props.message.metadata?.local));
 const canEdit = computed(
   () =>
@@ -264,6 +284,13 @@ function saveEdit() {
   color: var(--text-strong);
   font-size: 13px;
   font-weight: 700;
+  overflow: hidden;
+}
+
+.chat-message__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .chat-message__body {

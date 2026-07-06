@@ -23,7 +23,7 @@
       <EmptyState
         v-else-if="messages.length === 0"
         title="还没有消息"
-        description="输入消息后，assistant 回复会在这里流式显示。"
+        description="输入消息后，角色回复会在这里流式显示。"
       />
 
       <template v-else>
@@ -31,6 +31,9 @@
           v-for="message in messages"
           :key="message.id"
           :message="message"
+          :assistant-name="characterName"
+          :assistant-avatar-url="characterAvatarUrl"
+          :user-name="userName"
           :regenerate-disabled="isGenerating"
           :operation-pending="mutatingMessageIds.includes(message.id)"
           :edit-disabled="isGenerating"
@@ -88,6 +91,8 @@ const props = withDefaults(
   defineProps<{
     title: string;
     characterName?: string | null;
+    characterAvatarUrl?: string | null;
+    userName?: string | null;
     messages: Message[];
     draft: string;
     loading?: boolean;

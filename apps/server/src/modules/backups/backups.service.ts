@@ -7,7 +7,6 @@ import type { CurrentUser } from '../users/user.types';
 import {
   APPLICATION_BACKUP_FORMAT_VERSION,
   type ApplicationBackupExport,
-  type ApplicationBackupModelConfig,
   type ApplicationBackupSetting,
   type BackupExportFile,
   type BackupImportResponse,
@@ -24,7 +23,6 @@ type BackupImportPlan = {
   sourceExportedAt: string;
   assets: Prisma.AssetCreateManyInput[];
   characters: Prisma.CharacterCreateManyInput[];
-  modelConfigs: Prisma.ModelConfigCreateManyInput[];
   promptPresets: Prisma.PromptPresetCreateManyInput[];
   personas: Prisma.UserPersonaCreateManyInput[];
   conversations: Prisma.ConversationCreateManyInput[];
@@ -64,7 +62,6 @@ export class BackupsService {
       conversations,
       messages,
       worldBooks,
-      modelConfigs,
       promptPresets,
       personas,
       appSettings,
@@ -111,13 +108,6 @@ export class BackupsService {
         },
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
       }),
-      this.prisma.modelConfig.findMany({
-        where: {
-          userId: currentUser.id,
-          deletedAt: null
-        },
-        orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }]
-      }),
       this.prisma.promptPreset.findMany({
         where: {
           userId: currentUser.id,
@@ -148,11 +138,8 @@ export class BackupsService {
       })
     ]);
 
-    // 特殊处理：世界书（含条目）、模型配置（脱敏 apiKey）、应用设置（脱敏敏感值）
+    // 特殊处理：世界书（含条目）、应用设置（脱敏敏感值）
     const worldBookRecords = this.toBackupRecords(worldBooks);
-    const modelConfigRecords = modelConfigs.map((modelConfig) =>
-      this.toModelConfigBackupRecord(modelConfig)
-    );
     const appSettingRecords = appSettings.map((appSetting) =>
       this.toAppSettingBackupRecord(appSetting)
     );
@@ -175,13 +162,6 @@ export class BackupsService {
           'Exports current active application data as JSON records. It is not a raw SQLite file snapshot.'
       },
       security: {
-        // apiKey：密文和明文都不导出，只保留 mask 和是否有的标记
-        apiKeys: {
-          mode: 'redacted',
-          included: false,
-          description:
-            'Model API key ciphertext and plaintext are excluded. Only apiKeyMask and hasApiKey are exported.'
-        },
         // 敏感设置值：key 名像密钥/令牌/密码的，值置 null
         settings: {
           sensitiveKeyPattern: SENSITIVE_SETTING_KEY_PATTERN.source,
@@ -195,7 +175,7 @@ export class BackupsService {
           description:
             'Uploaded file binaries are not embedded. The export only records asset metadata and relative storage/public paths.'
         },
-        excludedTables: ['ModelCallLog']
+        excludedTables: []
       },
       summary: {
         characters: characters.length,
@@ -207,7 +187,6 @@ export class BackupsService {
           (total, worldBook) => total + worldBook.entries.length,
           0
         ),
-        modelConfigs: modelConfigs.length,
         promptPresets: promptPresets.length,
         personas: personas.length,
         appSettings: appSettings.length,
@@ -218,7 +197,6 @@ export class BackupsService {
         conversations: this.toBackupRecords(conversations),
         messages: this.toBackupRecords(messages),
         worldBooks: worldBookRecords,
-        modelConfigs: modelConfigRecords,
         promptPresets: this.toBackupRecords(promptPresets),
         personas: this.toBackupRecords(personas),
         appSettings: appSettingRecords
@@ -334,7 +312,6 @@ export class BackupsService {
       'conversations',
       'messages',
       'worldBooks',
-      'modelConfigs',
       'promptPresets',
       'personas',
       'appSettings'
@@ -372,7 +349,6 @@ export class BackupsService {
   ): BackupImportPlan {
     const assetRecords = backup.resources.assets;
     const characterRecords = backup.data.characters;
-    const modelConfigRecords = backup.data.modelConfigs;
     const promptPresetRecords = backup.data.promptPresets;
     const personaRecords = backup.data.personas;
     const conversationRecords = backup.data.conversations;
@@ -392,19 +368,13 @@ export class BackupsService {
     // 校验各表 id 唯一
     this.assertUniqueIds(assetRecords, 'resources.assets');
     this.assertUniqueIds(characterRecords, 'data.characters');
-    this.assertUniqueIds(modelConfigRecords, 'data.modelConfigs');
     this.assertUniqueIds(promptPresetRecords, 'data.promptPresets');
     this.assertUniqueIds(personaRecords, 'data.personas');
     this.assertUniqueIds(conversationRecords, 'data.conversations');
     this.assertUniqueIds(messageRecords, 'data.messages');
     this.assertUniqueIds(worldBookRecords, 'data.worldBooks');
     this.assertUniqueIds(worldBookEntryRecords, 'data.worldBooks.entries');
-    // 校验 name 唯一（模型配置/预设/人设）
-    this.assertUniqueBy(
-      modelConfigRecords,
-      (record) => this.requiredString(record, 'name', 'data.modelConfigs[].name'),
-      'data.modelConfigs.name'
-    );
+    // 校验 name 唯一（预设/人设）
     this.assertUniqueBy(
       promptPresetRecords,
       (record) => this.requiredString(record, 'name', 'data.promptPresets[].name'),
@@ -426,16 +396,15 @@ export class BackupsService {
     // 收集各表 id 集合，供关联校验
     const assetIds = this.toIdSet(assetRecords);
     const characterIds = this.toIdSet(characterRecords);
-    const modelConfigIds = this.toIdSet(modelConfigRecords);
     const promptPresetIds = this.toIdSet(promptPresetRecords);
     const personaIds = this.toIdSet(personaRecords);
     const conversationIds = this.toIdSet(conversationRecords);
     const worldBookIds = this.toIdSet(worldBookRecords);
     // 固定警告（告知用户覆盖范围和限制）
     const warnings = [
-      '当前用户的现有角色、会话、消息、世界书、模型配置、预设、Persona、设置和资源记录会被全量覆盖。',
+      '当前用户的现有角色、会话、消息、世界书、预设、Persona、设置和资源记录会被全量覆盖。',
       '备份 JSON 不包含 uploads 文件二进制，头像等资源需要另行恢复 uploads 目录。',
-      '模型 API Key 不会从备份恢复；原来带密钥的模型配置已禁用，需要重新填写密钥后启用。'
+      '备份不含模型配置（供应商/模型/模型链），恢复后需要重新配置模型链。'
     ];
 
     // 各表记录 → Prisma 批量创建输入（校验字段类型 + 关联）
@@ -451,9 +420,6 @@ export class BackupsService {
         warnings
       )
     );
-    const modelConfigs = modelConfigRecords.map((record, index) =>
-      this.toModelConfigImportInput(currentUser, record, `data.modelConfigs[${index}]`)
-    );
     const promptPresets = promptPresetRecords.map((record, index) =>
       this.toPromptPresetImportInput(currentUser, record, `data.promptPresets[${index}]`)
     );
@@ -467,7 +433,6 @@ export class BackupsService {
         `data.conversations[${index}]`,
         {
           characterIds,
-          modelConfigIds,
           promptPresetIds,
           personaIds
         },
@@ -494,10 +459,6 @@ export class BackupsService {
       this.toAppSettingImportInput(currentUser, record, `data.appSettings[${index}]`)
     );
     const skippedRedactedSettings = appSettingRecords.length - appSettings.length;
-    // 统计因备份不含密钥而丢弃 apiKey 的模型配置数
-    const apiKeysDropped = modelConfigRecords.filter(
-      (record) => record.hasApiKey === true || typeof record.apiKeyMask === 'string'
-    ).length;
     if (skippedRedactedSettings > 0) {
       warnings.push(`${skippedRedactedSettings} 个脱敏设置项未恢复，需要手动重新配置。`);
     }
@@ -506,7 +467,6 @@ export class BackupsService {
       sourceExportedAt: backup.exportedAt,
       assets,
       characters,
-      modelConfigs,
       promptPresets,
       personas,
       conversations,
@@ -520,13 +480,11 @@ export class BackupsService {
         messages: messages.length,
         worldBooks: worldBooks.length,
         worldBookEntries: worldBookEntries.length,
-        modelConfigs: modelConfigs.length,
         promptPresets: promptPresets.length,
         personas: personas.length,
         appSettings: appSettings.length,
         assets: assets.length,
-        skippedRedactedSettings,
-        apiKeysDropped
+        skippedRedactedSettings
       },
       warnings
     };
@@ -535,13 +493,12 @@ export class BackupsService {
   /**
    * 清空当前用户的全部数据（按依赖顺序删，避免外键冲突）。
    *
-   * 顺序：调用日志 → 世界书条目 → 世界书 → 消息 → 会话 → 角色 →
-   * 模型配置 → 预设 → 人设 → 素材 → 应用设置。
+   * 顺序：世界书条目 → 世界书 → 消息 → 会话 → 角色 →
+   * 预设 → 人设 → 素材 → 应用设置。
    * @param tx Prisma 事务客户端。
    * @param userId 用户 ID。
    */
   private async clearCurrentUserData(tx: Prisma.TransactionClient, userId: string): Promise<void> {
-    await tx.modelCallLog.deleteMany({ where: { userId } });
     await tx.worldBookEntry.deleteMany({
       where: {
         worldBook: {
@@ -559,7 +516,6 @@ export class BackupsService {
     });
     await tx.conversation.deleteMany({ where: { userId } });
     await tx.character.deleteMany({ where: { userId } });
-    await tx.modelConfig.deleteMany({ where: { userId } });
     await tx.promptPreset.deleteMany({ where: { userId } });
     await tx.userPersona.deleteMany({ where: { userId } });
     await tx.asset.deleteMany({ where: { userId } });
@@ -574,7 +530,7 @@ export class BackupsService {
   /**
    * 按导入计划恢复数据（按依赖顺序建，先无依赖的后有依赖的）。
    *
-   * 顺序：素材 → 角色 → 模型配置 → 预设 → 人设 → 会话 → 消息 → 世界书 → 世界书条目 → 设置。
+   * 顺序：素材 → 角色 → 预设 → 人设 → 会话 → 消息 → 世界书 → 世界书条目 → 设置。
    * @param tx Prisma 事务客户端。
    * @param plan 导入计划。
    */
@@ -588,10 +544,6 @@ export class BackupsService {
 
     if (plan.characters.length > 0) {
       await tx.character.createMany({ data: plan.characters });
-    }
-
-    if (plan.modelConfigs.length > 0) {
-      await tx.modelConfig.createMany({ data: plan.modelConfigs });
     }
 
     if (plan.promptPresets.length > 0) {
@@ -621,29 +573,6 @@ export class BackupsService {
     if (plan.appSettings.length > 0) {
       await tx.appSetting.createMany({ data: plan.appSettings });
     }
-  }
-
-  /**
-   * 模型配置 → 备份记录：删除 apiKeyCiphertext（不导出密文），
-   * 保留 apiKeyMask 和 hasApiKey 标记。
-   * @param modelConfig 模型配置记录。
-   * @returns 模型配置备份记录。
-   */
-  private toModelConfigBackupRecord(modelConfig: unknown): ApplicationBackupModelConfig {
-    const record = this.toBackupRecord(modelConfig);
-    const apiKeyMask = typeof record.apiKeyMask === 'string' ? record.apiKeyMask : null;
-    const hasApiKey = Boolean(record.apiKeyCiphertext);
-
-    // 删除密文字段（不导出）
-    delete record.apiKeyCiphertext;
-
-    return {
-      ...record,
-      apiKeyCiphertext: null,
-      apiKeyIncluded: false,
-      apiKeyMask,
-      hasApiKey
-    };
   }
 
   /**
@@ -771,48 +700,6 @@ export class BackupsService {
   }
 
   /**
-   * 模型配置备份记录 → Prisma 创建输入。
-   *
-   * apiKey 不从备份恢复（密文置 null）；原来带 apiKey 的配置 isEnabled 强制为 false
-   * （需用户重新填密钥后启用）。
-   * @param currentUser 当前登录用户。
-   * @param record 模型配置备份记录。
-   * @param path 字段路径。
-   * @returns Prisma 模型配置创建输入。
-   */
-  private toModelConfigImportInput(
-    currentUser: CurrentUser,
-    record: BackupJsonRecord,
-    path: string
-  ): Prisma.ModelConfigCreateManyInput {
-    // 原来是否有 apiKey（决定是否强制禁用）
-    const hadApiKey = record.hasApiKey === true || typeof record.apiKeyMask === 'string';
-
-    return {
-      id: this.requiredString(record, 'id', `${path}.id`),
-      userId: currentUser.id,
-      name: this.requiredString(record, 'name', `${path}.name`),
-      provider: this.requiredString(record, 'provider', `${path}.provider`),
-      baseUrl: this.requiredString(record, 'baseUrl', `${path}.baseUrl`),
-      model: this.requiredString(record, 'model', `${path}.model`),
-      // apiKey 不恢复
-      apiKeyCiphertext: null,
-      apiKeyMask: null,
-      defaultParamsJson: this.optionalString(
-        record,
-        'defaultParamsJson',
-        `${path}.defaultParamsJson`
-      ),
-      isDefault: this.requiredBoolean(record, 'isDefault', `${path}.isDefault`),
-      // 原 apiKey 的配置强制禁用（需重新填密钥）
-      isEnabled: hadApiKey ? false : this.requiredBoolean(record, 'isEnabled', `${path}.isEnabled`),
-      createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
-      updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
-      deletedAt: null
-    };
-  }
-
-  /**
    * 预设备份记录 → Prisma 创建输入。
    * @param currentUser 当前登录用户。
    * @param record 预设备份记录。
@@ -870,7 +757,7 @@ export class BackupsService {
   /**
    * 会话备份记录 → Prisma 创建输入。
    *
-   * characterId 必须存在（强校验）；modelConfigId/promptPresetId/personaId
+   * characterId 必须存在（强校验）；promptPresetId/personaId
    * 是可选关联，缺失则置 null 并告警。
    *
    * @param currentUser 当前登录用户。
@@ -887,7 +774,6 @@ export class BackupsService {
     path: string,
     refs: {
       characterIds: Set<string>;
-      modelConfigIds: Set<string>;
       promptPresetIds: Set<string>;
       personaIds: Set<string>;
     },
@@ -895,12 +781,6 @@ export class BackupsService {
   ): Prisma.ConversationCreateManyInput {
     const characterId = this.requiredString(record, 'characterId', `${path}.characterId`);
     // 可选关联：缺失则置 null 并告警
-    const modelConfigId = this.resolveOptionalReference(
-      this.optionalString(record, 'modelConfigId', `${path}.modelConfigId`),
-      refs.modelConfigIds,
-      `${path}.modelConfigId`,
-      warnings
-    );
     const promptPresetId = this.resolveOptionalReference(
       this.optionalString(record, 'promptPresetId', `${path}.promptPresetId`),
       refs.promptPresetIds,
@@ -923,7 +803,6 @@ export class BackupsService {
       id: this.requiredString(record, 'id', `${path}.id`),
       userId: currentUser.id,
       characterId,
-      modelConfigId,
       promptPresetId,
       personaId,
       title: this.requiredString(record, 'title', `${path}.title`),

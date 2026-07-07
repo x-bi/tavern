@@ -18,7 +18,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { CurrentUser as CurrentUserType } from '../users/user.types';
 import { CreateModelFallbackGroupDto } from './dto/create-model-fallback-group.dto';
-import { QueryModelConfigsDto } from './dto/query-model-configs.dto';
+import { QueryModelResourcesDto } from './dto/query-model-resources.dto';
 import { UpdateModelFallbackGroupDto } from './dto/update-model-fallback-group.dto';
 import { ModelsService } from './models.service';
 
@@ -34,7 +34,7 @@ export class ModelFallbackGroupsController {
   @Get()
   list(
     @CurrentUser() currentUser: CurrentUserType,
-    @Query(new DtoValidationPipe(QueryModelConfigsDto)) query: QueryModelConfigsDto
+    @Query(new DtoValidationPipe(QueryModelResourcesDto)) query: QueryModelResourcesDto
   ) {
     return this.modelsService.listFallbackGroups(currentUser, query);
   }

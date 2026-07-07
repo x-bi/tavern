@@ -108,9 +108,11 @@ const selectedConversation = computed(() => {
   );
 });
 const modelLabel = computed(() => {
-  const modelConfig = selectedConversation.value?.modelConfig;
+  const fallbackGroup = selectedConversation.value?.modelFallbackGroup;
 
-  return modelConfig ? `${modelConfig.name} / ${modelConfig.modelName}` : '未选择';
+  return fallbackGroup
+    ? `${fallbackGroup.name} / ${fallbackGroup.candidateCount} 个模型`
+    : '未选择';
 });
 const canPreview = computed(() => {
   return selectedConversationId.value.length > 0 && userInput.value.trim().length > 0;

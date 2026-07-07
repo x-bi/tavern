@@ -11,10 +11,8 @@ export type {
   ApplicationBackupImportPayload,
   ApplicationBackupImportResponse,
   ApplicationBackupImportSummary,
-  ApplicationBackupModelConfig,
   ApplicationBackupSecurity,
   ApplicationBackupSetting,
-  BackupApiKeyPolicy,
   BackupJsonRecord,
   BackupSettingsPolicy
 } from './backup';
@@ -67,7 +65,6 @@ export type {
   ConversationClearResponse,
   ConversationListResponse,
   ConversationModelFallbackGroupSummary,
-  ConversationModelConfigSummary,
   ConversationPayload,
   ConversationPersonaSummary,
   ConversationPromptPresetSummary,
@@ -76,10 +73,7 @@ export type {
   ConversationUpdatePayload
 } from './conversation';
 export type {
-  ModelConfigListResponse,
-  ModelConfigPayload,
-  ModelConfigResponse,
-  ModelConfigTestResponse,
+  ModelConnectionTestResponse,
   ModelFallbackCandidatePayload,
   ModelFallbackCandidateResponse,
   ModelFallbackGroupListResponse,
@@ -91,7 +85,7 @@ export type {
   ProviderModelListResponse,
   ProviderModelPayload,
   ProviderModelResponse
-} from './model-config';
+} from './model';
 export type {
   ModelGatewayChatResult,
   ModelGatewayConnectionTestResult,
@@ -142,7 +136,7 @@ export type {
   PromptConversationContext,
   PromptInternalMessageRole,
   PromptMessageRole,
-  PromptModelConfigContext,
+  PromptModelGatewayContext,
   PromptModelParameters,
   PromptPersonaContext,
   PromptPresetContext,

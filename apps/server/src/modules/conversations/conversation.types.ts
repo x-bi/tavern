@@ -15,18 +15,6 @@ export type ConversationPersonaSummary = {
   name: string;
 };
 
-/** 会话关联的模型配置摘要。 */
-export type ConversationModelConfigSummary = {
-  id: string;
-  name: string;
-  providerName: string;
-  baseUrl: string;
-  modelName: string;
-  apiKeyMask: string | null;
-  hasApiKey: boolean;
-  isEnabled: boolean;
-};
-
 /** 会话关联的模型链摘要。 */
 export type ConversationModelFallbackGroupSummary = {
   id: string;
@@ -46,7 +34,6 @@ export type ConversationResponse = {
   id: string;
   userId: string;
   characterId: string;
-  modelConfigId: string | null;
   modelFallbackGroupId: string | null;
   promptPresetId: string | null;
   personaId: string | null;
@@ -59,7 +46,6 @@ export type ConversationResponse = {
   lastMessageAt: string | null;
   character: ConversationCharacterSummary;
   persona: ConversationPersonaSummary | null;
-  modelConfig: ConversationModelConfigSummary | null;
   modelFallbackGroup: ConversationModelFallbackGroupSummary | null;
   promptPreset: ConversationPromptPresetSummary | null;
   createdAt: string;

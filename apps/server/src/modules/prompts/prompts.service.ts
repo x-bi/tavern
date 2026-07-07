@@ -3,7 +3,6 @@ import type {
   Character,
   Conversation,
   Message,
-  ModelConfig,
   PromptPreset,
   UserPersona
 } from '@prisma/client';
@@ -31,10 +30,9 @@ import type { CurrentUser } from '../users/user.types';
 import { WorldBooksService } from '../world-books/world-books.service';
 import type { PreviewPromptDto } from './dto/preview-prompt.dto';
 
-/** 预览会话（含关联的角色/模型配置/预设/人设）。 */
+/** 预览会话（含关联的角色/预设/人设）。 */
 type PreviewConversation = Conversation & {
   character: Character;
-  modelConfig: ModelConfig | null;
   promptPreset: PromptPreset | null;
   persona: UserPersona | null;
 };
@@ -128,7 +126,6 @@ export class PromptsService {
       },
       include: {
         character: true,
-        modelConfig: true,
         promptPreset: true,
         persona: true
       }
@@ -228,21 +225,7 @@ export class PromptsService {
             metadata: this.parseRecord(conversation.promptPreset.metadataJson)
           }
         : null,
-      modelConfig: conversation.modelConfig
-        ? {
-            id: conversation.modelConfig.id,
-            name: conversation.modelConfig.name,
-            providerName: conversation.modelConfig.provider,
-            baseUrl: conversation.modelConfig.baseUrl,
-            modelName: conversation.modelConfig.model,
-            parameters: this.parseParams(conversation.modelConfig.defaultParamsJson),
-            metadata: {
-              isEnabled: conversation.modelConfig.isEnabled,
-              hasApiKey: Boolean(conversation.modelConfig.apiKeyCiphertext),
-              apiKeyMask: conversation.modelConfig.apiKeyMask
-            }
-          }
-        : null,
+      modelGateway: null,
       history: history.map((message) => this.toChatMessageLike(message)),
       // 当前用户输入作为预览的"新消息"（id 标记为 preview 避免与真实消息混淆）
       currentUserMessage: {

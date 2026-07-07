@@ -125,9 +125,7 @@ const modelLabel = computed(() => {
     return `${modelFallbackGroup.name} / ${modelFallbackGroup.candidateCount} 个模型`;
   }
 
-  const modelConfig = currentConversation.value?.modelConfig;
-
-  return modelConfig ? `${modelConfig.name} / ${modelConfig.modelName}` : '未选择';
+  return '未选择';
 });
 const presetLabel = computed(() => currentConversation.value?.promptPreset?.name ?? '未选择');
 const personaLabel = computed(() => currentConversation.value?.persona?.name ?? '未选择');
@@ -200,7 +198,6 @@ async function handleSend() {
     conversationId: activeConversationId,
     userMessage,
     modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
-    modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
     presetId: currentConversation.value?.promptPresetId ?? undefined
   });
 }
@@ -232,7 +229,6 @@ async function handleRegenerate(target: Message) {
       conversationId: activeConversationId,
       regenerateMessageId: regenerate.regenerateMessageId,
       modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
-      modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
       presetId: currentConversation.value?.promptPresetId ?? undefined
     });
   } catch (error) {
@@ -252,7 +248,6 @@ async function handleSuggestions() {
       conversationId: activeConversationId,
       count: 3,
       modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
-      modelConfigId: currentConversation.value?.modelConfigId ?? undefined,
       presetId: currentConversation.value?.promptPresetId ?? undefined
     });
   } catch (error) {

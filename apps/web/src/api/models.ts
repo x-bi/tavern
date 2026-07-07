@@ -1,14 +1,11 @@
 /**
- * 模型配置 API 封装（路由前缀 /model-configs）。
+ * 模型 API 封装（供应商 / 模型 / 模型链，路由前缀 /model-providers 等）。
  *
  * 提供 CRUD 与连通性测试；类型主要复用 shared 包。
  */
 import { requestJson } from './http';
 import type {
-  ModelConfigListResponse,
-  ModelConfigPayload,
-  ModelConfigResponse,
-  ModelConfigTestResponse,
+  ModelConnectionTestResponse,
   ModelFallbackGroupListResponse,
   ModelFallbackGroupPayload,
   ModelFallbackGroupResponse,
@@ -20,27 +17,15 @@ import type {
   ProviderModelResponse
 } from '@tavern/shared';
 
-/** 模型配置数据（shared 类型别名）。 */
-export type ModelConfig = ModelConfigResponse;
 export type ModelProvider = ModelProviderResponse;
 export type ProviderModel = ProviderModelResponse;
 export type ModelFallbackGroup = ModelFallbackGroupResponse;
-/**
- * 模型配置更新载荷：在 shared 全量载荷基础上放宽为部分更新，
- * 并允许 name 等核心字段可选（编辑场景可能只改部分字段）。
- */
-export type ModelConfigMutationPayload = Partial<ModelConfigPayload> & {
-  name?: string;
-  providerName?: string;
-  baseUrl?: string;
-  modelName?: string;
-};
 export type ModelProviderMutationPayload = Partial<ModelProviderPayload>;
 export type ProviderModelMutationPayload = Partial<ProviderModelPayload>;
 export type ModelFallbackGroupMutationPayload = Partial<ModelFallbackGroupPayload>;
 
-/** 模型配置列表查询参数，所有字段可选。 */
-export type ModelConfigListParams = {
+/** 模型资源列表查询参数，所有字段可选。 */
+export type ModelResourceListParams = {
   /** 页码，从 1 开始。 */
   page?: number;
   /** 每页条数。 */
@@ -51,11 +36,11 @@ export type ModelConfigListParams = {
   isEnabled?: boolean;
 };
 
-/** 删除模型配置的结果。 */
-export type ModelConfigDeleteResult = {
+/** 删除模型资源的结果。 */
+export type ModelDeleteResult = {
   /** 固定为 true，表示删除成功。 */
   deleted: true;
-  /** 被删除的模型配置 ID。 */
+  /** 被删除的模型资源 ID。 */
   id: string;
 };
 
@@ -73,128 +58,8 @@ export class ApiClientError extends Error {
   }
 }
 
-/**
- * 查询模型配置列表。GET /model-configs
- * @param params 分页与过滤参数。
- * @returns 模型配置列表分页结果。
- * @throws ApiClientError 后端返回失败时抛出。
- */
-export async function fetchModelConfigs(
-  params: ModelConfigListParams = {}
-): Promise<ModelConfigListResponse> {
-  const response = await requestJson<ModelConfigListResponse>(
-    `/model-configs${toQueryString(params)}`
-  );
-
-  if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
-  }
-
-  return response.data;
-}
-
-/**
- * 创建模型配置。POST /model-configs
- * @param payload 模型配置创建载荷。
- * @returns 新建的模型配置。
- * @throws ApiClientError 后端返回失败时抛出。
- */
-export async function createModelConfig(
-  payload: ModelConfigPayload
-): Promise<ModelConfigResponse> {
-  const response = await requestJson<ModelConfigResponse>('/model-configs', {
-    method: 'POST',
-    body: payload
-  });
-
-  if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
-  }
-
-  return response.data;
-}
-
-/**
- * 更新模型配置。PUT /model-configs/:id
- * @param id 模型配置 ID。
- * @param payload 模型配置更新载荷（部分更新）。
- * @returns 更新后的模型配置。
- * @throws ApiClientError 后端返回失败时抛出。
- */
-export async function updateModelConfig(
-  id: string,
-  payload: ModelConfigMutationPayload
-): Promise<ModelConfigResponse> {
-  const response = await requestJson<ModelConfigResponse>(`/model-configs/${id}`, {
-    method: 'PUT',
-    body: payload
-  });
-
-  if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
-  }
-
-  return response.data;
-}
-
-/**
- * 删除模型配置。DELETE /model-configs/:id
- * @param id 模型配置 ID。
- * @returns 删除结果。
- * @throws ApiClientError 后端返回失败时抛出。
- */
-export async function deleteModelConfig(id: string): Promise<ModelConfigDeleteResult> {
-  const response = await requestJson<ModelConfigDeleteResult>(`/model-configs/${id}`, {
-    method: 'DELETE'
-  });
-
-  if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
-  }
-
-  return response.data;
-}
-
-/**
- * 测试模型配置连通性。POST /model-configs/:id/test
- * @param id 模型配置 ID。
- * @returns 连通性测试结果（含往返耗时与状态码）。
- * @throws ApiClientError 后端返回失败时抛出。
- */
-export async function testModelConfigConnection(id: string): Promise<ModelConfigTestResponse> {
-  const response = await requestJson<ModelConfigTestResponse>(`/model-configs/${id}/test`, {
-    method: 'POST'
-  });
-
-  if (!response.success) {
-    throw new ApiClientError(
-      response.error.message,
-      response.error.code,
-      response.error.details
-    );
-  }
-
-  return response.data;
-}
-
 export async function fetchModelProviders(
-  params: ModelConfigListParams = {}
+  params: ModelResourceListParams = {}
 ): Promise<ModelProviderListResponse> {
   const response = await requestJson<ModelProviderListResponse>(
     `/model-providers${toQueryString(params)}`
@@ -238,8 +103,8 @@ export async function updateModelProvider(
   return response.data;
 }
 
-export async function deleteModelProvider(id: string): Promise<ModelConfigDeleteResult> {
-  const response = await requestJson<ModelConfigDeleteResult>(`/model-providers/${id}`, {
+export async function deleteModelProvider(id: string): Promise<ModelDeleteResult> {
+  const response = await requestJson<ModelDeleteResult>(`/model-providers/${id}`, {
     method: 'DELETE'
   });
 
@@ -251,7 +116,7 @@ export async function deleteModelProvider(id: string): Promise<ModelConfigDelete
 }
 
 export async function fetchProviderModels(
-  params: ModelConfigListParams = {}
+  params: ModelResourceListParams = {}
 ): Promise<ProviderModelListResponse> {
   const response = await requestJson<ProviderModelListResponse>(
     `/provider-models${toQueryString(params)}`
@@ -295,8 +160,8 @@ export async function updateProviderModel(
   return response.data;
 }
 
-export async function deleteProviderModel(id: string): Promise<ModelConfigDeleteResult> {
-  const response = await requestJson<ModelConfigDeleteResult>(`/provider-models/${id}`, {
+export async function deleteProviderModel(id: string): Promise<ModelDeleteResult> {
+  const response = await requestJson<ModelDeleteResult>(`/provider-models/${id}`, {
     method: 'DELETE'
   });
 
@@ -307,8 +172,8 @@ export async function deleteProviderModel(id: string): Promise<ModelConfigDelete
   return response.data;
 }
 
-export async function testProviderModelConnection(id: string): Promise<ModelConfigTestResponse> {
-  const response = await requestJson<ModelConfigTestResponse>(`/provider-models/${id}/test`, {
+export async function testProviderModelConnection(id: string): Promise<ModelConnectionTestResponse> {
+  const response = await requestJson<ModelConnectionTestResponse>(`/provider-models/${id}/test`, {
     method: 'POST'
   });
 
@@ -320,7 +185,7 @@ export async function testProviderModelConnection(id: string): Promise<ModelConf
 }
 
 export async function fetchModelFallbackGroups(
-  params: ModelConfigListParams = {}
+  params: ModelResourceListParams = {}
 ): Promise<ModelFallbackGroupListResponse> {
   const response = await requestJson<ModelFallbackGroupListResponse>(
     `/model-fallback-groups${toQueryString(params)}`
@@ -364,8 +229,8 @@ export async function updateModelFallbackGroup(
   return response.data;
 }
 
-export async function deleteModelFallbackGroup(id: string): Promise<ModelConfigDeleteResult> {
-  const response = await requestJson<ModelConfigDeleteResult>(`/model-fallback-groups/${id}`, {
+export async function deleteModelFallbackGroup(id: string): Promise<ModelDeleteResult> {
+  const response = await requestJson<ModelDeleteResult>(`/model-fallback-groups/${id}`, {
     method: 'DELETE'
   });
 
@@ -382,7 +247,7 @@ export async function deleteModelFallbackGroup(id: string): Promise<ModelConfigD
  * 仅把实际传入的字段写入 URLSearchParams，undefined 的跳过；
  * 无任何字段时返回空字符串（不产生 `?`）。
  */
-function toQueryString(params: ModelConfigListParams): string {
+function toQueryString(params: ModelResourceListParams): string {
   const query = new URLSearchParams();
 
   if (params.page !== undefined) {

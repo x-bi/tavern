@@ -27,8 +27,6 @@ export type ConversationListParams = {
   search?: string;
   /** 按角色过滤。 */
   characterId?: string;
-  /** 按模型配置过滤。 */
-  modelConfigId?: string;
   /** 按 Prompt 预设过滤。 */
   promptPresetId?: string;
   /** 按 Persona 过滤。 */
@@ -182,10 +180,6 @@ function toQueryString(params: ConversationListParams): string {
 
   if (params.characterId) {
     query.set('characterId', params.characterId);
-  }
-
-  if (params.modelConfigId) {
-    query.set('modelConfigId', params.modelConfigId);
   }
 
   if (params.promptPresetId) {

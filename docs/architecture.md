@@ -24,7 +24,7 @@ flowchart LR
   Stream --> Chat["Chat Stream API"]
   Api --> Auth["Auth / 单用户模式"]
   Api --> Character["Character Module"]
-  Api --> ModelConfig["Model Config Module"]
+  Api --> Models["Models Module"]
   Api --> Conversation["Conversation Module"]
   Api --> WorldBook["WorldBook Module"]
   Api --> Uploads["Uploads / Static Assets"]
@@ -56,7 +56,7 @@ flowchart LR
 计划模块：
 
 - `pages/characters`：角色列表、创建、编辑、详情。
-- `pages/model-configs`：模型配置、连接测试。
+- `pages/models`：模型供应商、模型、模型链和连接测试。
 - `pages/conversations`：会话列表和聊天页。
 - `pages/prompt-preview`：Prompt 预览与组成解释。
 - `pages/worldbook`：世界书和命中调试。
@@ -80,7 +80,7 @@ flowchart LR
 
 - `auth`：单用户模式或简单登录。
 - `character`：角色 CRUD、头像、角色卡导入导出。
-- `model-config`：模型配置、API Key 写入和掩码读取、连接测试。
+- `models`：模型供应商、模型、模型链、API Key 写入和掩码读取、连接测试。
 - `conversation`：会话 CRUD、标题、列表分页。
 - `message`：消息写入、编辑、删除、复制、重新生成依赖。
 - `persona`：用户 Persona。
@@ -114,7 +114,7 @@ flowchart LR
 - User 或单用户配置。
 - Character。
 - CharacterAsset。
-- ModelConfig。
+- ModelProvider / ProviderModel / ModelFallbackGroup / ModelFallbackCandidate。
 - PromptPreset。
 - UserPersona。
 - Conversation。

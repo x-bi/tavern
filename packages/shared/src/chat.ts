@@ -14,8 +14,6 @@ export type ChatStreamPayload = {
   regenerateMessageId?: string;
   /** 本次会话覆盖使用的模型链 ID；未传时用会话绑定的模型链。 */
   modelFallbackGroupId?: string | null;
-  /** 本次会话覆盖使用的模型配置 ID；未传时用会话绑定的模型配置。 */
-  modelConfigId?: string | null;
   /** 本次会话覆盖使用的 Prompt 预设 ID；未传时用会话绑定的预设。 */
   presetId?: string | null;
   /** 历史消息最多取多少条进入 Prompt；未传由后端按预设截断。 */

@@ -63,7 +63,7 @@ export type ModelGatewayChatResult = {
   metadata?: Record<string, unknown> | null;
 };
 
-/** 连通性测试结果（与 ModelConfigTestResponse 同构，Model Gateway 内部使用）。 */
+/** 连通性测试结果（与 ModelConnectionTestResponse 同构，Model Gateway 内部使用）。 */
 export type ModelGatewayConnectionTestResult = {
   /** 是否连通成功。 */
   ok: boolean;

@@ -30,12 +30,6 @@ export class QueryConversationsDto {
   @MaxLength(128)
   characterId?: string;
 
-  /** 按模型配置 ID 过滤。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  modelConfigId?: string;
-
   /** 按模型链 ID 过滤。 */
   @IsOptional()
   @IsString()

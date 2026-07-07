@@ -23,13 +23,12 @@ tavern-lite-backup-20260702T120000Z.json
 - `conversations`
 - `messages`
 - `worldBooks`，包含 `entries`
-- `modelConfigs`
 - `promptPresets`
 - `personas`
 - `appSettings`
 - `resources.assets`，只作为 uploads 文件清单
 
-`ModelCallLog` 暂不导出，因为其中可能包含供应商请求、响应、Prompt 片段或错误信息。
+模型供应商、模型、模型链和模型调用日志不纳入备份；恢复后需要重新配置模型链。
 
 ## 顶层结构
 
@@ -59,12 +58,7 @@ tavern-lite-backup-20260702T120000Z.json
 
 ## 安全策略
 
-模型配置不导出 API Key 明文，也不导出 `apiKeyCiphertext`。导出结果中只保留：
-
-- `apiKeyMask`
-- `hasApiKey`
-- `apiKeyIncluded: false`
-- `apiKeyCiphertext: null`
+模型配置不再纳入备份。导出结果不包含模型供应商、模型、模型链、API Key 明文或密文。
 
 设置项按 key 名做保守脱敏。匹配以下模式的 `AppSetting.value` 会被置为 `null`：
 

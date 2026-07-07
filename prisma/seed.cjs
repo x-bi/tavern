@@ -4,7 +4,6 @@ const prisma = new PrismaClient();
 
 const ids = {
   user: 'seed_user_demo',
-  modelConfig: 'seed_model_openai_compatible',
   modelProvider: 'seed_provider_openai_compatible',
   providerModel: 'seed_provider_model_demo_chat',
   fallbackGroup: 'seed_model_chain_default',
@@ -36,47 +35,6 @@ async function main() {
       displayName: 'Demo User',
       passwordHash: null,
       isActive: true
-    }
-  });
-
-  const modelConfig = await prisma.modelConfig.upsert({
-    where: {
-      userId_name: {
-        userId: user.id,
-        name: 'OpenAI-compatible Demo'
-      }
-    },
-    update: {
-      provider: 'openai-compatible',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'demo-chat-model',
-      apiKeyCiphertext: null,
-      apiKeyMask: null,
-      defaultParamsJson: json({
-        temperature: 0.8,
-        maxTokens: 1200,
-        topP: 0.95
-      }),
-      isDefault: true,
-      isEnabled: true,
-      deletedAt: null
-    },
-    create: {
-      id: ids.modelConfig,
-      userId: user.id,
-      name: 'OpenAI-compatible Demo',
-      provider: 'openai-compatible',
-      baseUrl: 'https://api.openai.com/v1',
-      model: 'demo-chat-model',
-      apiKeyCiphertext: null,
-      apiKeyMask: null,
-      defaultParamsJson: json({
-        temperature: 0.8,
-        maxTokens: 1200,
-        topP: 0.95
-      }),
-      isDefault: true,
-      isEnabled: true
     }
   });
 
@@ -463,7 +421,6 @@ async function main() {
 
   console.log('Seed completed:', {
     user: user.username,
-    modelConfig: modelConfig.name,
     modelChain: fallbackGroup.name,
     promptPreset: promptPreset.name,
     persona: persona.name,

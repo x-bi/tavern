@@ -18,7 +18,7 @@ import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { CurrentUser as CurrentUserType } from '../users/user.types';
 import { CreateModelProviderDto } from './dto/create-model-provider.dto';
-import { QueryModelConfigsDto } from './dto/query-model-configs.dto';
+import { QueryModelResourcesDto } from './dto/query-model-resources.dto';
 import { UpdateModelProviderDto } from './dto/update-model-provider.dto';
 import { ModelsService } from './models.service';
 
@@ -34,7 +34,7 @@ export class ModelProvidersController {
   @Get()
   list(
     @CurrentUser() currentUser: CurrentUserType,
-    @Query(new DtoValidationPipe(QueryModelConfigsDto)) query: QueryModelConfigsDto
+    @Query(new DtoValidationPipe(QueryModelResourcesDto)) query: QueryModelResourcesDto
   ) {
     return this.modelsService.listProviders(currentUser, query);
   }
@@ -66,7 +66,7 @@ export class ModelProvidersController {
   listModels(
     @CurrentUser() currentUser: CurrentUserType,
     @Param('id') id: string,
-    @Query(new DtoValidationPipe(QueryModelConfigsDto)) query: QueryModelConfigsDto
+    @Query(new DtoValidationPipe(QueryModelResourcesDto)) query: QueryModelResourcesDto
   ) {
     return this.modelsService.listProviderModels(currentUser, query, id);
   }

@@ -10,7 +10,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 
 - 单用户或简单登录入口。
 - 角色 CRUD、角色头像、角色卡 JSON 导入导出。
-- 模型配置、OpenAI-compatible 连接测试。
+- 模型链配置、OpenAI-compatible 连接测试。
 - 会话与消息持久化。
 - Prompt Builder v1 和 Prompt 预览。
 - `POST /api/chat/stream` 流式聊天。
@@ -39,7 +39,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 - `apps/server`：NestJS 后端基础工程。
 - `packages/shared`：前后端共享类型占位包。
 - `prisma/schema.prisma`：Prisma SQLite datasource 与 MVP 初版数据模型。
-- `prisma/seed.cjs`：默认用户、模型配置、Prompt 预设、Persona、样例角色和世界书 seed。
+- `prisma/seed.cjs`：默认用户、模型链、Prompt 预设、Persona、样例角色和世界书 seed。
 - `data`：本地 SQLite 数据库与运行时数据目录。
 
 当前还没有实现业务 CRUD、聊天流、Prompt Builder 或 Model Gateway。
@@ -132,13 +132,13 @@ pnpm db:seed
 seed 内容包括：
 
 - 默认用户：`demo`
-- 默认模型配置：`OpenAI-compatible Demo`
+- 默认模型链：`Default Demo Model Chain`
 - 默认 Prompt 预设：`Balanced Roleplay`
 - 默认 Persona：`Curious Traveler`
 - 样例角色：`Mira, Keeper of the Lantern Archive`
 - 样例世界书：`Lantern Archive Notes`，包含 2 条世界书条目
 
-默认模型配置不包含真实 API Key，`apiKeyCiphertext` 和 `apiKeyMask` 均为空。
+默认模型链使用占位模型，不包含真实 API Key，`apiKeyCiphertext` 和 `apiKeyMask` 均为空。
 
 ## 计划目录
 

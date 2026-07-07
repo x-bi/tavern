@@ -4,7 +4,6 @@ import { ModelGatewayModule } from '../../services/model-gateway';
 import { AuthModule } from '../auth/auth.module';
 import { ModelFallbackGroupsController } from './model-fallback-groups.controller';
 import { ModelProvidersController } from './model-providers.controller';
-import { ModelsController } from './models.controller';
 import { ModelsService } from './models.service';
 import { ProviderModelsController } from './provider-models.controller';
 
@@ -15,12 +14,7 @@ import { ProviderModelsController } from './provider-models.controller';
  */
 @Module({
   imports: [AuthModule, ModelGatewayModule],
-  controllers: [
-    ModelsController,
-    ModelProvidersController,
-    ProviderModelsController,
-    ModelFallbackGroupsController
-  ],
+  controllers: [ModelProvidersController, ProviderModelsController, ModelFallbackGroupsController],
   providers: [ModelsService],
   exports: [ModelsService]
 })

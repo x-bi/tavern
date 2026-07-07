@@ -23,26 +23,6 @@ export type ConversationPersonaSummary = {
   name: string;
 };
 
-/** 会话关联模型配置的摘要信息（含掩码 Key，供前端展示）。 */
-export type ConversationModelConfigSummary = {
-  /** 模型配置 ID。 */
-  id: string;
-  /** 配置名称。 */
-  name: string;
-  /** 供应商标识。 */
-  providerName: string;
-  /** 基础 URL。 */
-  baseUrl: string;
-  /** 模型名。 */
-  modelName: string;
-  /** API Key 掩码；未配置时为 null。 */
-  apiKeyMask: string | null;
-  /** 是否已配置 API Key。 */
-  hasApiKey: boolean;
-  /** 是否启用。 */
-  isEnabled: boolean;
-};
-
 /** 会话关联模型链摘要。 */
 export type ConversationModelFallbackGroupSummary = {
   /** 模型链 ID。 */
@@ -71,8 +51,6 @@ export type ConversationResponse = {
   userId: string;
   /** 关联角色 ID。 */
   characterId: string;
-  /** 关联模型配置 ID；未绑定或绑定后删除时为 null。 */
-  modelConfigId: string | null;
   /** 关联模型链 ID；未绑定或绑定后删除时为 null。 */
   modelFallbackGroupId: string | null;
   /** 关联 Prompt 预设 ID；未绑定时为 null。 */
@@ -93,8 +71,6 @@ export type ConversationResponse = {
   character: ConversationCharacterSummary;
   /** 关联 Persona 摘要；未绑定时为 null。 */
   persona: ConversationPersonaSummary | null;
-  /** 关联模型配置摘要；未绑定时为 null。 */
-  modelConfig: ConversationModelConfigSummary | null;
   /** 关联模型链摘要；未绑定时为 null。 */
   modelFallbackGroup: ConversationModelFallbackGroupSummary | null;
   /** 关联 Prompt 预设摘要；未绑定时为 null。 */
@@ -114,8 +90,6 @@ export type ConversationPayload = {
   title: string;
   /** 关联角色 ID。 */
   characterId: string;
-  /** 关联模型配置 ID；未绑定时传 null 或省略。 */
-  modelConfigId?: string | null;
   /** 关联模型链 ID；未绑定时传 null 或省略。 */
   modelFallbackGroupId?: string | null;
   /** 关联 Prompt 预设 ID；未绑定时传 null 或省略。 */

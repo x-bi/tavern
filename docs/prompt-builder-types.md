@@ -11,7 +11,7 @@
 
 ## 核心结构
 
-- `BuildPromptInput`：Prompt Builder 的统一输入，包含会话、角色、Persona、预设、模型配置安全子集、历史消息、当前用户消息和世界书上下文。
+- `BuildPromptInput`：Prompt Builder 的统一输入，包含会话、角色、Persona、预设、模型网关安全子集、历史消息、当前用户消息和世界书上下文。
 - `BuildPromptResult`：Prompt Builder 的统一输出，包含组成分段、逻辑层消息、供应商层消息、世界书命中结果、截断历史和调试信息。
 - `PromptSection`：可解释的 Prompt 分段，用于预览和调试，不代表最终供应商消息的一对一结构。
 - `ChatMessageLike`：业务逻辑层消息，保留消息 ID、会话 ID、状态、metadata、token 估算等项目内字段。
@@ -21,7 +21,7 @@
 
 ## 边界约束
 
-- `PromptModelConfigContext` 不包含 API Key、密钥片段或供应商原始响应。
+- `PromptModelGatewayContext` 不包含 API Key、密钥片段或供应商原始响应。
 - `PromptBuilderMessage` 是内部逻辑层消息，支持 `developer` 角色；`ProviderChatMessage` 是供应商层消息，默认可由 Builder 把 `developer` 内容降级合并进 `system`。
 - `BuildPromptResult.finalMessages` 是供应商层消息，但由后端 Builder 产出，前端只用于预览展示。
 - `BuildPromptDebugInfo` 预留 `matchedEntries`、`truncatedHistory`、`finalMessages`、`warnings`，用于后续阶段调试世界书命中和历史截断。

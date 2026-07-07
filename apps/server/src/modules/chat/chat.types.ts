@@ -2,16 +2,14 @@ import type {
   Character,
   Conversation,
   ModelFallbackGroup,
-  ModelConfig,
   PromptPreset,
   UserPersona
 } from '@prisma/client';
 
-/** 聊天会话（含关联的角色/模型配置/预设/人设）。 */
+/** 聊天会话（含关联的角色/模型链/预设/人设）。 */
 export type ChatConversation = Conversation & {
   character: Character;
   modelFallbackGroup: ModelFallbackGroup | null;
-  modelConfig: ModelConfig | null;
   promptPreset: PromptPreset | null;
   persona: UserPersona | null;
 };

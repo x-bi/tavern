@@ -1,8 +1,8 @@
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
-/** 模型配置列表查询入参（query string）。 */
-export class QueryModelConfigsDto {
+/** 模型资源列表查询入参（query string）。 */
+export class QueryModelResourcesDto {
   /** 页码，从 1 开始，默认 1。 */
   @IsOptional()
   @Type(() => Number)

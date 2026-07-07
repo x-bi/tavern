@@ -6,7 +6,6 @@ import {
   type Conversation,
   type ModelFallbackGroup,
   type ModelFallbackCandidate,
-  type ModelConfig,
   type PromptPreset,
   type UserPersona
 } from '@prisma/client';
@@ -34,7 +33,6 @@ type ConversationWithRelations = Conversation & {
         candidates: ModelFallbackCandidate[];
       })
     | null;
-  modelConfig: ModelConfig | null;
   promptPreset: PromptPreset | null;
   persona: UserPersona | null;
 };
@@ -75,7 +73,6 @@ export class ConversationsService {
       ...(showSensitiveContent ? {} : { usesSensitiveResource: false }),
       // 各关联 ID 未传时不加条件，传了则按值过滤
       ...(query.characterId === undefined ? {} : { characterId: query.characterId }),
-      ...(query.modelConfigId === undefined ? {} : { modelConfigId: query.modelConfigId }),
       ...(query.modelFallbackGroupId === undefined
         ? {}
         : { modelFallbackGroupId: query.modelFallbackGroupId }),
@@ -132,7 +129,6 @@ export class ConversationsService {
   ): Promise<ConversationResponse> {
     // 逐一校验关联实体归属（characterId 必填，其余可选）
     await this.resolveCharacterId(currentUser, dto.characterId);
-    const modelConfigId = await this.resolveModelConfigId(currentUser, dto.modelConfigId);
     const modelFallbackGroupId = await this.resolveModelFallbackGroupId(
       currentUser,
       dto.modelFallbackGroupId
@@ -149,7 +145,6 @@ export class ConversationsService {
       data: {
         userId: currentUser.id,
         characterId: dto.characterId,
-        modelConfigId,
         modelFallbackGroupId,
         promptPresetId,
         personaId,
@@ -196,10 +191,6 @@ export class ConversationsService {
       dto.characterId === undefined
         ? undefined
         : await this.resolveCharacterId(currentUser, dto.characterId);
-    const modelConfigId =
-      dto.modelConfigId === undefined
-        ? undefined
-        : await this.resolveModelConfigId(currentUser, dto.modelConfigId);
     const modelFallbackGroupId =
       dto.modelFallbackGroupId === undefined
         ? undefined
@@ -228,7 +219,6 @@ export class ConversationsService {
       data: {
         ...(dto.title === undefined ? {} : { title: dto.title }),
         ...(characterId === undefined ? {} : { characterId }),
-        ...(modelConfigId === undefined ? {} : { modelConfigId }),
         ...(modelFallbackGroupId === undefined ? {} : { modelFallbackGroupId }),
         ...(promptPresetId === undefined ? {} : { promptPresetId }),
         ...(personaId === undefined ? {} : { personaId }),
@@ -383,42 +373,6 @@ export class ConversationsService {
   }
 
   /**
-   * 校验模型配置归属并返回其 ID；传空值不校验返回 null。
-   * @param currentUser 当前登录用户。
-   * @param id 模型配置 ID，为空返回 null。
-   * @returns 校验通过的模型配置 ID，或 null。
-   * @throws BadRequestException 模型配置不存在或不属于该用户。
-   */
-  private async resolveModelConfigId(
-    currentUser: CurrentUser,
-    id: string | null | undefined
-  ): Promise<string | null> {
-    if (!id) {
-      return null;
-    }
-
-    const modelConfig = await this.prisma.modelConfig.findFirst({
-      where: {
-        id,
-        userId: currentUser.id,
-        deletedAt: null
-      },
-      select: {
-        id: true
-      }
-    });
-
-    if (!modelConfig) {
-      throw new BadRequestException({
-        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
-        message: 'Model config not found.'
-      });
-    }
-
-    return modelConfig.id;
-  }
-
-  /**
    * 校验模型链归属并返回其 ID；传空值不校验返回 null。
    * @param currentUser 当前登录用户。
    * @param id 模型链 ID，为空返回 null。
@@ -547,7 +501,6 @@ export class ConversationsService {
           candidates: true
         }
       },
-      modelConfig: true,
       promptPreset: true,
       persona: true
     } satisfies Prisma.ConversationInclude;
@@ -563,7 +516,6 @@ export class ConversationsService {
       id: conversation.id,
       userId: conversation.userId,
       characterId: conversation.characterId,
-      modelConfigId: conversation.modelConfigId,
       modelFallbackGroupId: conversation.modelFallbackGroupId,
       promptPresetId: conversation.promptPresetId,
       personaId: conversation.personaId,
@@ -582,18 +534,6 @@ export class ConversationsService {
         ? {
             id: conversation.persona.id,
             name: conversation.persona.name
-          }
-        : null,
-      modelConfig: conversation.modelConfig
-        ? {
-            id: conversation.modelConfig.id,
-            name: conversation.modelConfig.name,
-            providerName: conversation.modelConfig.provider,
-            baseUrl: conversation.modelConfig.baseUrl,
-            modelName: conversation.modelConfig.model,
-            apiKeyMask: conversation.modelConfig.apiKeyMask,
-            hasApiKey: Boolean(conversation.modelConfig.apiKeyCiphertext),
-            isEnabled: conversation.modelConfig.isEnabled
           }
         : null,
       modelFallbackGroup: conversation.modelFallbackGroup

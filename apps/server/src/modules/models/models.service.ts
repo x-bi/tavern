@@ -8,7 +8,6 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
-  type ModelConfig,
   type ModelFallbackCandidate,
   type ModelFallbackGroup,
   type ModelProvider,
@@ -20,26 +19,22 @@ import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ModelGatewayService } from '../../services/model-gateway';
 import type { CurrentUser } from '../users/user.types';
-import type { CreateModelConfigDto } from './dto/create-model-config.dto';
 import type { CreateModelFallbackGroupDto } from './dto/create-model-fallback-group.dto';
 import type { CreateModelProviderDto } from './dto/create-model-provider.dto';
 import type { CreateProviderModelDto } from './dto/create-provider-model.dto';
-import type { QueryModelConfigsDto } from './dto/query-model-configs.dto';
+import type { QueryModelResourcesDto } from './dto/query-model-resources.dto';
 import type { UpdateModelFallbackGroupDto } from './dto/update-model-fallback-group.dto';
-import type { UpdateModelConfigDto } from './dto/update-model-config.dto';
 import type { UpdateModelProviderDto } from './dto/update-model-provider.dto';
 import type { UpdateProviderModelDto } from './dto/update-provider-model.dto';
 import type {
   ModelFallbackCandidateResponse,
   ModelFallbackGroupResponse,
-  ModelConfigListResponse,
-  ModelConfigParams,
-  ModelConfigResponse,
+  ModelConnectionTestResponse,
+  ModelGenerationParams,
   ModelGatewayConfig,
-  ModelConfigTestResponse,
   ModelProviderResponse,
   ProviderModelResponse
-} from './model-config.types';
+} from './model.types';
 
 type ProviderModelWithProvider = ProviderModel & {
   provider: ModelProvider;
@@ -54,11 +49,11 @@ type FallbackGroupWithCandidates = ModelFallbackGroup & {
 };
 
 /**
- * 模型配置服务：管理 AI 模型配置的 CRUD、API Key 加解密、连接测试。
+ * 模型服务：管理模型供应商、供应商模型、模型链（回退组）的 CRUD、API Key 加解密、连接测试。
  *
  * 设计要点：
  * - API Key 用 AES-256-GCM 加密存储，密钥由 AUTH_TOKEN_SECRET 派生（SHA-256）；
- * - 每个 isDefault=true 的配置在事务内保证用户范围内默认唯一（先取消旧默认）；
+   * - 每个 isDefault=true 的资源在事务内保证用户范围内默认唯一（先取消旧默认）；
  * - 软删除时改名（加 __deleted__ 后缀）以释放唯一名约束；
  * - 所有查询按 userId 隔离。
  */
@@ -80,56 +75,9 @@ export class ModelsService {
       .digest();
   }
 
-  /**
-   * 分页查询当前用户的模型配置。
-   * @param currentUser 当前登录用户（限定只查自己的）。
-   * @param query 分页/搜索/启用过滤参数。
-   * @returns 分页结果，含 items、total、page、pageSize。
-   */
-  async list(currentUser: CurrentUser, query: QueryModelConfigsDto): Promise<ModelConfigListResponse> {
-    const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
-    // 构建查询条件：限定当前用户 + 未软删除
-    const where = {
-      userId: currentUser.id,
-      deletedAt: null,
-      // isEnabled 未传时不加条件，传了则按值过滤
-      ...(query.isEnabled === undefined ? {} : { isEnabled: query.isEnabled }),
-      // search 关键字：匹配 name/provider/model/baseUrl 任一包含
-      ...(query.search
-        ? {
-            OR: [
-              { name: { contains: query.search } },
-              { provider: { contains: query.search } },
-              { model: { contains: query.search } },
-              { baseUrl: { contains: query.search } }
-            ]
-          }
-        : {})
-    };
-
-    // 事务内并行：查当前页 + 统计总数，默认配置排在最前
-    const [items, total] = await this.prisma.$transaction([
-      this.prisma.modelConfig.findMany({
-        where,
-        orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }],
-        skip: (page - 1) * pageSize,
-        take: pageSize
-      }),
-      this.prisma.modelConfig.count({ where })
-    ]);
-
-    return {
-      items: items.map((modelConfig) => this.toResponse(modelConfig)),
-      total,
-      page,
-      pageSize
-    };
-  }
-
   async listProviders(
     currentUser: CurrentUser,
-    query: QueryModelConfigsDto
+    query: QueryModelResourcesDto
   ): Promise<{ items: ModelProviderResponse[]; total: number; page: number; pageSize: number }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
@@ -318,7 +266,7 @@ export class ModelsService {
 
   async listProviderModels(
     currentUser: CurrentUser,
-    query: QueryModelConfigsDto,
+    query: QueryModelResourcesDto,
     providerId?: string
   ): Promise<{ items: ProviderModelResponse[]; total: number; page: number; pageSize: number }> {
     const page = query.page ?? 1;
@@ -453,7 +401,7 @@ export class ModelsService {
 
   async listFallbackGroups(
     currentUser: CurrentUser,
-    query: QueryModelConfigsDto
+    query: QueryModelResourcesDto
   ): Promise<{ items: ModelFallbackGroupResponse[]; total: number; page: number; pageSize: number }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 100;
@@ -619,281 +567,46 @@ export class ModelsService {
   async testProviderModel(
     currentUser: CurrentUser,
     id: string
-  ): Promise<ModelConfigTestResponse> {
+  ): Promise<ModelConnectionTestResponse> {
     const model = await this.findOwnedActiveProviderModel(currentUser, id);
 
     return this.modelGateway.testConnection(this.toGatewayConfigFromProviderModel(model, null));
   }
 
+  /**
+   * 取模型链网关候选：按模型链（回退组）解析出有序的可调用候选。
+   *
+   * 无回退组或候选全部不可用时返回空数组，由调用方决定如何提示用户。
+   * @param params 当前用户 + 可选的回退组 ID（未传则取默认启用的回退组）。
+   * @returns 候选配置数组，按 priority 升序。
+   */
   async getGatewayCandidates(params: {
     currentUser: CurrentUser;
     modelFallbackGroupId?: string | null;
-    modelConfigId?: string | null;
   }): Promise<ModelGatewayConfig[]> {
     const group =
       params.modelFallbackGroupId === undefined
         ? await this.findDefaultActiveFallbackGroup(params.currentUser)
         : await this.findOwnedActiveFallbackGroup(params.currentUser, params.modelFallbackGroupId);
 
-    if (group) {
-      const candidates = group.candidates
-        .filter(
-          (candidate) =>
-            candidate.isEnabled &&
-            candidate.model.isEnabled &&
-            !candidate.model.deletedAt &&
-            candidate.model.provider.isEnabled &&
-            !candidate.model.provider.deletedAt
-        )
-        .sort((left, right) => left.priority - right.priority);
-
-      if (candidates.length > 0) {
-        return candidates.map((candidate) =>
-          this.toGatewayConfigFromProviderModel(candidate.model, group.id)
-        );
-      }
+    if (!group) {
+      return [];
     }
 
-    return [await this.getGatewayConfig(params.currentUser, params.modelConfigId)];
-  }
+    const candidates = group.candidates
+      .filter(
+        (candidate) =>
+          candidate.isEnabled &&
+          candidate.model.isEnabled &&
+          !candidate.model.deletedAt &&
+          candidate.model.provider.isEnabled &&
+          !candidate.model.provider.deletedAt
+      )
+      .sort((left, right) => left.priority - right.priority);
 
-  /**
-   * 创建模型配置。
-   * @param currentUser 当前登录用户。
-   * @param dto 创建入参。
-   * @returns 创建后的模型配置响应。
-   * @throws ConflictException 配置名重复（唯一约束冲突）。
-   */
-  async create(currentUser: CurrentUser, dto: CreateModelConfigDto): Promise<ModelConfigResponse> {
-    // apiKey 规范化（空串/undefined/null → null）
-    const apiKey = this.normalizeApiKey(dto.apiKey);
-    const data = {
-      userId: currentUser.id,
-      name: dto.name,
-      provider: dto.providerName,
-      baseUrl: dto.baseUrl,
-      model: dto.modelName,
-      // apiKey 加密后存储，并生成脱敏 mask
-      apiKeyCiphertext: this.encryptApiKey(apiKey),
-      apiKeyMask: this.maskApiKey(apiKey),
-      // 参数提取后序列化成 JSON 存储
-      defaultParamsJson: this.stringifyParams(this.pickParams(dto)),
-      isDefault: dto.isDefault ?? false,
-      isEnabled: dto.isEnabled ?? true
-    };
-
-    try {
-      // isDefault=true：事务内先取消该用户其它默认，再创建（保证默认唯一）
-      // isDefault=false：直接创建
-      const modelConfig = data.isDefault
-        ? await this.prisma.$transaction(async (tx) => {
-            await tx.modelConfig.updateMany({
-              where: {
-                userId: currentUser.id,
-                deletedAt: null,
-                isDefault: true
-              },
-              data: {
-                isDefault: false
-              }
-            });
-
-            return tx.modelConfig.create({ data });
-          })
-        : await this.prisma.modelConfig.create({ data });
-
-      return this.toResponse(modelConfig);
-    } catch (error) {
-      // 捕获唯一名冲突（P2002）转成 409；其它错误重新抛出
-      this.throwIfUniqueNameConflict(error);
-      throw error;
-    }
-  }
-
-  /**
-   * 获取单个模型配置。
-   * @param currentUser 当前登录用户。
-   * @param id 模型配置 ID。
-   * @returns 模型配置响应。
-   * @throws NotFoundException 配置不存在或不属于该用户。
-   */
-  async getById(currentUser: CurrentUser, id: string): Promise<ModelConfigResponse> {
-    return this.toResponse(await this.findOwnedActiveModelConfig(currentUser, id));
-  }
-
-  /**
-   * 取模型网关调用配置（含解密后的 apiKey 明文）。
-   *
-   * @param currentUser 当前登录用户。
-   * @param id 指定配置 ID；为空则取用户的默认/最新启用配置。
-   * @returns 网关调用配置（含解密 apiKey）。
-   * @throws BadRequestException 配置未启用（不可用作网关配置）。
-   * @throws NotFoundException 配置不存在或不属于该用户。
-   */
-  async getGatewayConfig(
-    currentUser: CurrentUser,
-    id: string | null | undefined
-  ): Promise<ModelGatewayConfig> {
-    // id 非空取指定配置，否则取默认配置
-    const modelConfig = id
-      ? await this.findOwnedActiveModelConfig(currentUser, id)
-      : await this.findDefaultActiveModelConfig(currentUser);
-
-    // 未启用的配置不可用作网关配置
-    if (!modelConfig.isEnabled) {
-      throw new BadRequestException({
-        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
-        message: 'Model config not found.'
-      });
-    }
-
-    return {
-      modelConfigId: modelConfig.id,
-      providerName: modelConfig.provider,
-      baseUrl: modelConfig.baseUrl,
-      modelName: modelConfig.model,
-      // 解密 apiKey 供网关调用
-      apiKey: this.decryptApiKey(modelConfig.apiKeyCiphertext),
-      params: this.parseParams(modelConfig.defaultParamsJson)
-    };
-  }
-
-  /**
-   * 测试模型连接。
-   * @param currentUser 当前登录用户。
-   * @param id 模型配置 ID。
-   * @returns 未配置 apiKey 时返回失败结果；否则调用网关测试。
-   * @throws NotFoundException 配置不存在或不属于该用户。
-   */
-  async testConnection(currentUser: CurrentUser, id: string): Promise<ModelConfigTestResponse> {
-    const modelConfig = await this.findOwnedActiveModelConfig(currentUser, id);
-    const apiKey = this.decryptApiKey(modelConfig.apiKeyCiphertext);
-
-    // 未配置 apiKey：直接返回失败，不调网关
-    if (!apiKey) {
-      return {
-        ok: false,
-        latencyMs: 0,
-        providerName: modelConfig.provider,
-        modelName: modelConfig.model,
-        baseUrl: modelConfig.baseUrl,
-        statusCode: null,
-        message: 'API Key 未配置，无法测试连接。',
-        summary: null,
-        testedAt: new Date().toISOString()
-      };
-    }
-
-    // 调网关实际测试连接
-    return this.modelGateway.testConnection({
-      providerName: modelConfig.provider,
-      baseUrl: modelConfig.baseUrl,
-      modelName: modelConfig.model,
-      apiKey,
-      ...this.parseParams(modelConfig.defaultParamsJson)
-    });
-  }
-
-  /**
-   * 更新模型配置（部分更新）。
-   * @param currentUser 当前登录用户。
-   * @param id 模型配置 ID。
-   * @param dto 更新入参，只有传入的字段会被更新。
-   * @returns 更新后的模型配置响应。
-   * @throws ConflictException 配置名重复。
-   * @throws NotFoundException 配置不存在或不属于该用户。
-   */
-  async update(
-    currentUser: CurrentUser,
-    id: string,
-    dto: UpdateModelConfigDto
-  ): Promise<ModelConfigResponse> {
-    // 取现有配置，用于合并参数
-    const existing = await this.findOwnedActiveModelConfig(currentUser, id);
-    // 合并参数：现有参数 + DTO 传入的参数（后者覆盖前者）
-    const params = this.mergeParams(this.parseParams(existing.defaultParamsJson), dto);
-    // apiKey：未传(undefined)不动，传则规范化
-    const apiKey = dto.apiKey === undefined ? undefined : this.normalizeApiKey(dto.apiKey);
-    // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
-    // apiKey 传了则同时更新密文和 mask；有参数更新才重写 paramsJson
-    const data = {
-      ...(dto.name === undefined ? {} : { name: dto.name }),
-      ...(dto.providerName === undefined ? {} : { provider: dto.providerName }),
-      ...(dto.baseUrl === undefined ? {} : { baseUrl: dto.baseUrl }),
-      ...(dto.modelName === undefined ? {} : { model: dto.modelName }),
-      ...(apiKey === undefined
-        ? {}
-        : {
-            apiKeyCiphertext: this.encryptApiKey(apiKey),
-            apiKeyMask: this.maskApiKey(apiKey)
-          }),
-      ...(this.hasParamUpdate(dto) ? { defaultParamsJson: this.stringifyParams(params) } : {}),
-      ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault }),
-      ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled })
-    };
-
-    try {
-      // isDefault=true：事务内先取消该用户其它默认（排除自身），再更新
-      const modelConfig = dto.isDefault
-        ? await this.prisma.$transaction(async (tx) => {
-            await tx.modelConfig.updateMany({
-              where: {
-                userId: currentUser.id,
-                id: {
-                  not: id
-                },
-                deletedAt: null,
-                isDefault: true
-              },
-              data: {
-                isDefault: false
-              }
-            });
-
-            return tx.modelConfig.update({
-              where: { id },
-              data
-            });
-          })
-        : await this.prisma.modelConfig.update({
-            where: { id },
-            data
-          });
-
-      return this.toResponse(modelConfig);
-    } catch (error) {
-      this.throwIfUniqueNameConflict(error);
-      throw error;
-    }
-  }
-
-  /**
-   * 删除模型配置（软删除）。
-   *
-   * 改名加 `__deleted__` 后缀以释放唯一名约束，便于后续创建同名配置；
-   * 同时取消默认、禁用、标记删除时间。
-   * @param currentUser 当前登录用户。
-   * @param id 模型配置 ID。
-   * @returns `{ deleted: true, id }`。
-   * @throws NotFoundException 配置不存在或不属于该用户。
-   */
-  async remove(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
-    const existing = await this.findOwnedActiveModelConfig(currentUser, id);
-
-    await this.prisma.modelConfig.update({
-      where: { id },
-      data: {
-        name: `${existing.name}__deleted__${existing.id}`,
-        isDefault: false,
-        isEnabled: false,
-        deletedAt: new Date()
-      }
-    });
-
-    return {
-      deleted: true,
-      id
-    };
+    return candidates.map((candidate) =>
+      this.toGatewayConfigFromProviderModel(candidate.model, group.id)
+    );
   }
 
   private async findOwnedActiveProvider(
@@ -1126,7 +839,6 @@ export class ModelsService {
     };
 
     return {
-      modelConfigId: null,
       providerModelId: model.id,
       modelFallbackGroupId: groupId,
       displayName: `${model.provider.name} / ${model.name}`,
@@ -1138,108 +850,15 @@ export class ModelsService {
     };
   }
 
-  /**
-   * 查询配置并校验所有权：限定 id + 当前用户 + 未删除。
-   * @param currentUser 当前登录用户。
-   * @param id 模型配置 ID。
-   * @returns 校验通过的模型配置记录。
-   * @throws NotFoundException 不存在/不属于该用户/已删除。
-   */
-  private async findOwnedActiveModelConfig(
-    currentUser: CurrentUser,
-    id: string
-  ): Promise<ModelConfig> {
-    const modelConfig = await this.prisma.modelConfig.findFirst({
-      where: {
-        id,
-        userId: currentUser.id,
-        deletedAt: null
-      }
-    });
-
-    if (!modelConfig) {
-      throw new NotFoundException({
-        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
-        message: 'Model config not found.'
-      });
-    }
-
-    return modelConfig;
-  }
-
-  /**
-   * 取用户的默认/最新启用配置（id 为空时使用）。
-   * 优先 isDefault，其次按更新时间倒序。
-   * @param currentUser 当前登录用户。
-   * @returns 默认或最新启用配置。
-   * @throws NotFoundException 无任何启用配置。
-   */
-  private async findDefaultActiveModelConfig(currentUser: CurrentUser): Promise<ModelConfig> {
-    const modelConfig = await this.prisma.modelConfig.findFirst({
-      where: {
-        userId: currentUser.id,
-        deletedAt: null,
-        isEnabled: true
-      },
-      orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }]
-    });
-
-    if (!modelConfig) {
-      throw new NotFoundException({
-        code: ERROR_CODES.MODEL_CONFIG_NOT_FOUND,
-        message: 'Model config not found.'
-      });
-    }
-
-    return modelConfig;
-  }
-
-  /**
-   * 数据库记录 → 对外响应（解析参数 JSON、脱敏 apiKey、格式化时间）。
-   * @param modelConfig 模型配置数据库记录。
-   * @returns 模型配置响应。
-   */
-  private toResponse(modelConfig: ModelConfig): ModelConfigResponse {
-    const params = this.parseParams(modelConfig.defaultParamsJson);
-
-    return {
-      id: modelConfig.id,
-      userId: modelConfig.userId,
-      name: modelConfig.name,
-      providerName: modelConfig.provider,
-      baseUrl: modelConfig.baseUrl,
-      modelName: modelConfig.model,
-      apiKeyMask: modelConfig.apiKeyMask,
-      hasApiKey: Boolean(modelConfig.apiKeyCiphertext),
-      temperature: params.temperature ?? null,
-      topP: params.topP ?? null,
-      maxTokens: params.maxTokens ?? null,
-      timeout: params.timeout ?? null,
-      isDefault: modelConfig.isDefault,
-      isEnabled: modelConfig.isEnabled,
-      createdAt: modelConfig.createdAt.toISOString(),
-      updatedAt: modelConfig.updatedAt.toISOString()
-    };
-  }
-
-  /**
-   * 从创建 DTO 提取参数（mergeParams 的空基准版）。
-   * @param dto 创建入参。
-   * @returns 提取出的参数对象。
-   */
-  private pickParams(dto: CreateModelConfigDto): ModelConfigParams {
-    return this.mergeParams({}, dto);
-  }
-
-  private pickProviderModelParams(dto: CreateProviderModelDto): ModelConfigParams {
+  private pickProviderModelParams(dto: CreateProviderModelDto): ModelGenerationParams {
     return this.mergeProviderModelParams({}, dto);
   }
 
   private mergeProviderModelParams(
-    existing: ModelConfigParams,
+    existing: ModelGenerationParams,
     dto: Partial<CreateProviderModelDto | UpdateProviderModelDto>
-  ): ModelConfigParams {
-    const next: ModelConfigParams = { ...existing };
+  ): ModelGenerationParams {
+    const next: ModelGenerationParams = { ...existing };
 
     if (dto.temperature !== undefined) {
       if (dto.temperature === null) {
@@ -1276,43 +895,6 @@ export class ModelsService {
     return next;
   }
 
-  /**
-   * 合并参数：现有参数 + DTO 参数（后者覆盖前者），undefined 的跳过。
-   * 用于 create（基准空）和 update（基准为现有参数）。
-   * @param existing 现有参数。
-   * @param dto DTO（create 或 update）。
-   * @returns 合并后的参数对象。
-   */
-  private mergeParams(
-    existing: ModelConfigParams,
-    dto: Partial<CreateModelConfigDto | UpdateModelConfigDto>
-  ): ModelConfigParams {
-    return {
-      ...(existing.temperature === undefined ? {} : { temperature: existing.temperature }),
-      ...(existing.topP === undefined ? {} : { topP: existing.topP }),
-      ...(existing.maxTokens === undefined ? {} : { maxTokens: existing.maxTokens }),
-      ...(existing.timeout === undefined ? {} : { timeout: existing.timeout }),
-      ...(dto.temperature === undefined ? {} : { temperature: dto.temperature }),
-      ...(dto.topP === undefined ? {} : { topP: dto.topP }),
-      ...(dto.maxTokens === undefined ? {} : { maxTokens: dto.maxTokens }),
-      ...(dto.timeout === undefined ? {} : { timeout: dto.timeout })
-    };
-  }
-
-  /**
-   * 判断 DTO 是否含参数更新（决定是否重写 paramsJson）。
-   * @param dto 更新入参。
-   * @returns 含任一参数字段返回 true。
-   */
-  private hasParamUpdate(dto: UpdateModelConfigDto): boolean {
-    return (
-      dto.temperature !== undefined ||
-      dto.topP !== undefined ||
-      dto.maxTokens !== undefined ||
-      dto.timeout !== undefined
-    );
-  }
-
   private hasProviderModelParamUpdate(dto: UpdateProviderModelDto): boolean {
     return (
       dto.temperature !== undefined ||
@@ -1327,7 +909,7 @@ export class ModelsService {
    * @param params 参数对象。
    * @returns JSON 字符串，空对象返回 null。
    */
-  private stringifyParams(params: ModelConfigParams): string | null {
+  private stringifyParams(params: ModelGenerationParams): string | null {
     return Object.keys(params).length > 0 ? JSON.stringify(params) : null;
   }
 
@@ -1336,13 +918,13 @@ export class ModelsService {
    * @param value paramsJson 字符串。
    * @returns 解析后的参数对象。
    */
-  private parseParams(value: string | null): ModelConfigParams {
+  private parseParams(value: string | null): ModelGenerationParams {
     if (!value) {
       return {};
     }
 
     try {
-      const parsed = JSON.parse(value) as Partial<ModelConfigParams>;
+      const parsed = JSON.parse(value) as Partial<ModelGenerationParams>;
 
       return {
         // 各字段校验类型后才保留（防止脏数据）

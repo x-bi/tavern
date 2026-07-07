@@ -139,8 +139,8 @@ export type PromptModelParameters = {
   presencePenalty?: number | null;
 };
 
-/** 模型配置上下文。 */
-export type PromptModelConfigContext = {
+/** 模型网关上下文。 */
+export type PromptModelGatewayContext = {
   id: string;
   name: string;
   providerName: string;
@@ -262,14 +262,14 @@ export type PromptBuildOptions = {
   supportsDeveloperRole?: boolean;
 };
 
-/** Prompt 构建输入（会话/角色/人设/预设/模型配置/历史/当前输入/世界书/选项）。 */
+/** Prompt 构建输入（会话/角色/人设/预设/模型网关/历史/当前输入/世界书/选项）。 */
 export type BuildPromptInput = {
   userId: string;
   conversation: PromptConversationContext;
   character: PromptCharacterContext;
   persona?: PromptPersonaContext | null;
   promptPreset?: PromptPresetContext | null;
-  modelConfig?: PromptModelConfigContext | null;
+  modelGateway?: PromptModelGatewayContext | null;
   history: ChatMessageLike[];
   currentUserMessage: ChatMessageLike;
   worldBooks?: WorldBookContext[];

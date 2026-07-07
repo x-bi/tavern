@@ -14,12 +14,6 @@ export class SuggestChatRepliesDto {
   @MaxLength(128)
   modelFallbackGroupId?: string | null;
 
-  /** 指定模型配置 ID，覆盖会话绑定的；传 null 用会话默认。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(128)
-  modelConfigId?: string | null;
-
   /** 指定预设 ID；传 null 表示不绑定预设。 */
   @IsOptional()
   @IsString()

@@ -8,10 +8,7 @@
       <section class="backup-export">
         <div class="backup-export__content">
           <h3>应用数据导出</h3>
-          <p>
-            导出角色、会话、消息、世界书、模型配置、预设、Persona、设置和资源文件清单。 API Key
-            只保留掩码与是否存在，不导出明文或密文。
-          </p>
+          <p>导出角色、会话、消息、世界书、预设、Persona、设置和资源文件清单。模型链配置不纳入备份。</p>
           <div class="backup-export__tags">
             <n-tag :bordered="false" type="info">格式版本 tavern-lite.backup.v1</n-tag>
             <n-tag :bordered="false" type="warning">不包含 uploads 文件二进制</n-tag>
@@ -32,7 +29,7 @@
           <h3>从备份恢复</h3>
           <p>恢复会全量覆盖当前用户现有数据，不做逐条冲突合并。导入前建议先导出一份当前备份。</p>
           <n-alert type="warning" :bordered="false">
-            模型 API Key 不会从备份恢复；原来带密钥的模型配置导入后会被禁用，需要重新填写密钥。
+            模型供应商、模型和模型链不会从备份恢复；导入后需要重新配置模型链。
           </n-alert>
           <label class="backup-file">
             <span>备份 JSON 文件</span>
@@ -58,8 +55,7 @@
         {{ lastImportResult.summary.characters }} 个，会话
         {{ lastImportResult.summary.conversations }} 个，消息
         {{ lastImportResult.summary.messages }} 条，世界书
-        {{ lastImportResult.summary.worldBooks }} 个。模型密钥丢弃
-        {{ lastImportResult.summary.apiKeysDropped }} 个，脱敏设置跳过
+        {{ lastImportResult.summary.worldBooks }} 个。脱敏设置跳过
         {{ lastImportResult.summary.skippedRedactedSettings }} 个。
       </n-alert>
     </n-card>

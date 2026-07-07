@@ -61,14 +61,14 @@
         <div class="setting-section__head">
           <div>
             <h3>默认项摘要</h3>
-            <p>默认模型、Persona 和预设仍在各自管理页维护，这里只做摘要和入口。</p>
+            <p>默认模型链、Persona 和预设仍在各自管理页维护，这里只做摘要和入口。</p>
           </div>
         </div>
 
         <div class="summary-grid">
           <article class="summary-item">
             <div>
-              <span>默认模型</span>
+              <span>默认模型链</span>
               <strong>{{ defaultModel?.name ?? '未设置' }}</strong>
               <p>{{ defaultModelSummary }}</p>
             </div>
@@ -129,7 +129,7 @@
         <div class="backup-entry">
           <div>
             <strong>应用备份 JSON</strong>
-            <p>包含角色、会话、消息、世界书、模型配置、预设、Persona、设置和资源清单。</p>
+            <p>包含角色、会话、消息、世界书、预设、Persona、设置和资源清单；模型链需单独配置。</p>
           </div>
           <div class="backup-entry__actions">
             <n-button type="primary" :loading="exporting" @click="exportBackup">
@@ -174,16 +174,18 @@ const refreshing = computed(
 );
 const exporting = ref(false);
 
-const defaultModel = computed(() => modelStore.items.find((item) => item.isDefault) ?? null);
+const defaultModel = computed(
+  () => modelStore.fallbackGroups.find((group) => group.isDefault) ?? null
+);
 const defaultPersona = computed(() => personaStore.items.find((item) => item.isDefault) ?? null);
 const defaultPreset = computed(() => presetStore.items.find((item) => item.isDefault) ?? null);
 
 const defaultModelSummary = computed(() => {
   if (!defaultModel.value) {
-    return '聊天前建议先设置一个默认模型。';
+    return '聊天前建议先设置一个默认模型链。';
   }
 
-  return `${defaultModel.value.providerName} / ${defaultModel.value.modelName}`;
+  return `${defaultModel.value.candidates.length} 个候选模型`;
 });
 
 const defaultPersonaSummary = computed(() => {
@@ -227,7 +229,7 @@ onMounted(() => {
 async function refreshAll() {
   await Promise.allSettled([
     settingStore.loadSettings(),
-    modelStore.loadModelConfigs({ page: 1, pageSize: 100, search: '' }),
+    modelStore.loadModelResources({ page: 1, pageSize: 100, search: '' }),
     personaStore.loadPersonas({ page: 1, pageSize: 100, search: '' }),
     presetStore.loadPresets({ page: 1, pageSize: 100, search: '' })
   ]);

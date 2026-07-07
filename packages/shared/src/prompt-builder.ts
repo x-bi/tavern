@@ -213,11 +213,11 @@ export type PromptModelParameters = {
   timeout?: number | null;
 };
 
-/** 模型配置上下文（Builder 输入之一）。 */
-export type PromptModelConfigContext = {
-  /** 模型配置 ID。 */
+/** 模型网关上下文（Builder 输入之一）。 */
+export type PromptModelGatewayContext = {
+  /** 供应商模型 ID。 */
   id: string;
-  /** 配置名称。 */
+  /** 模型显示名称。 */
   name: string;
   /** 供应商标识。 */
   providerName: string;
@@ -415,8 +415,8 @@ export type BuildPromptInput = {
   persona?: PromptPersonaContext | null;
   /** Prompt 预设上下文；未绑定时为 null。 */
   promptPreset?: PromptPresetContext | null;
-  /** 模型配置上下文；未绑定时为 null。 */
-  modelConfig?: PromptModelConfigContext | null;
+  /** 模型网关上下文；未绑定时为 null。 */
+  modelGateway?: PromptModelGatewayContext | null;
   /** 历史消息列表（按时间正序）。 */
   history: ChatMessageLike[];
   /** 当前用户输入消息。 */

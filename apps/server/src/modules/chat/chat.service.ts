@@ -22,7 +22,7 @@ import type {
   WorldBookContext
 } from '../../services/prompt-builder/types';
 import { ModelsService } from '../models/models.service';
-import type { ModelGatewayConfig, ModelConfigParams } from '../models/model-config.types';
+import type { ModelGatewayConfig, ModelGenerationParams } from '../models/model.types';
 import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import { WorldBooksService } from '../world-books/world-books.service';
@@ -136,10 +136,9 @@ export class ChatService {
       templateVariables = this.createTemplateVariables(conversation);
       const modelCandidates = await this.modelsService.getGatewayCandidates({
         currentUser,
-        modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId,
-        modelConfigId: dto.modelConfigId ?? conversation.modelConfigId
+        modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId
       });
-      const modelConfig = modelCandidates[0];
+      const gatewayConfig = modelCandidates[0];
       const promptPreset = await this.resolvePromptPreset(currentUser, dto, conversation);
       const worldBooks = await this.worldBooksService.listPromptContexts(
         currentUser,
@@ -170,7 +169,7 @@ export class ChatService {
           history: preparedMessages.history,
           currentUserMessage: preparedMessages.currentUserMessage,
           promptPreset,
-          modelConfig,
+          gatewayConfig,
           worldBooks,
           dto
         })
@@ -242,7 +241,7 @@ export class ChatService {
             });
             await this.completeAssistantMessage(assistantMessage.id, assistantContent, event, {
               groupId: candidate.modelFallbackGroupId ?? null,
-              selectedModelId: candidate.providerModelId ?? candidate.modelConfigId,
+              selectedModelId: candidate.providerModelId ?? null,
               attempts: fallbackAttempts
             });
             this.writeSse(response, 'done', {
@@ -298,7 +297,7 @@ export class ChatService {
           message: candidateError.message,
           modelFallback: {
             groupId: candidate.modelFallbackGroupId ?? null,
-            selectedModelId: candidate.providerModelId ?? candidate.modelConfigId,
+            selectedModelId: candidate.providerModelId ?? null,
             attempts: fallbackAttempts
           }
         });
@@ -397,15 +396,14 @@ export class ChatService {
     const templateVariables = this.createTemplateVariables(conversation);
     const modelCandidates = await this.modelsService.getGatewayCandidates({
       currentUser,
-      modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId,
-      modelConfigId: dto.modelConfigId ?? conversation.modelConfigId
+      modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId
     });
-    const modelConfig = modelCandidates[0];
+    const gatewayConfig = modelCandidates[0];
 
-    if (!modelConfig) {
+    if (!gatewayConfig) {
       throw new BadRequestException({
         code: ERROR_CODES.CHAT_MODEL_CONFIG_REQUIRED,
-        message: 'At least one model config is required before generating suggestions.'
+        message: '请先配置至少一个模型链后再生成建议。'
       });
     }
 
@@ -426,7 +424,7 @@ export class ChatService {
         history,
         currentUserMessage: this.createSuggestionPromptMessage(conversation.id, count),
         promptPreset,
-        modelConfig,
+        gatewayConfig,
         worldBooks,
         dto
       })
@@ -543,7 +541,6 @@ export class ChatService {
       include: {
         character: true,
         modelFallbackGroup: true,
-        modelConfig: true,
         promptPreset: true,
         persona: true
       }
@@ -610,15 +607,15 @@ export class ChatService {
   }
 
   /**
-   * 校验模型配置就绪：必须有 apiKey。
-   * @param modelConfig 模型网关配置。
-   * @throws BadRequestException 未配置 apiKey（CHAT_MODEL_CONFIG_REQUIRED）。
+   * 校验模型链就绪：至少有一个候选且带 apiKey。
+   * @param modelCandidates 模型链候选。
+   * @throws BadRequestException 无候选或未配置 apiKey（CHAT_MODEL_CONFIG_REQUIRED）。
    */
   private assertModelCandidatesReady(modelCandidates: ModelGatewayConfig[]): void {
-    if (!modelCandidates.some((modelConfig) => modelConfig.apiKey)) {
+    if (modelCandidates.length === 0 || !modelCandidates.some((candidate) => candidate.apiKey)) {
       throw new BadRequestException({
         code: ERROR_CODES.CHAT_MODEL_CONFIG_REQUIRED,
-        message: 'At least one model API Key is required before chat streaming.'
+        message: '请先配置至少一个模型链后再开始聊天。'
       });
     }
   }
@@ -1168,7 +1165,7 @@ export class ChatService {
     history: Message[];
     currentUserMessage: Message;
     promptPreset: PromptPreset | null;
-    modelConfig: ModelGatewayConfig;
+    gatewayConfig: ModelGatewayConfig;
     worldBooks: WorldBookContext[];
     dto: StreamChatDto;
   }): BuildPromptInput {
@@ -1201,16 +1198,13 @@ export class ChatService {
             metadata: this.parseRecord(params.promptPreset.metadataJson)
           }
         : null,
-      modelConfig: {
-        id: params.modelConfig.providerModelId ?? params.modelConfig.modelConfigId ?? '',
-        name:
-          params.modelConfig.displayName ??
-          params.conversation.modelConfig?.name ??
-          params.modelConfig.modelName,
-        providerName: params.modelConfig.providerName,
-        baseUrl: params.modelConfig.baseUrl,
-        modelName: params.modelConfig.modelName,
-        parameters: params.modelConfig.params,
+      modelGateway: {
+        id: params.gatewayConfig.providerModelId ?? '',
+        name: params.gatewayConfig.displayName ?? params.gatewayConfig.modelName,
+        providerName: params.gatewayConfig.providerName,
+        baseUrl: params.gatewayConfig.baseUrl,
+        modelName: params.gatewayConfig.modelName,
+        parameters: params.gatewayConfig.params,
         metadata: null
       },
       history: params.history.map((message) => this.toChatMessageLike(message)),
@@ -1304,7 +1298,7 @@ export class ChatService {
    * @returns 合并后的参数。
    */
   private mergeModelParams(
-    modelParams: ModelConfigParams,
+    modelParams: ModelGenerationParams,
     promptPreset: PromptPreset | null,
     options: { isRegenerate?: boolean } = {}
   ): PromptModelParameters {

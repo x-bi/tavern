@@ -718,7 +718,7 @@ export class PromptBuilderService {
     character: BuildPromptInput['character'],
     variables: PromptTemplateVariables
   ): string {
-    return [
+    const blocks = [
       this.formatTitledBlock('Name', character.name),
       this.formatTitledBlock(
         'Description',
@@ -736,9 +736,17 @@ export class PromptBuilderService {
         'First message',
         this.resolveTemplateVariables(character.firstMessage, variables)
       )
-    ]
-      .filter((line) => line.length > 0)
-      .join('\n');
+    ];
+    // 角色级系统提示（metadata.systemPrompt）：前端可编辑、可展示，但此前未被消费。
+    // 这里补上，让角色专属约束也能进入 developer 消息，与预设级 systemPrompt 共存。
+    const charSystemPrompt =
+      typeof character.metadata?.systemPrompt === 'string'
+        ? this.resolveTemplateVariables(character.metadata.systemPrompt, variables)
+        : '';
+    if (this.hasContent(charSystemPrompt)) {
+      blocks.push(this.formatTitledBlock('System prompt', charSystemPrompt));
+    }
+    return blocks.filter((line) => line.length > 0).join('\n');
   }
 
   /**

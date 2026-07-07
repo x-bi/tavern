@@ -1,41 +1,33 @@
 import { defineStore } from 'pinia';
 
 import {
-  createModelConfig,
   createModelFallbackGroup as requestCreateModelFallbackGroup,
   createModelProvider as requestCreateModelProvider,
   createProviderModel as requestCreateProviderModel,
   deleteModelFallbackGroup as requestDeleteModelFallbackGroup,
-  deleteModelConfig,
   deleteModelProvider as requestDeleteModelProvider,
   deleteProviderModel as requestDeleteProviderModel,
   fetchModelFallbackGroups,
-  fetchModelConfigs,
   fetchModelProviders,
   fetchProviderModels,
   updateModelFallbackGroup as requestUpdateModelFallbackGroup,
-  updateModelConfig,
   updateModelProvider as requestUpdateModelProvider,
   updateProviderModel as requestUpdateProviderModel,
+  type ModelResourceListParams,
   type ModelFallbackGroup,
   type ModelFallbackGroupMutationPayload,
-  type ModelConfig,
-  type ModelConfigListParams,
-  type ModelConfigMutationPayload,
   type ModelProvider,
   type ModelProviderMutationPayload,
   type ProviderModel,
   type ProviderModelMutationPayload
 } from '../api/models';
 import type {
-  ModelConfigPayload,
   ModelFallbackGroupPayload,
   ModelProviderPayload,
   ProviderModelPayload
 } from '@tavern/shared';
 
-type ModelConfigState = {
-  items: ModelConfig[];
+type ModelResourceState = {
   providers: ModelProvider[];
   providerModels: ProviderModel[];
   fallbackGroups: ModelFallbackGroup[];
@@ -50,8 +42,7 @@ type ModelConfigState = {
 };
 
 export const useModelStore = defineStore('model', {
-  state: (): ModelConfigState => ({
-    items: [],
+  state: (): ModelResourceState => ({
     providers: [],
     providerModels: [],
     fallbackGroups: [],
@@ -65,7 +56,6 @@ export const useModelStore = defineStore('model', {
     saveError: null
   }),
   getters: {
-    hasModelConfigs: (state) => state.items.length > 0,
     hasProviders: (state) => state.providers.length > 0,
     hasProviderModels: (state) => state.providerModels.length > 0,
     hasFallbackGroups: (state) => state.fallbackGroups.length > 0
@@ -74,49 +64,21 @@ export const useModelStore = defineStore('model', {
     setSearch(value: string) {
       this.search = value;
     },
-    async loadModelConfigs(params: ModelConfigListParams = {}) {
-      this.loading = true;
-      this.error = null;
-
-      try {
-        const page = params.page ?? this.page;
-        const pageSize = params.pageSize ?? this.pageSize;
-        const search = params.search ?? this.search;
-        const result = await fetchModelConfigs({
-          page,
-          pageSize,
-          search: search.trim() || undefined
-        });
-
-        this.items = result.items;
-        this.total = result.total;
-        this.page = result.page;
-        this.pageSize = result.pageSize;
-        this.search = search;
-      } catch (error) {
-        this.error = error instanceof Error ? error.message : '模型配置加载失败。';
-      } finally {
-        this.loading = false;
-      }
-    },
-    async loadModelResources(params: ModelConfigListParams = {}) {
+    async loadModelResources(params: ModelResourceListParams = {}) {
       this.loading = true;
       this.error = null;
 
       try {
         const pageSize = params.pageSize ?? 100;
-        const [providers, providerModels, fallbackGroups, legacyConfigs] =
-          await Promise.all([
-            fetchModelProviders({ page: 1, pageSize, search: params.search }),
-            fetchProviderModels({ page: 1, pageSize, search: params.search }),
-            fetchModelFallbackGroups({ page: 1, pageSize, search: params.search }),
-            fetchModelConfigs({ page: 1, pageSize, search: params.search })
-          ]);
+        const [providers, providerModels, fallbackGroups] = await Promise.all([
+          fetchModelProviders({ page: 1, pageSize, search: params.search }),
+          fetchProviderModels({ page: 1, pageSize, search: params.search }),
+          fetchModelFallbackGroups({ page: 1, pageSize, search: params.search })
+        ]);
 
         this.providers = providers.items;
         this.providerModels = providerModels.items;
         this.fallbackGroups = fallbackGroups.items;
-        this.items = legacyConfigs.items;
         this.total = fallbackGroups.total;
         this.page = fallbackGroups.page;
         this.pageSize = fallbackGroups.pageSize;
@@ -124,63 +86,6 @@ export const useModelStore = defineStore('model', {
         this.error = error instanceof Error ? error.message : '模型资源加载失败。';
       } finally {
         this.loading = false;
-      }
-    },
-    async createModelConfig(payload: ModelConfigPayload): Promise<ModelConfig | null> {
-      this.saving = true;
-      this.saveError = null;
-
-      try {
-        const modelConfig = await createModelConfig(payload);
-
-        await this.loadModelConfigs({ page: 1 });
-
-        return modelConfig;
-      } catch (error) {
-        this.saveError = error instanceof Error ? error.message : '模型配置创建失败。';
-
-        return null;
-      } finally {
-        this.saving = false;
-      }
-    },
-    async updateModelConfig(
-      id: string,
-      payload: ModelConfigMutationPayload
-    ): Promise<ModelConfig | null> {
-      this.saving = true;
-      this.saveError = null;
-
-      try {
-        const modelConfig = await updateModelConfig(id, payload);
-
-        await this.loadModelConfigs();
-
-        return modelConfig;
-      } catch (error) {
-        this.saveError = error instanceof Error ? error.message : '模型配置保存失败。';
-
-        return null;
-      } finally {
-        this.saving = false;
-      }
-    },
-    async deleteModelConfig(id: string): Promise<boolean> {
-      this.saving = true;
-      this.saveError = null;
-
-      try {
-        await deleteModelConfig(id);
-        this.items = this.items.filter((item) => item.id !== id);
-        await this.loadModelConfigs();
-
-        return true;
-      } catch (error) {
-        this.saveError = error instanceof Error ? error.message : '模型配置删除失败。';
-
-        return false;
-      } finally {
-        this.saving = false;
       }
     },
     async createProvider(payload: ModelProviderPayload): Promise<ModelProvider | null> {

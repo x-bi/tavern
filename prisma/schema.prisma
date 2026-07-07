@@ -21,8 +21,6 @@ model User {
   assets              Asset[]
   characters          Character[]
   conversations       Conversation[]
-  modelCallLogs       ModelCallLog[]
-  modelConfigs        ModelConfig[]
   modelFallbackGroups ModelFallbackGroup[]
   modelProviders      ModelProvider[]
   personas            UserPersona[]
@@ -59,32 +57,6 @@ model Character {
   @@index([userId, isSensitive])
   @@index([userId, isArchived])
   @@index([name])
-  @@index([deletedAt])
-}
-
-model ModelConfig {
-  id                String    @id @default(cuid())
-  userId            String
-  name              String
-  provider          String    @default("openai-compatible")
-  baseUrl           String
-  model             String
-  apiKeyCiphertext  String?
-  apiKeyMask        String?
-  defaultParamsJson String?
-  isDefault         Boolean   @default(false)
-  isEnabled         Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime?
-
-  conversations Conversation[]
-  modelCallLogs ModelCallLog[]
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, name])
-  @@index([userId, isEnabled])
-  @@index([provider])
   @@index([deletedAt])
 }
 
@@ -220,7 +192,6 @@ model Conversation {
   id                   String    @id @default(cuid())
   userId               String
   characterId          String
-  modelConfigId        String?
   modelFallbackGroupId String?
   promptPresetId       String?
   personaId            String?
@@ -235,9 +206,7 @@ model Conversation {
 
   character          Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
   messages           Message[]
-  modelCallLogs      ModelCallLog[]
   modelFallbackGroup ModelFallbackGroup? @relation(fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
-  modelConfig        ModelConfig?        @relation(fields: [modelConfigId], references: [id], onDelete: SetNull)
   persona            UserPersona?        @relation(fields: [personaId], references: [id], onDelete: SetNull)
   promptPreset       PromptPreset?       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -245,7 +214,6 @@ model Conversation {
   @@index([userId, updatedAt])
   @@index([userId, usesSensitiveResource])
   @@index([characterId, updatedAt])
-  @@index([modelConfigId])
   @@index([modelFallbackGroupId])
   @@index([status])
   @@index([deletedAt])
@@ -264,8 +232,6 @@ model Message {
   deletedAt      DateTime?
 
   conversation          Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  requestModelCallLogs  ModelCallLog[] @relation("RequestMessageCallLog")
-  responseModelCallLogs ModelCallLog[] @relation("ResponseMessageCallLog")
 
   @@index([conversationId, createdAt])
   @@index([role])
@@ -358,38 +324,4 @@ model AppSetting {
 
   @@unique([scope, key])
   @@index([userId])
-}
-
-model ModelCallLog {
-  id                String   @id @default(cuid())
-  userId            String
-  conversationId    String?
-  modelConfigId     String?
-  requestMessageId  String?
-  responseMessageId String?
-  provider          String
-  model             String
-  status            String
-  promptTokens      Int?
-  completionTokens  Int?
-  totalTokens       Int?
-  latencyMs         Int?
-  errorCode         String?
-  errorMessage      String?
-  requestJson       String?
-  responseJson      String?
-  createdAt         DateTime @default(now())
-
-  conversation    Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
-  modelConfig     ModelConfig?  @relation(fields: [modelConfigId], references: [id], onDelete: SetNull)
-  requestMessage  Message?      @relation("RequestMessageCallLog", fields: [requestMessageId], references: [id], onDelete: SetNull)
-  responseMessage Message?      @relation("ResponseMessageCallLog", fields: [responseMessageId], references: [id], onDelete: SetNull)
-  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, createdAt])
-  @@index([conversationId])
-  @@index([modelConfigId])
-  @@index([requestMessageId])
-  @@index([responseMessageId])
-  @@index([status])
 }

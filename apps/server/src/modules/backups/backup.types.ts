@@ -4,14 +4,6 @@ export const APPLICATION_BACKUP_FORMAT_VERSION = 'tavern-lite.backup.v1';
 /** 备份 JSON 记录（任意键值对象）。 */
 export type BackupJsonRecord = Record<string, unknown>;
 
-/** 模型配置的备份记录（apiKey 密文不导出，仅保留 mask 和是否有的标记）。 */
-export type ApplicationBackupModelConfig = BackupJsonRecord & {
-  apiKeyCiphertext: null;
-  apiKeyIncluded: false;
-  apiKeyMask: string | null;
-  hasApiKey: boolean;
-};
-
 /** 应用设置的备份记录（敏感 key 的值脱敏为 null）。 */
 export type ApplicationBackupSetting = BackupJsonRecord & {
   value: string | null;
@@ -23,7 +15,8 @@ export type ApplicationBackupSetting = BackupJsonRecord & {
 /**
  * 应用备份导出结构（逻辑 JSON 格式）。
  *
- * 安全策略：apiKey 密文不导出、敏感设置值脱敏、上传文件二进制不嵌入。
+ * 安全策略：敏感设置值脱敏、上传文件二进制不嵌入。
+ * 模型配置（含 API Key）不纳入备份，需在恢复后重新配置模型链。
  */
 export type ApplicationBackupExport = {
   formatVersion: typeof APPLICATION_BACKUP_FORMAT_VERSION;
@@ -42,13 +35,8 @@ export type ApplicationBackupExport = {
     type: 'logical-json';
     description: string;
   };
-  /** 安全策略说明：apiKey/敏感设置/上传文件的处理方式。 */
+  /** 安全策略说明：敏感设置/上传文件的处理方式。 */
   security: {
-    apiKeys: {
-      mode: 'redacted';
-      included: false;
-      description: string;
-    };
     settings: {
       sensitiveKeyPattern: string;
       redactedValue: null;
@@ -67,7 +55,6 @@ export type ApplicationBackupExport = {
     messages: number;
     worldBooks: number;
     worldBookEntries: number;
-    modelConfigs: number;
     promptPresets: number;
     personas: number;
     appSettings: number;
@@ -79,7 +66,6 @@ export type ApplicationBackupExport = {
     conversations: BackupJsonRecord[];
     messages: BackupJsonRecord[];
     worldBooks: BackupJsonRecord[];
-    modelConfigs: ApplicationBackupModelConfig[];
     promptPresets: BackupJsonRecord[];
     personas: BackupJsonRecord[];
     appSettings: ApplicationBackupSetting[];
@@ -105,15 +91,12 @@ export type BackupImportSummary = {
   messages: number;
   worldBooks: number;
   worldBookEntries: number;
-  modelConfigs: number;
   promptPresets: number;
   personas: number;
   appSettings: number;
   assets: number;
   /** 被脱敏而未恢复的设置项数。 */
   skippedRedactedSettings: number;
-  /** 因备份不含密钥而丢弃 apiKey 的模型配置数。 */
-  apiKeysDropped: number;
 };
 
 /** 导入响应。 */

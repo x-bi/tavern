@@ -5,18 +5,6 @@ export const APPLICATION_BACKUP_FORMAT_VERSION = 'tavern-lite.backup.v1';
 export type BackupJsonRecord = Record<string, unknown>;
 
 /**
- * 备份中 API Key 的安全策略：始终脱敏，不写入任何密钥内容。
- */
-export type BackupApiKeyPolicy = {
-  /** 策略模式，固定为脱敏。 */
-  mode: 'redacted';
-  /** 是否包含 Key 明文，固定为 false。 */
-  included: false;
-  /** 策略说明。 */
-  description: string;
-};
-
-/**
  * 备份中应用设置的敏感字段策略：按正则识别敏感键并置空。
  */
 export type BackupSettingsPolicy = {
@@ -32,8 +20,6 @@ export type BackupSettingsPolicy = {
  * 备份的整体安全策略，记录 API Key、设置、上传文件三类资源的处理方式。
  */
 export type ApplicationBackupSecurity = {
-  /** API Key 处理策略。 */
-  apiKeys: BackupApiKeyPolicy;
   /** 应用设置处理策略。 */
   settings: BackupSettingsPolicy;
   /** 上传文件处理策略：不包含二进制内容。 */
@@ -45,20 +31,6 @@ export type ApplicationBackupSecurity = {
   };
   /** 导出时排除的数据库表名列表。 */
   excludedTables: string[];
-};
-
-/**
- * 备份中模型配置记录的形态：在通用记录基础上显式标注 API Key 已脱敏。
- */
-export type ApplicationBackupModelConfig = BackupJsonRecord & {
-  /** 密文 Key，固定为 null（备份不含密钥）。 */
-  apiKeyCiphertext: null;
-  /** 是否包含 Key，固定为 false。 */
-  apiKeyIncluded: false;
-  /** API Key 掩码字符串；未配置 Key 时为 null。 */
-  apiKeyMask: string | null;
-  /** 是否已配置过 API Key。 */
-  hasApiKey: boolean;
 };
 
 /**
@@ -121,8 +93,6 @@ export type ApplicationBackupExport = {
     worldBooks: number;
     /** 世界书条目数。 */
     worldBookEntries: number;
-    /** 模型配置数。 */
-    modelConfigs: number;
     /** Prompt 预设数。 */
     promptPresets: number;
     /** Persona 数。 */
@@ -142,8 +112,6 @@ export type ApplicationBackupExport = {
     messages: BackupJsonRecord[];
     /** 世界书记录。 */
     worldBooks: BackupJsonRecord[];
-    /** 模型配置记录（Key 已脱敏）。 */
-    modelConfigs: ApplicationBackupModelConfig[];
     /** Prompt 预设记录。 */
     promptPresets: BackupJsonRecord[];
     /** Persona 记录。 */
@@ -184,8 +152,6 @@ export type ApplicationBackupImportSummary = {
   worldBooks: number;
   /** 导入的世界书条目数。 */
   worldBookEntries: number;
-  /** 导入的模型配置数。 */
-  modelConfigs: number;
   /** 导入的 Prompt 预设数。 */
   promptPresets: number;
   /** 导入的 Persona 数。 */
@@ -196,8 +162,6 @@ export type ApplicationBackupImportSummary = {
   assets: number;
   /** 因脱敏而跳过（未恢复）的敏感设置条数。 */
   skippedRedactedSettings: number;
-  /** 因脱敏而丢弃的 API Key 条数。 */
-  apiKeysDropped: number;
 };
 
 /**

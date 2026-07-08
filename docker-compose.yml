@@ -1,0 +1,51 @@
+# Tavern Lite 部署编排
+# 用法:
+#   1. cp deploy/.env.example .env  并修改 AUTH_TOKEN_SECRET
+#   2. docker compose up -d --build
+#   3. docker compose exec server pnpm db:seed   # 首次写入演示数据
+# 访问: http://<服务器IP>:8080
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    image: tavern-server:latest
+    container_name: tavern-server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # 容器内必须监听 0.0.0.0,否则 nginx 容器反代不过来
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: "3100"
+      API_PREFIX: api
+      REQUEST_BODY_LIMIT: 5mb
+      # 绝对路径,避免相对路径在容器不同 cwd 下解析偏差
+      DATABASE_URL: "file:/app/data/tavern-lite.db"
+      # 同源部署(前后端同属一个 nginx)时 CORS 可留空
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      AUTH_MODE: single_user
+      AUTH_REQUIRE_PASSWORD: ${AUTH_REQUIRE_PASSWORD:-false}
+      AUTH_SINGLE_USER_USERNAME: ${AUTH_SINGLE_USER_USERNAME:-demo}
+      AUTH_SINGLE_USER_DISPLAY_NAME: ${AUTH_SINGLE_USER_DISPLAY_NAME:-Tavern Admin}
+      AUTH_SINGLE_USER_PASSWORD: ${AUTH_SINGLE_USER_PASSWORD:-}
+      # 必填:未设置则 compose 直接拒绝启动
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET 必须在 .env 中设置}
+      AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-604800}
+    volumes:
+      - ./data:/app/data
+      - ./uploads:/app/uploads
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: tavern-web:latest
+    container_name: tavern-web
+    restart: unless-stopped
+    ports:
+      # 宿主 8080 -> 容器 80。用 8080 避开宝塔自带 nginx 占用的 80。
+      # 若想让 web 容器独占 80:先停宝塔 nginx(systemctl stop nginx / 宝塔面板),
+      # 再把下方改成 "80:80"。
+      - "8080:80"
+    depends_on:
+      - server

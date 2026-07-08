@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "model-context/stages/stage-46-docker-compose-部署.md",
+                "file": "model-context/stages/stage-47-生产环境静态资源托管.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "stage-46-docker-compose-部署"
+              "title": "stage-47-生产环境静态资源托管"
             }
           }
         ]
@@ -185,17 +185,22 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
-    "apps/server/src/modules/presets/presets.service.ts.tmp.41288.bdc4efed5f49",
-    "apps/server/src/modules/presets/presets.service.ts.tmp.41288.36d61b9e91f5",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.d5f4f585ad73",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.5b7754d9f343",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.ddc3617f08e6",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.8640bfd14bd0",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.ca78a2679787",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.44f8dfed2d00",
-    "apps/server/src/modules/models/models.service.ts.tmp.41288.da325a62d620",
-    "apps/server/src/modules/world-books/dto/update-world-book.dto.ts.tmp.41288.20fc796cddf2",
-    "apps/server/src/modules/world-books/world-books.controller.ts.tmp.41288.ffe342b3eded",
+    "docs/deploy.md",
+    "docs/deploy.md.tmp.14952.71d1ebff6127",
+    "deploy",
+    "docker-compose.yml",
+    "nginx.conf",
+    "nginx.conf.tmp.14952.1679b5748aa0",
+    "Dockerfile.web",
+    "docker-entrypoint.sh",
+    "docker-entrypoint.sh.tmp.14952.3815067bfeef",
+    "Dockerfile.server",
+    "Dockerfile.server.tmp.14952.428a22a7d29f",
+    "model-context/stages/stage-46-docker-compose-部署.md",
+    "model-context/stages/stage-50-mvp-验收清单.md",
+    "model-context/stages/stage-49-回归测试与修复.md",
+    "model-context/stages/stage-48-sqlite-与-uploads-备份脚本.md",
+    "model-context/stages/stage-47-生产环境静态资源托管.md",
     "model-context/stages/stage-45-设置页.md",
     "model-context/stages/stage-44-数据恢复导入.md",
     "docs/backup-import.md",
@@ -206,11 +211,6 @@
     "model-context/stages/stage-40-世界书命中调试与-prompt-预览集成.md",
     "model-context/stages/stage-39-世界书关键词匹配逻辑.md",
     "model-context/stages/stage-37-worldbook-api.md",
-    "model-context/stages/stage-50-mvp-验收清单.md",
-    "model-context/stages/stage-49-回归测试与修复.md",
-    "model-context/stages/stage-48-sqlite-与-uploads-备份脚本.md",
-    "model-context/stages/stage-47-生产环境静态资源托管.md",
-    "model-context/stages/stage-46-docker-compose-部署.md",
     "model-context/README.md",
     "model-context/source-map.md",
     "model-context/stages/stage-index.md",

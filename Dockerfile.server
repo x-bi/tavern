@@ -1,21 +1,27 @@
 # syntax=docker/dockerfile:1
 #
 # Tavern Lite 后端镜像
-# 阶段:pnpm install -> prisma generate -> tsc build
-# 运行:prisma migrate deploy -> node apps/server/dist/main.js
+# 阶段: pnpm install -> prisma generate -> tsc build
+# 运行: prisma migrate deploy -> node apps/server/dist/main.js
 #
-# 说明:后端运行时不依赖 @tavern/shared(已验证源码无 import),
+# 说明: 后端运行时不依赖 @tavern/shared(已验证源码无 import),
 # 但 build 时 tsc 仍需要 shared 类型解析,故一并 COPY。
 
-FROM node:20-bookworm-slim
+FROM node:22-bookworm-slim
 
 # Prisma 6 运行与迁移需要 openssl；ca-certificates 用于 corepack 拉取 pnpm
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# corepack 按 package.json 的 packageManager(pnpm@11.7.0)启用 pnpm
+# corepack 按 package.json 的 packageManager 启用 pnpm
 RUN corepack enable
+RUN corepack prepare pnpm@11.7.0 --activate
+RUN pnpm config set registry https://registry.npmmirror.com \
+ && pnpm config set fetch-retries 5 \
+ && pnpm config set fetch-retry-mintimeout 20000 \
+ && pnpm config set fetch-retry-maxtimeout 120000 \
+ && pnpm config set network-concurrency 3
 
 WORKDIR /app
 
@@ -39,7 +45,7 @@ RUN pnpm exec prisma generate --schema prisma/schema.prisma
 # 编译后端 -> apps/server/dist
 RUN pnpm --filter @tavern/server build
 
-# 启动脚本(容错:去除可能的 Windows CRLF 行尾,避免 Linux 下 sh 报错)
+# 启动脚本(容错: 去除可能的 Windows CRLF 行尾,避免 Linux 下 sh 报错)
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 

@@ -162,11 +162,11 @@ seed 内容包括：
 
 ## Workspace 包
 
-| 包名             | 路径              | 当前职责                               |
-| ---------------- | ----------------- | -------------------------------------- |
-| `@tavern/web`    | `apps/web`        | Vue3 + Vite 前端基础工程               |
-| `@tavern/server` | `apps/server`     | NestJS 后端基础工程                    |
-| `@tavern/shared` | `packages/shared` | 共享 TypeScript 类型，不放业务逻辑     |
+| 包名             | 路径              | 当前职责                           |
+| ---------------- | ----------------- | ---------------------------------- |
+| `@tavern/web`    | `apps/web`        | Vue3 + Vite 前端基础工程           |
+| `@tavern/server` | `apps/server`     | NestJS 后端基础工程                |
+| `@tavern/shared` | `packages/shared` | 共享 TypeScript 类型，不放业务逻辑 |
 
 根级脚本约定：
 
@@ -188,3 +188,5 @@ seed 内容包括：
 - 开发规则：[AGENTS.md](./AGENTS.md)
 - 架构与路线：[docs/architecture.md](./docs/architecture.md)
 - 阶段资料：[model-context/stages/README.md](./model-context/stages/README.md)
+
+测试服务器自动拉取

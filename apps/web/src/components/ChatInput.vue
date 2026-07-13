@@ -275,14 +275,49 @@ function getTextarea(): HTMLTextAreaElement | null {
 }
 
 @media (max-width: 720px) {
+  .chat-input {
+    gap: 8px;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+
   .chat-input__toolbar,
   .chat-input__placeholder-actions,
   .chat-input__submit-actions {
     width: 100%;
   }
 
+  .chat-input__markers {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .chat-input__markers::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chat-input__placeholder-actions {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .chat-input__placeholder-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .chat-input__placeholder-actions :deep(.n-button) {
+    flex: 0 0 auto;
+  }
+
   .chat-input__submit-actions {
     justify-content: flex-end;
+  }
+
+  .chat-input__submit-actions :deep(.n-button:last-child) {
+    min-width: 76px;
   }
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-  <n-layout class="app-layout" has-sider>
+  <n-layout class="app-layout" :class="{ 'app-layout--chat-route': isChatRoute }" has-sider>
     <n-layout-sider
       bordered
       collapse-mode="width"
@@ -57,6 +57,9 @@ const router = useRouter();
 const route = useRoute();
 const appStore = useAppStore();
 const pageTitle = usePageTitle();
+const isChatRoute = computed(
+  () => route.name === 'chat' || route.name === 'chat-conversation'
+);
 
 const menuOptions = computed<MenuOption[]>(() =>
   navigationItems.map((item) => ({
@@ -149,5 +152,31 @@ function handleMenuSelect(path: string) {
   min-height: calc(100vh - 72px);
   padding: 24px;
   background: var(--surface-base);
+}
+
+@media (max-width: 720px) {
+  /* 仅聊天路由使用沉浸式窄屏框架，其他管理页仍保持原有工作台布局。 */
+  .app-layout--chat-route :deep(.n-layout-sider) {
+    display: none;
+  }
+
+  .app-layout--chat-route .app-header {
+    min-height: 52px;
+    padding: 0 12px;
+  }
+
+  .app-layout--chat-route .app-header p,
+  .app-layout--chat-route .app-header .n-tag {
+    display: none;
+  }
+
+  .app-layout--chat-route .app-header h1 {
+    font-size: 17px;
+  }
+
+  .app-layout--chat-route .app-content {
+    min-height: calc(100dvh - 52px);
+    padding: 8px;
+  }
 }
 </style>

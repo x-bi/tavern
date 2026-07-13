@@ -291,13 +291,25 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 720px) {
-  /* 小屏：chat-view 高度已转为 auto，这里让 chat-room 占首屏、内部滚动 */
+  /* 小屏由 chat-view 固定在动态视口中，消息区继续作为唯一滚动容器。 */
   .chat-room {
-    max-height: calc(100vh - 150px);
+    min-height: 0;
+    border-radius: 6px;
   }
 
   .chat-room__header {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .chat-room__header p {
+    display: none;
+  }
+
+  .chat-room__messages {
+    gap: 12px;
+    padding: 12px;
   }
 }
 </style>

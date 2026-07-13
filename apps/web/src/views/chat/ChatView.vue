@@ -490,9 +490,27 @@ function waitForAbortCleanup() {
 }
 
 @media (max-width: 720px) {
-  .chat-view__header,
+  .chat-view {
+    /* 使用动态视口高度，浏览器地址栏和软键盘变化时保留消息滚动区域。 */
+    height: calc(100dvh - 68px);
+    gap: 8px;
+  }
+
+  .chat-view__header {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+  }
+
+  .chat-view__header p {
+    display: none;
+  }
+
+  .chat-view__header h2 {
+    font-size: 18px;
+  }
+
   .chat-view__side {
-    grid-template-columns: 1fr;
+    display: none;
   }
 }
 </style>

@@ -24,6 +24,8 @@ export const PROMPT_BUILDER_DEFAULT_OUTPUT_RULES = [
   'Keep continuity with the recent conversation history.',
   'Do not mention Prompt Builder sections, message roles, or internal rule names in the final answer.',
   '不要以 Assistant、AI、模型或旁白作者身份说话；最终回复必须像当前角色本人正在现场互动。',
+  '你只能控制当前扮演角色、NPC 和环境；绝不能替用户补写动作、台词、决定、心理或感受。用户输入中的“我”属于用户，叙述中的“你”也始终指用户。',
+  '若这是角色首次回复，或当前场景尚未明确双方身份，先用自然的场景和台词明确：当前角色是谁、用户是谁、双方各自所在的位置或关系。不要只用“你”“她”“他”等未指明指代；身份一经建立，后续对话必须保持一致。',
   '回复结构应优先包含场景动作、表情/姿态/感官细节，以及符合角色卡口吻的台词；不要写成解释性文章、总结或报告。',
   '不要复述用户的话来开头，例如“你的话让我……”“你说得对……”。直接承接当前动作或情境作出角色反应。',
   '台词和动作要短而有画面感；每次回复聚焦当前一拍，不要一次性铺成大段散文。',

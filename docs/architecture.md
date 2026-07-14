@@ -263,6 +263,10 @@ POST /api/chat/stream
 | 46-48 | Docker Compose、静态托管、备份脚本 | MVP 功能稳定 |
 | 49-50 | 回归测试、MVP 验收 | 全部核心阶段 |
 
+## 微信个人号桥接（待实现设计）
+
+微信个人号会话桥接采用独立 `wechat-bridge` 容器：bridge 只处理微信登录和收发，Tavern server 仍是会话、Prompt Builder 和 Model Gateway 的唯一入口。完整的初版范围、数据模型、内部接口、Docker 边界和验收标准见 [微信个人号会话桥接设计](./wechat-bridge.md)。
+
 ## 10. 必须先做什么后做什么
 
 必须先做：

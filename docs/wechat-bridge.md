@@ -1,3 +1,5 @@
+已废弃 因为web协议 微信号无法登录网页版微信 付费token没有找到供应商 所以这个方案先废弃
+
 # 微信个人号会话桥接设计
 
 > 状态：待实现设计。本文不代表个人微信接入已上线。
@@ -101,42 +103,42 @@ bridge 是独立 Docker 容器，不能放入现有 NestJS 进程。微信连接
 
 ### 5.1 `WechatBinding`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id` | 主键 |
-| `userId` | Tavern 所属用户 |
-| `conversationId` | 已绑定会话；初版唯一 |
-| `targetType` | `direct` 或 `room` |
-| `targetId` | Wechaty 联系人或群聊稳定 ID |
-| `targetName` | 仅用于管理端显示 |
-| `isEnabled` | 是否接收与投递 |
-| `groupMentionOnly` | 群聊是否必须 @ 机器人 |
-| `createdAt` / `updatedAt` | 审计时间 |
+| 字段                      | 说明                        |
+| ------------------------- | --------------------------- |
+| `id`                      | 主键                        |
+| `userId`                  | Tavern 所属用户             |
+| `conversationId`          | 已绑定会话；初版唯一        |
+| `targetType`              | `direct` 或 `room`          |
+| `targetId`                | Wechaty 联系人或群聊稳定 ID |
+| `targetName`              | 仅用于管理端显示            |
+| `isEnabled`               | 是否接收与投递              |
+| `groupMentionOnly`        | 群聊是否必须 @ 机器人       |
+| `createdAt` / `updatedAt` | 审计时间                    |
 
 初版须保证一个 `conversationId` 只绑定一个微信目标；同一个微信目标也不能被多个绑定重复消费。
 
 ### 5.2 `WechatInboundReceipt`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id` | 主键 |
-| `bindingId` | 所属绑定 |
+| 字段              | 说明            |
+| ----------------- | --------------- |
+| `id`              | 主键            |
+| `bindingId`       | 所属绑定        |
 | `sourceMessageId` | 微信原始消息 ID |
-| `receivedAt` | 接收时间 |
+| `receivedAt`      | 接收时间        |
 
 对 `(bindingId, sourceMessageId)` 建立唯一约束。它只用于防重复，不保存完整原始聊天内容。
 
 ### 5.3 `WechatDelivery`
 
-| 字段 | 说明 |
-| --- | --- |
-| `id` | 主键 |
-| `bindingId` | 目标绑定 |
-| `messageId` | 对应 Tavern assistant 消息 |
-| `content` | 待发送的最终文本 |
-| `status` | `pending`、`sent`、`failed` |
-| `attemptCount` | 已尝试次数 |
-| `sentAt` / `lastError` | 投递结果 |
+| 字段                   | 说明                        |
+| ---------------------- | --------------------------- |
+| `id`                   | 主键                        |
+| `bindingId`            | 目标绑定                    |
+| `messageId`            | 对应 Tavern assistant 消息  |
+| `content`              | 待发送的最终文本            |
+| `status`               | `pending`、`sent`、`failed` |
+| `attemptCount`         | 已尝试次数                  |
+| `sentAt` / `lastError` | 投递结果                    |
 
 该表是轻量的投递状态记录，不引入独立队列服务。bridge 重启后可继续处理 `pending` 项。
 

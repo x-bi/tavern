@@ -13,6 +13,10 @@ export const navigationItems: NavigationItem[] = [
     label: '角色'
   },
   {
+    path: '/companion',
+    label: 'AI 角色'
+  },
+  {
     path: '/conversations',
     label: '会话'
   },

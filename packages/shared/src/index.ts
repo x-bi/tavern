@@ -61,6 +61,24 @@ export type {
   ContentPackWorldBookEntry
 } from './content-pack';
 export type {
+  CompanionChatStreamPayload,
+  CompanionExportResponse,
+  CompanionImportPreview,
+  CompanionImportResponse,
+  CompanionImportTemplateResponse,
+  CompanionListResponse,
+  CompanionMemoryPayload,
+  CompanionMemoryResponse,
+  CompanionMemoryRevisionResponse,
+  CompanionMemoryStatus,
+  CompanionMessageResponse,
+  CompanionMessageStatus,
+  CompanionPayload,
+  CompanionPromptPreviewResponse,
+  CompanionPromptSectionKind,
+  CompanionResponse
+} from './companion';
+export type {
   ConversationCharacterSummary,
   ConversationClearResponse,
   ConversationListResponse,

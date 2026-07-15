@@ -58,7 +58,8 @@ const route = useRoute();
 const appStore = useAppStore();
 const pageTitle = usePageTitle();
 const isChatRoute = computed(
-  () => route.name === 'chat' || route.name === 'chat-conversation'
+  () =>
+    route.name === 'chat' || route.name === 'chat-conversation' || route.name === 'companion-chat'
 );
 
 const menuOptions = computed<MenuOption[]>(() =>

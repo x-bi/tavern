@@ -19,6 +19,8 @@ import CharacterListView from '../views/characters/CharacterListView.vue';
 import ChatView from '../views/chat/ChatView.vue';
 import ConversationView from '../views/conversations/ConversationView.vue';
 import ContentPackImportView from '../views/content-packs/ContentPackImportView.vue';
+import CompanionListView from '../views/companions/CompanionListView.vue';
+import CompanionChatView from '../views/companions/CompanionChatView.vue';
 import LoginView from '../views/LoginView.vue';
 import ModelConfigView from '../views/models/ModelConfigView.vue';
 import NotFoundView from '../views/NotFoundView.vue';
@@ -80,6 +82,18 @@ export const router = createRouter({
           meta: {
             title: '角色详情'
           }
+        },
+        {
+          path: 'companion',
+          name: 'companion-list',
+          component: CompanionListView,
+          meta: { title: 'AI 角色' }
+        },
+        {
+          path: 'companion/:companionId',
+          name: 'companion-chat',
+          component: CompanionChatView,
+          meta: { title: 'AI 角色聊天' }
         },
         {
           path: 'conversations',

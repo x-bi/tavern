@@ -53,7 +53,7 @@ type FallbackGroupWithCandidates = ModelFallbackGroup & {
  *
  * 设计要点：
  * - API Key 用 AES-256-GCM 加密存储，密钥由 AUTH_TOKEN_SECRET 派生（SHA-256）；
-   * - 每个 isDefault=true 的资源在事务内保证用户范围内默认唯一（先取消旧默认）；
+ * - 每个 isDefault=true 的资源在事务内保证用户范围内默认唯一（先取消旧默认）；
  * - 软删除时改名（加 __deleted__ 后缀）以释放唯一名约束；
  * - 所有查询按 userId 隔离。
  */
@@ -245,7 +245,10 @@ export class ModelsService {
     }
   }
 
-  async removeProvider(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
+  async removeProvider(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<{ deleted: true; id: string }> {
     const existing = await this.findOwnedActiveProvider(currentUser, id);
 
     await this.prisma.modelProvider.update({
@@ -345,10 +348,7 @@ export class ModelsService {
     const existing = await this.findOwnedActiveProviderModel(currentUser, id);
     const providerId = dto.providerId ?? existing.providerId;
     await this.findOwnedActiveProvider(currentUser, providerId);
-    const params = this.mergeProviderModelParams(
-      this.parseParams(existing.defaultParamsJson),
-      dto
-    );
+    const params = this.mergeProviderModelParams(this.parseParams(existing.defaultParamsJson), dto);
 
     try {
       const model = await this.prisma.providerModel.update({
@@ -402,7 +402,12 @@ export class ModelsService {
   async listFallbackGroups(
     currentUser: CurrentUser,
     query: QueryModelResourcesDto
-  ): Promise<{ items: ModelFallbackGroupResponse[]; total: number; page: number; pageSize: number }> {
+  ): Promise<{
+    items: ModelFallbackGroupResponse[];
+    total: number;
+    page: number;
+    pageSize: number;
+  }> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 100;
     const where: Prisma.ModelFallbackGroupWhereInput = {
@@ -759,10 +764,7 @@ export class ModelsService {
     } satisfies Prisma.ModelFallbackGroupInclude;
   }
 
-  private toProviderResponse(
-    provider: ModelProvider,
-    modelCount: number
-  ): ModelProviderResponse {
+  private toProviderResponse(provider: ModelProvider, modelCount: number): ModelProviderResponse {
     return {
       id: provider.id,
       userId: provider.userId,
@@ -846,6 +848,7 @@ export class ModelsService {
       baseUrl: model.provider.baseUrl,
       modelName: model.model,
       apiKey: this.decryptApiKey(model.provider.apiKeyCiphertext),
+      contextLength: model.contextLength,
       params
     };
   }

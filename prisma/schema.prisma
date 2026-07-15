@@ -20,6 +20,7 @@ model User {
   appSettings         AppSetting[]
   assets              Asset[]
   characters          Character[]
+  companions          Companion[]
   conversations       Conversation[]
   modelFallbackGroups ModelFallbackGroup[]
   modelProviders      ModelProvider[]
@@ -119,6 +120,8 @@ model ModelFallbackGroup {
 
   candidates    ModelFallbackCandidate[]
   conversations Conversation[]
+  companions    Companion[]       @relation("CompanionModelFallbackGroup")
+  memoryFallbacks CompanionMemory[] @relation("CompanionMemoryFallbackGroup")
   user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
@@ -159,6 +162,7 @@ model PromptPreset {
   deletedAt      DateTime?
 
   conversations Conversation[]
+  companions    Companion[]
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
@@ -180,6 +184,7 @@ model UserPersona {
   deletedAt    DateTime?
 
   conversations Conversation[]
+  companions    Companion[]
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
@@ -303,6 +308,7 @@ model Asset {
   deletedAt    DateTime?
 
   characterAvatars Character[] @relation("CharacterAvatar")
+  companionAvatars Companion[] @relation("CompanionAvatar")
   user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, kind])
@@ -324,4 +330,95 @@ model AppSetting {
 
   @@unique([scope, key])
   @@index([userId])
+}
+
+enum CompanionMemoryStatus {
+  ready
+  pending
+  updating
+  stale
+  failed
+}
+
+model Companion {
+  id                   String    @id @default(cuid())
+  userId               String
+  avatarAssetId        String?
+  modelFallbackGroupId String?
+  promptPresetId       String?
+  personaId            String?
+  name                 String
+  identityPrompt       String    @default("")
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  deletedAt            DateTime?
+
+  avatarAsset        Asset?              @relation("CompanionAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
+  modelFallbackGroup ModelFallbackGroup? @relation("CompanionModelFallbackGroup", fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
+  promptPreset       PromptPreset?       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
+  persona            UserPersona?        @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages           CompanionMessage[]
+  memory             CompanionMemory?
+
+  @@index([userId, updatedAt])
+  @@index([deletedAt])
+}
+
+model CompanionMessage {
+  id          String    @id @default(cuid())
+  companionId String
+  role        String
+  content     String
+  status      String    @default("complete")
+  metadataJson String?
+  tokenCount  Int?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+
+  companion Companion @relation(fields: [companionId], references: [id], onDelete: Cascade)
+
+  @@index([companionId, createdAt])
+  @@index([status])
+}
+
+model CompanionMemory {
+  id                         String                @id @default(cuid())
+  companionId                String                @unique
+  memoryModelFallbackGroupId String?
+  isEnabled                  Boolean               @default(false)
+  isPaused                   Boolean               @default(false)
+  status                     CompanionMemoryStatus @default(ready)
+  relationshipState          String                @default("")
+  currentArc                 String                @default("")
+  lastSummarizedMessageId    String?
+  updateEveryMessages        Int                   @default(8)
+  lastErrorCode              String?
+  retryCount                 Int                   @default(0)
+  nextRetryAt                DateTime?
+  createdAt                  DateTime              @default(now())
+  updatedAt                  DateTime              @updatedAt
+
+  companion                Companion           @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  memoryModelFallbackGroup ModelFallbackGroup? @relation("CompanionMemoryFallbackGroup", fields: [memoryModelFallbackGroupId], references: [id], onDelete: SetNull)
+  revisions                CompanionMemoryRevision[]
+
+  @@index([status, nextRetryAt])
+}
+
+model CompanionMemoryRevision {
+  id                      String   @id @default(cuid())
+  companionId             String
+  version                 Int
+  relationshipState       String
+  currentArc              String
+  lastSummarizedMessageId String?
+  reason                  String
+  createdAt               DateTime @default(now())
+
+  memory CompanionMemory @relation(fields: [companionId], references: [companionId], onDelete: Cascade)
+
+  @@index([companionId, createdAt])
+  @@unique([companionId, version])
 }

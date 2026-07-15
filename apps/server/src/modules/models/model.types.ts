@@ -33,6 +33,7 @@ export type ModelGatewayConfig = {
   baseUrl: string;
   modelName: string;
   apiKey: string | null;
+  contextLength?: number | null;
   params: ModelGenerationParams;
 };
 

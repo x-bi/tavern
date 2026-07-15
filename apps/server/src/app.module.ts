@@ -8,6 +8,10 @@ import { AuthModule } from './modules/auth/auth.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { ChatModule } from './modules/chat/chat.module';
 import { CharactersModule } from './modules/characters/characters.module';
+import { CompanionsModule } from './modules/companions/companions.module';
+import { CompanionMemoryModule } from './modules/companion-memory/companion-memory.module';
+import { CompanionMessagesModule } from './modules/companion-messages/companion-messages.module';
+import { CompanionChatModule } from './modules/companion-chat/companion-chat.module';
 import { ContentPacksModule } from './modules/content-packs/content-packs.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { HealthModule } from './modules/health/health.module';
@@ -40,6 +44,10 @@ import { PrismaModule } from './prisma/prisma.module';
     AuthModule,
     BackupsModule,
     CharactersModule,
+    CompanionsModule,
+    CompanionMemoryModule,
+    CompanionMessagesModule,
+    CompanionChatModule,
     ChatModule,
     ContentPacksModule,
     ConversationsModule,

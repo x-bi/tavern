@@ -7,6 +7,5 @@ uploads
 .obsidian
 model-context
 AGENTS.md
-docs/architecture.md
 pnpm-lock.yaml
 *.pdf

@@ -27,22 +27,22 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 
 ## 当前状态
 
-当前处于第 6 阶段：Seed 数据。
+酒馆角色对话 MVP 主体已实现，处于功能完善与验收阶段。
 
 已完成：
 
-- `AGENTS.md`：长期开发约束。
-- `README.md`：项目说明与范围。
-- `docs/architecture.md`：高层架构与阶段路线。
+- `AGENTS.md`：项目唯一开发规则与架构说明（合并自原 `docs/architecture.md`）。
+- `README.md`：项目说明与启动方式。
+- `docs/conversation-long-term-memory.md`：独立 AI 角色长期陪伴设计。
 - `package.json`、`pnpm-workspace.yaml`：pnpm workspace 根配置。
-- `apps/web`：前端应用占位包。
-- `apps/server`：NestJS 后端基础工程。
-- `packages/shared`：前后端共享类型占位包。
-- `prisma/schema.prisma`：Prisma SQLite datasource 与 MVP 初版数据模型。
+- `apps/web`：Vue3 + Vite 前端。
+- `apps/server`：NestJS 后端，已落地 auth、characters、models、conversations、messages、personas、presets、world-books、prompts、chat、assets、content-packs、backups、settings、health 等模块。
+- `packages/shared`：前后端共享类型。
+- `prisma/schema.prisma`：Prisma SQLite datasource 与数据模型。
 - `prisma/seed.cjs`：默认用户、模型链、Prompt 预设、Persona、样例角色和世界书 seed。
 - `data`：本地 SQLite 数据库与运行时数据目录。
 
-当前还没有实现业务 CRUD、聊天流、Prompt Builder 或 Model Gateway。
+已实现的核心闭环：模型链配置与连接测试、角色与会话消息管理、Prompt Builder 与预览、Model Gateway、SSE 流式聊天、停止 / 重新生成 / 消息编辑删除、世界书关键词匹配与命中调试、导入导出与备份恢复。独立 AI 角色形态也已落地首版闭环：角色即唯一长期关系线程，使用隔离的数据模型、Prompt Builder、聊天路由和可选长期记忆；见 `AGENTS.md` §17 与 `docs/conversation-long-term-memory.md`。
 
 ## 启动方式
 
@@ -147,7 +147,7 @@ seed 内容包括：
 ├── AGENTS.md
 ├── README.md
 ├── docs/
-│   └── architecture.md
+│   └── conversation-long-term-memory.md
 ├── apps/
 │   ├── web/                 # Vue3 + Vite 前端，阶段 2 继续完善
 │   └── server/              # NestJS 后端，阶段 3 继续完善
@@ -181,12 +181,12 @@ seed 内容包括：
 
 ## 开发规则入口
 
-所有后续开发任务先阅读 `AGENTS.md`。如果任务涉及架构、模块边界、API Key、Prompt Builder、Model Gateway、SSE 或数据库变更，必须遵守 `AGENTS.md` 中的约束。
+所有后续开发任务先阅读 `AGENTS.md`。`AGENTS.md` 是项目唯一的开发规则与架构说明来源（已合并原 `docs/architecture.md`）。如果任务涉及架构、模块边界、API Key、Prompt Builder、Model Gateway、SSE、数据库变更或 AI 角色形态，必须遵守 `AGENTS.md` 中的约束。
 
 ## 文档入口
 
-- 开发规则：[AGENTS.md](./AGENTS.md)
-- 架构与路线：[docs/architecture.md](./docs/architecture.md)
+- 开发规则与架构：[AGENTS.md](./AGENTS.md)
+- AI 角色长期陪伴设计：[docs/conversation-long-term-memory.md](./docs/conversation-long-term-memory.md)
 - 阶段资料：[model-context/stages/README.md](./model-context/stages/README.md)
 
 测试服务器自动拉取

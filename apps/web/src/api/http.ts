@@ -17,6 +17,15 @@ export type HttpRequestOptions = {
 
 /** API 基础路径，取自环境变量 VITE_API_BASE_URL，默认 /api。 */
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+const ACCESS_TOKEN_KEY = 'tavern.access-token';
+
+export function getAccessToken(): string | null { return sessionStorage.getItem(ACCESS_TOKEN_KEY); }
+export function setAccessToken(token: string): void { sessionStorage.setItem(ACCESS_TOKEN_KEY, token); }
+export function clearAccessToken(): void { sessionStorage.removeItem(ACCESS_TOKEN_KEY); }
+export function authHeaders(): HeadersInit {
+  const token = getAccessToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 /**
  * 把业务路径拼成完整 API URL。
@@ -44,6 +53,7 @@ export async function requestJson<T>(
     method: options.method ?? 'GET',
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders(),
       ...options.headers
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),

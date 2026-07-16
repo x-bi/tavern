@@ -11,7 +11,7 @@ import type {
   CompanionPromptPreviewResponse,
   CompanionResponse
 } from '@tavern/shared';
-import { API_BASE_URL, requestJson } from './http';
+import { API_BASE_URL, authHeaders, requestJson } from './http';
 
 function unwrap<T>(response: Awaited<ReturnType<typeof requestJson<T>>>): T {
   if (!response.success) throw new Error(response.error.message);
@@ -133,7 +133,7 @@ export async function startCompanionChat(
 ) {
   const response = await fetch(`${API_BASE_URL}/companions/${id}/chat/stream`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream', ...authHeaders() },
     body: JSON.stringify(payload),
     signal
   });

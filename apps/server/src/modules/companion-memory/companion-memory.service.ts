@@ -48,7 +48,7 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
     const current = await this.find(user, companionId);
     if (dto.memoryModelFallbackGroupId) {
       const group = await this.prisma.modelFallbackGroup.findFirst({
-        where: { id: dto.memoryModelFallbackGroupId, userId: user.id, deletedAt: null }
+        where: { id: dto.memoryModelFallbackGroupId, deletedAt: null }
       });
       if (!group)
         throw new NotFoundException({
@@ -384,7 +384,7 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
           id: item.companion.user.id,
           username: item.companion.user.username,
           displayName: item.companion.user.displayName,
-          mode: 'single_user'
+          role: item.companion.user.role as 'admin' | 'member'
         },
         item.companionId,
         item.status === 'stale'

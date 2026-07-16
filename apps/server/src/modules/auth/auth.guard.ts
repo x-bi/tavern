@@ -33,11 +33,13 @@ export class AuthGuard implements CanActivate {
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthRequest>();
-    const currentUser = await this.authService.getCurrentUserFromRequestToken(
+    const authenticatedUser = await this.authService.getCurrentUserFromRequestToken(
       this.extractBearerToken(request)
     );
-
-    request.currentUser = currentUser;
+    const targetUserId = this.extractActingUserId(request);
+    request.currentUser = targetUserId
+      ? await this.authService.resolveActingUser(authenticatedUser, targetUserId)
+      : authenticatedUser;
 
     return true;
   }
@@ -69,5 +71,11 @@ export class AuthGuard implements CanActivate {
     }
 
     return token;
+  }
+
+  private extractActingUserId(request: AuthRequest): string | null {
+    const header = request.headers['x-tavern-act-as'];
+    const value = Array.isArray(header) ? header[0] : header;
+    return value?.trim() || null;
   }
 }

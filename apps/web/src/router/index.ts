@@ -29,6 +29,9 @@ import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/prompts/PromptPreviewView.vue';
 import SettingView from '../views/settings/SettingView.vue';
 import WorldBookView from '../views/world-books/WorldBookView.vue';
+import UserManagementView from '../views/admin/UserManagementView.vue';
+import { fetchCurrentUser, getStoredCurrentUser, logout } from '../api/auth';
+import { getAccessToken } from '../api/http';
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -161,6 +164,9 @@ export const router = createRouter({
           }
         },
         {
+          path: 'admin/users', name: 'admin-users', component: UserManagementView, meta: { title: '成员管理', requiresAdmin: true }
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: SettingView,
@@ -196,4 +202,15 @@ export const router = createRouter({
       }
     }
   ]
+});
+
+router.beforeEach(async (to) => {
+  if (to.name === 'login') return true;
+  if (!getAccessToken()) return { name: 'login' };
+  let user = getStoredCurrentUser();
+  if (!user) {
+    try { user = await fetchCurrentUser(); } catch { logout(); return { name: 'login' }; }
+  }
+  if (to.meta.requiresAdmin && user.role !== 'admin') return { name: 'characters' };
+  return true;
 });

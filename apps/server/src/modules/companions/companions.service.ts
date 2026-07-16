@@ -180,7 +180,7 @@ export class CompanionsService {
         : true,
       dto.modelFallbackGroupId
         ? this.prisma.modelFallbackGroup.findFirst({
-            where: { id: dto.modelFallbackGroupId, userId: currentUser.id, deletedAt: null }
+            where: { id: dto.modelFallbackGroupId, deletedAt: null }
           })
         : true,
       dto.promptPresetId

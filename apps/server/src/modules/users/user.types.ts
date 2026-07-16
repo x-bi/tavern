@@ -5,8 +5,10 @@ export type CurrentUser = {
   id: string;
   username: string;
   displayName: string;
-  mode: 'single_user';
+  role: UserRole;
 };
+
+export type UserRole = 'admin' | 'member';
 
 /**
  * 用户数据库记录形态（含敏感字段 passwordHash，仅在服务内部使用）。
@@ -17,4 +19,5 @@ export type UserRecord = {
   displayName: string;
   passwordHash: string | null;
   isActive: boolean;
+  role: UserRole;
 };

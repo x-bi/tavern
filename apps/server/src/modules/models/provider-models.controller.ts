@@ -21,10 +21,11 @@ import { CreateProviderModelDto } from './dto/create-provider-model.dto';
 import { QueryModelResourcesDto } from './dto/query-model-resources.dto';
 import { UpdateProviderModelDto } from './dto/update-provider-model.dto';
 import { ModelsService } from './models.service';
+import { SharedModelsGuard } from './shared-models.guard';
 
 /** 供应商模型控制器。 */
 @Controller('provider-models')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, SharedModelsGuard)
 export class ProviderModelsController {
   constructor(
     @Inject(ModelsService)

@@ -2,7 +2,7 @@
 # 用法:
 #   1. cp deploy/.env.example .env  并修改 AUTH_TOKEN_SECRET
 #   2. docker compose up -d --build
-#   3. docker compose exec server pnpm db:seed   # 首次写入演示数据
+#   3. 新库按需执行 docker compose exec server pnpm db:seed
 # 访问: http://<服务器IP>:8080
 services:
   server:
@@ -23,11 +23,8 @@ services:
       DATABASE_URL: "file:/app/data/tavern-lite.db"
       # 同源部署(前后端同属一个 nginx)时 CORS 可留空
       CORS_ORIGINS: ${CORS_ORIGINS:-}
-      AUTH_MODE: single_user
-      AUTH_REQUIRE_PASSWORD: ${AUTH_REQUIRE_PASSWORD:-false}
-      AUTH_SINGLE_USER_USERNAME: ${AUTH_SINGLE_USER_USERNAME:-demo}
-      AUTH_SINGLE_USER_DISPLAY_NAME: ${AUTH_SINGLE_USER_DISPLAY_NAME:-Tavern Admin}
-      AUTH_SINGLE_USER_PASSWORD: ${AUTH_SINGLE_USER_PASSWORD:-}
+      # 预置账号 JSON；不提供公开注册。首次登录会写入数据库。
+      AUTH_PRESET_USERS_JSON: ${AUTH_PRESET_USERS_JSON:?AUTH_PRESET_USERS_JSON 必须在 .env 中设置}
       # 必填:未设置则 compose 直接拒绝启动
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET 必须在 .env 中设置}
       AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-604800}

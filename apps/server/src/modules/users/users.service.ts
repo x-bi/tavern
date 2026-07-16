@@ -1,97 +1,147 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../../prisma/prisma.service';
-import type { CurrentUser, UserRecord } from './user.types';
+import { ERROR_CODES } from '../../common/dto/error-codes';
+import type { CurrentUser, UserRecord, UserRole } from './user.types';
 
-/**
- * 用户服务：负责单用户模式下唯一 admin 用户的读写与转换。
- *
- * 依赖 PrismaService 操作数据库、ConfigService 读取单用户的配置项
- * （用户名、显示名）。
- */
+type PresetUser = { username: string; displayName: string; password: string; role: UserRole };
+
 @Injectable()
 export class UsersService {
   constructor(
-    @Inject(PrismaService)
-    private readonly prisma: PrismaService,
-    @Inject(ConfigService)
-    private readonly configService: ConfigService
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(ConfigService) private readonly configService: ConfigService
   ) {}
 
-  /**
-   * 确保存在唯一的 admin 用户：存在则更新，不存在则创建。
-   *
-   * @param passwordHash 密码哈希；免密模式传 null（用户记录不存密码）。
-   * @returns 写入后的用户记录（含 passwordHash）。
-   */
-  async ensureSingleAdmin(passwordHash: string | null): Promise<UserRecord> {
-    // 单用户模式的用户名与显示名都来自配置，未配置时用默认值
-    const username = this.configService.get<string>('AUTH_SINGLE_USER_USERNAME') ?? 'demo';
-    const displayName =
-      this.configService.get<string>('AUTH_SINGLE_USER_DISPLAY_NAME') ?? 'Tavern Admin';
-
-    return this.prisma.user.upsert({
-      // 定位唯一用户：按用户名匹配（username 是唯一约束）
-      where: { username },
-      // 已存在则更新：把密码哈希、显示名同步成最新配置，并重新激活/取消软删除
-      update: {
-        displayName,
-        passwordHash,
-        isActive: true,
-        deletedAt: null
-      },
-      // 不存在则创建：写入用户名、显示名、密码哈希，标记为活跃
-      create: {
-        username,
-        displayName,
-        passwordHash,
-        isActive: true
-      },
-      // 只取需要的字段（含 passwordHash 供登录校验，不含 deletedAt）
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        passwordHash: true,
-        isActive: true
-      }
-    });
+  async syncPresetUsers(hashPassword: (value: string) => string): Promise<void> {
+    await this.prisma.$transaction(
+      this.getPresetUsers().map((user) =>
+        this.prisma.user.upsert({
+          where: { username: user.username },
+          // 环境变量只负责首次建号；保留后台修改后的名称和密码。
+          update: { isActive: true, deletedAt: null },
+          create: {
+            username: user.username,
+            displayName: user.displayName.trim(),
+            passwordHash: hashPassword(user.password),
+            role: user.role,
+            isActive: true
+          }
+        })
+      )
+    );
   }
 
-  /**
-   * 按 id 查询活跃用户（已停用或软删除的不返回）。
-   * @param id 用户 ID。
-   * @returns 用户记录，无匹配或已停用返回 null。
-   */
+  async findActiveByUsername(username: string): Promise<UserRecord | null> {
+    const user = await this.prisma.user.findFirst({ where: { username, isActive: true, deletedAt: null }, select: this.userSelect() });
+    return user ? this.toUserRecord(user) : null;
+  }
+
   async findActiveById(id: string): Promise<UserRecord | null> {
-    return this.prisma.user.findFirst({
-      where: {
-        id,
-        isActive: true,
-        deletedAt: null
-      },
-      select: {
-        id: true,
-        username: true,
-        displayName: true,
-        passwordHash: true,
-        isActive: true
-      }
-    });
+    const user = await this.prisma.user.findFirst({ where: { id, isActive: true, deletedAt: null }, select: this.userSelect() });
+    return user ? this.toUserRecord(user) : null;
   }
 
-  /**
-   * 数据库记录 → 对外的当前用户信息（剔除 passwordHash 等敏感字段）。
-   * @param user 用户数据库记录。
-   * @returns 安全的 CurrentUser。
-   */
+  async listForAdmin() {
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, deletedAt: null },
+      select: this.managedUserSelect(),
+      orderBy: { username: 'asc' }
+    });
+    const items = users.map((user) => this.toManagedUser(user));
+    return { items, total: items.length, page: 1, pageSize: items.length };
+  }
+
+  async getForAdmin(id: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id, deletedAt: null },
+      select: this.managedUserSelect()
+    });
+    if (!user) this.throwUserNotFound();
+    return this.toManagedUser(user);
+  }
+
+  async createManaged(input: { username: string; displayName: string; password: string; role: UserRole }, hash: (value: string) => string) {
+    const username = input.username.trim();
+    const exists = await this.prisma.user.findUnique({ where: { username } });
+    if (exists) this.throwUsernameExists();
+    const user = await this.prisma.user.create({
+      data: {
+        username,
+        displayName: input.displayName.trim(),
+        role: input.role,
+        passwordHash: hash(input.password)
+      },
+      select: this.managedUserSelect()
+    });
+    return this.toManagedUser(user);
+  }
+
+  async updateManaged(id: string, input: { username?: string; displayName?: string; password?: string; role?: UserRole }, hash: (value: string) => string) {
+    const exists = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
+    if (!exists) this.throwUserNotFound();
+    const builtIn = this.isBuiltIn(exists.username);
+    const username = input.username?.trim();
+    if (builtIn && ((username && username !== exists.username) || (input.role && input.role !== exists.role))) {
+      throw new ForbiddenException({ code: ERROR_CODES.USER_BUILT_IN_PROTECTED, message: '内置账号的账号名和角色不能修改。' });
+    }
+    if (username && username !== exists.username) {
+      const duplicate = await this.prisma.user.findUnique({ where: { username } });
+      if (duplicate) this.throwUsernameExists();
+    }
+    if (exists.role === 'admin' && input.role === 'member') {
+      await this.assertAnotherAdminExists(id);
+    }
+    const user = await this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(username === undefined ? {} : { username }),
+        ...(input.displayName === undefined ? {} : { displayName: input.displayName.trim() }),
+        ...(input.role === undefined ? {} : { role: input.role }),
+        ...(input.password === undefined ? {} : { passwordHash: hash(input.password) })
+      },
+      select: this.managedUserSelect()
+    });
+    return this.toManagedUser(user);
+  }
+
+  async removeManaged(id: string) {
+    const exists = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
+    if (!exists) this.throwUserNotFound();
+    if (this.isBuiltIn(exists.username)) {
+      throw new ForbiddenException({ code: ERROR_CODES.USER_BUILT_IN_PROTECTED, message: '内置账号不能删除。' });
+    }
+    if (exists.role === 'admin') await this.assertAnotherAdminExists(id);
+    await this.prisma.user.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+  }
+
   toCurrentUser(user: UserRecord): CurrentUser {
-    return {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      mode: 'single_user'
-    };
+    return { id: user.id, username: user.username, displayName: user.displayName, role: user.role };
+  }
+
+  /** 模型配置为全站共享，统一归属到第一个内置管理员。 */
+  async getSharedModelOwner(): Promise<CurrentUser> {
+    const presetAdmin = this.getPresetUsers().find((user) => user.role === 'admin');
+    const user = presetAdmin ? await this.findActiveByUsername(presetAdmin.username) : null;
+    if (!user) throw new NotFoundException({ code: ERROR_CODES.USER_NOT_FOUND, message: '共享模型管理员账号不存在。' });
+    return this.toCurrentUser(user);
+  }
+
+  private getPresetUsers(): PresetUser[] { return JSON.parse(this.configService.getOrThrow<string>('AUTH_PRESET_USERS_JSON')) as PresetUser[]; }
+  private isBuiltIn(username: string): boolean { return this.getPresetUsers().some((user) => user.username === username); }
+  private managedUserSelect() { return { id: true, username: true, displayName: true, role: true, isActive: true, createdAt: true, updatedAt: true } as const; }
+  private toManagedUser(user: { id: string; username: string; displayName: string; role: string; isActive: boolean; createdAt: Date; updatedAt: Date }) {
+    return { ...user, role: user.role === 'admin' ? 'admin' as const : 'member' as const, isBuiltIn: this.isBuiltIn(user.username) };
+  }
+  private async assertAnotherAdminExists(excludedId: string): Promise<void> {
+    const count = await this.prisma.user.count({ where: { id: { not: excludedId }, role: 'admin', isActive: true, deletedAt: null } });
+    if (count === 0) throw new ForbiddenException({ code: ERROR_CODES.USER_LAST_ADMIN_PROTECTED, message: '至少需要保留一个管理员账号。' });
+  }
+  private throwUserNotFound(): never { throw new NotFoundException({ code: ERROR_CODES.USER_NOT_FOUND, message: '成员账号不存在。' }); }
+  private throwUsernameExists(): never { throw new ConflictException({ code: ERROR_CODES.USER_USERNAME_EXISTS, message: '账号已存在。' }); }
+  private userSelect() { return { id: true, username: true, displayName: true, passwordHash: true, isActive: true, role: true } as const; }
+  private toUserRecord(user: { id: string; username: string; displayName: string; passwordHash: string | null; isActive: boolean; role: string }): UserRecord {
+    return { ...user, role: user.role === 'admin' ? 'admin' : 'member' };
   }
 }

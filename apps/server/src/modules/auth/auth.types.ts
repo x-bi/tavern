@@ -2,10 +2,9 @@ import type { CurrentUser } from '../users/user.types';
 
 /**
  * 认证模式。
- * - `single_user`：单用户模式，系统里只有一个 admin 用户，登录即获得该身份。
- *   （当前仅支持此模式，见 env.validation.ts 对 AUTH_MODE 的校验。）
+ * - `preset_users`：仅允许环境变量预置的管理员和普通账号登录。
  */
-export type AuthMode = 'single_user';
+export type AuthMode = 'preset_users';
 
 /**
  * 认证相关的请求对象（AuthGuard 读写时用到的 request 形状）。

@@ -46,28 +46,34 @@
 
 <script setup lang="ts">
 import type { MenuOption } from 'naive-ui';
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 
 import { usePageTitle } from '../composables/usePageTitle';
 import { useAppStore } from '../stores/app';
 import { navigationItems } from '../types/navigation';
+import { fetchCurrentUser, getStoredCurrentUser, type AuthUser } from '../api/auth';
 
 const router = useRouter();
 const route = useRoute();
 const appStore = useAppStore();
 const pageTitle = usePageTitle();
+const currentUser = ref<AuthUser | null>(getStoredCurrentUser());
 const isChatRoute = computed(
   () =>
     route.name === 'chat' || route.name === 'chat-conversation' || route.name === 'companion-chat'
 );
 
 const menuOptions = computed<MenuOption[]>(() =>
-  navigationItems.map((item) => ({
+  [...navigationItems, ...(currentUser.value?.role === 'admin' ? [{ path: '/admin/users', label: '成员管理' }] : [])].map((item) => ({
     key: item.path,
     label: item.label
   }))
 );
+
+onMounted(async () => {
+  try { currentUser.value = await fetchCurrentUser(); } catch { currentUser.value = null; }
+});
 
 const activeMenuKey = computed(() => {
   const currentPath = route.path;

@@ -18,6 +18,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "db:seed": "node prisma/seed.cjs",
+    "db:migrate-legacy-admin": "node prisma/migrate-legacy-data-to-admin.cjs",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check",
     "workspace:list": "pnpm -r list --depth -1"
   },

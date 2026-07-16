@@ -4,7 +4,7 @@ import type {
   ChatSuggestionResult
 } from '@tavern/shared';
 
-import { requestJson, toApiUrl } from './http';
+import { authHeaders, requestJson, toApiUrl } from './http';
 
 /** startChatStream 的请求选项。 */
 export type StartChatStreamOptions = {
@@ -50,7 +50,8 @@ export async function startChatStream(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'text/event-stream'
+      Accept: 'text/event-stream',
+      ...authHeaders()
     },
     body: JSON.stringify(payload),
     signal: options.signal

@@ -21,10 +21,11 @@ import { CreateModelFallbackGroupDto } from './dto/create-model-fallback-group.d
 import { QueryModelResourcesDto } from './dto/query-model-resources.dto';
 import { UpdateModelFallbackGroupDto } from './dto/update-model-fallback-group.dto';
 import { ModelsService } from './models.service';
+import { SharedModelsGuard } from './shared-models.guard';
 
 /** 模型链控制器。 */
 @Controller('model-fallback-groups')
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, SharedModelsGuard)
 export class ModelFallbackGroupsController {
   constructor(
     @Inject(ModelsService)

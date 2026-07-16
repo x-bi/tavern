@@ -42,7 +42,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async login(@Body() dto: LoginDto) {
     try {
-      return await this.authService.login(dto.password);
+      return await this.authService.login(dto.username, dto.password);
     } catch (error) {
       if (!(error instanceof UnauthorizedException)) {
         throw error;

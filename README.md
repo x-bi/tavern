@@ -140,6 +140,34 @@ seed 内容包括：
 
 默认模型链使用占位模型，不包含真实 API Key，`apiKeyCiphertext` 和 `apiKeyMask` 均为空。
 
+## 旧数据归属与 Docker 升级
+
+项目从原单用户 `demo` 升级为多账号后，旧角色、会话、AI 角色、Persona、世界书、预设、模型配置、资产和用户设置需要归属到管理员 `root`。迁移前必须备份 `data/` 和 `uploads/`。
+
+本地迁移：
+
+```powershell
+Copy-Item data/tavern-lite.db "data/tavern-lite.before-user-migration.db"
+pnpm db:migrate-legacy-admin -- --source=demo --target=root
+```
+
+Docker 使用宿主目录 `./data:/app/data` 和 `./uploads:/app/uploads` 持久化，因此重建镜像不会删除旧数据。升级步骤：
+
+```bash
+docker compose down
+cp -a data "data.backup-$(date +%Y%m%d-%H%M%S)"
+cp -a uploads "uploads.backup-$(date +%Y%m%d-%H%M%S)"
+docker compose up -d --build
+```
+
+首次使用新版本时先用 `.env` 中的 `root` 登录一次，让管理员账号写入数据库，再执行：
+
+```bash
+docker compose exec server pnpm db:migrate-legacy-admin -- --source=demo --target=root
+```
+
+迁移脚本在单个数据库事务中更新归属，成功后禁用旧 `demo` 账号；重复执行不会重复搬运数据。若 root 已存在同名模型供应商、模型链、Prompt 预设或 Persona，脚本会在写入前终止，要求先处理同名数据。
+
 ## 计划目录
 
 ```text

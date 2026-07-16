@@ -12,7 +12,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 export type AuthTokenPayload = {
   sub: string;
   username: string;
-  mode: 'single_user';
+  mode: 'preset_users';
   exp: number;
 };
 
@@ -92,7 +92,7 @@ export class TokenService {
     const now = Math.floor(Date.now() / 1000);
 
     // 校验关键字段：sub 必须存在、mode 必须是 single_user、且未过期
-    if (!payload.sub || payload.mode !== 'single_user' || payload.exp <= now) {
+    if (!payload.sub || payload.mode !== 'preset_users' || payload.exp <= now) {
       throw new UnauthorizedException('Invalid or expired auth token.');
     }
 

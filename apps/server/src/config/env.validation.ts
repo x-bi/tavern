@@ -8,11 +8,7 @@ export type ValidatedEnv = {
   API_PREFIX: string;
   REQUEST_BODY_LIMIT: string;
   CORS_ORIGINS: string;
-  AUTH_MODE: string;
-  AUTH_REQUIRE_PASSWORD: string;
-  AUTH_SINGLE_USER_USERNAME: string;
-  AUTH_SINGLE_USER_DISPLAY_NAME: string;
-  AUTH_SINGLE_USER_PASSWORD: string;
+  AUTH_PRESET_USERS_JSON: string;
   AUTH_TOKEN_SECRET: string;
   AUTH_TOKEN_TTL_SECONDS: string;
 };
@@ -25,11 +21,7 @@ const DEFAULT_ENV: ValidatedEnv = {
   API_PREFIX: 'api',
   REQUEST_BODY_LIMIT: '5mb',
   CORS_ORIGINS: 'http://127.0.0.1:5173,http://localhost:5173',
-  AUTH_MODE: 'single_user',
-  AUTH_REQUIRE_PASSWORD: 'false',
-  AUTH_SINGLE_USER_USERNAME: 'demo',
-  AUTH_SINGLE_USER_DISPLAY_NAME: 'Tavern Admin',
-  AUTH_SINGLE_USER_PASSWORD: '',
+  AUTH_PRESET_USERS_JSON: '',
   AUTH_TOKEN_SECRET: 'dev-only-change-me',
   AUTH_TOKEN_TTL_SECONDS: '604800'
 };
@@ -61,20 +53,7 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     throw new Error('REQUEST_BODY_LIMIT must use a positive b/kb/mb value, such as 5mb.');
   }
 
-  // 当前仅支持单用户模式，其它值会让后续认证逻辑无所适从
-  if (merged.AUTH_MODE !== 'single_user') {
-    throw new Error('AUTH_MODE currently only supports single_user.');
-  }
-
-  // 密码开关只接受字符串 true/false，避免布尔解析歧义
-  if (!['true', 'false'].includes(merged.AUTH_REQUIRE_PASSWORD)) {
-    throw new Error('AUTH_REQUIRE_PASSWORD must be true or false.');
-  }
-
-  // 开启密码校验时必须配置密码，否则登录无法比对
-  if (merged.AUTH_REQUIRE_PASSWORD === 'true' && !merged.AUTH_SINGLE_USER_PASSWORD) {
-    throw new Error('AUTH_SINGLE_USER_PASSWORD is required when AUTH_REQUIRE_PASSWORD is true.');
-  }
+  validatePresetUsers(merged.AUTH_PRESET_USERS_JSON);
 
   const tokenTtlSeconds = Number(merged.AUTH_TOKEN_TTL_SECONDS);
 
@@ -90,14 +69,36 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     API_PREFIX: normalizeApiPrefix(merged.API_PREFIX),
     REQUEST_BODY_LIMIT: merged.REQUEST_BODY_LIMIT.toLowerCase(),
     CORS_ORIGINS: merged.CORS_ORIGINS,
-    AUTH_MODE: merged.AUTH_MODE,
-    AUTH_REQUIRE_PASSWORD: merged.AUTH_REQUIRE_PASSWORD,
-    AUTH_SINGLE_USER_USERNAME: merged.AUTH_SINGLE_USER_USERNAME,
-    AUTH_SINGLE_USER_DISPLAY_NAME: merged.AUTH_SINGLE_USER_DISPLAY_NAME,
-    AUTH_SINGLE_USER_PASSWORD: merged.AUTH_SINGLE_USER_PASSWORD,
+    AUTH_PRESET_USERS_JSON: merged.AUTH_PRESET_USERS_JSON,
     AUTH_TOKEN_SECRET: merged.AUTH_TOKEN_SECRET,
     AUTH_TOKEN_TTL_SECONDS: String(tokenTtlSeconds)
   };
+}
+
+function validatePresetUsers(value: string): void {
+  let users: unknown;
+  try {
+    users = JSON.parse(value);
+  } catch {
+    throw new Error('AUTH_PRESET_USERS_JSON must be valid JSON.');
+  }
+  if (!Array.isArray(users) || users.length === 0) {
+    throw new Error('AUTH_PRESET_USERS_JSON must contain at least one account.');
+  }
+  const usernames = new Set<string>();
+  let adminCount = 0;
+  for (const item of users) {
+    if (!item || typeof item !== 'object') throw new Error('AUTH_PRESET_USERS_JSON contains an invalid account.');
+    const account = item as Record<string, unknown>;
+    if (typeof account.username !== 'string' || !/^[a-zA-Z0-9_.-]{3,64}$/.test(account.username)) throw new Error('Preset username is invalid.');
+    if (typeof account.displayName !== 'string' || !account.displayName.trim()) throw new Error('Preset displayName is required.');
+    if (typeof account.password !== 'string' || account.password.length < 4) throw new Error('Preset password must be at least 4 characters.');
+    if (account.role !== 'admin' && account.role !== 'member') throw new Error('Preset role must be admin or member.');
+    if (usernames.has(account.username)) throw new Error('Preset usernames must be unique.');
+    usernames.add(account.username);
+    if (account.role === 'admin') adminCount += 1;
+  }
+  if (adminCount === 0) throw new Error('At least one preset admin account is required.');
 }
 
 /**

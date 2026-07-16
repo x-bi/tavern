@@ -12,6 +12,7 @@ model User {
   username     String    @unique
   displayName  String
   passwordHash String?
+  role         String    @default("member")
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

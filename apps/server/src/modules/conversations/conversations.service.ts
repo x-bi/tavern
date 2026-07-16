@@ -379,7 +379,7 @@ export class ConversationsService {
    * @returns 校验通过的模型链 ID，或 null。
    */
   private async resolveModelFallbackGroupId(
-    currentUser: CurrentUser,
+    _currentUser: CurrentUser,
     id: string | null | undefined
   ): Promise<string | null> {
     if (!id) {
@@ -389,7 +389,6 @@ export class ConversationsService {
     const group = await this.prisma.modelFallbackGroup.findFirst({
       where: {
         id,
-        userId: currentUser.id,
         deletedAt: null
       },
       select: {

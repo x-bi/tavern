@@ -19,6 +19,7 @@ import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ModelGatewayService } from '../../services/model-gateway';
 import type { CurrentUser } from '../users/user.types';
+import { UsersService } from '../users/users.service';
 import type { CreateModelFallbackGroupDto } from './dto/create-model-fallback-group.dto';
 import type { CreateModelProviderDto } from './dto/create-model-provider.dto';
 import type { CreateProviderModelDto } from './dto/create-provider-model.dto';
@@ -68,7 +69,9 @@ export class ModelsService {
     @Inject(ConfigService)
     private readonly configService: ConfigService,
     @Inject(ModelGatewayService)
-    private readonly modelGateway: ModelGatewayService
+    private readonly modelGateway: ModelGatewayService,
+    @Inject(UsersService)
+    private readonly usersService: UsersService
   ) {
     this.apiKeyEncryptionKey = createHash('sha256')
       .update(this.configService.getOrThrow<string>('AUTH_TOKEN_SECRET'))
@@ -589,10 +592,11 @@ export class ModelsService {
     currentUser: CurrentUser;
     modelFallbackGroupId?: string | null;
   }): Promise<ModelGatewayConfig[]> {
+    const sharedModelOwner = await this.usersService.getSharedModelOwner();
     const group =
       params.modelFallbackGroupId === undefined
-        ? await this.findDefaultActiveFallbackGroup(params.currentUser)
-        : await this.findOwnedActiveFallbackGroup(params.currentUser, params.modelFallbackGroupId);
+        ? await this.findDefaultActiveFallbackGroup(sharedModelOwner)
+        : await this.findOwnedActiveFallbackGroup(sharedModelOwner, params.modelFallbackGroupId);
 
     if (!group) {
       return [];

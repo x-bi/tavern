@@ -19,8 +19,47 @@ assert.equal(shareManagerRoots.length, 1, 'ShareManager must expose a single lay
 assert.equal(shareManagerRoots[0].tag, 'div');
 assert.match(shareManagerTemplate, /<n-drawer\b/);
 assert.doesNotMatch(shareManagerTemplate, /<n-modal\b/);
+const shareChatSource = readFileSync(
+  new URL('../apps/share-web/src/views/ShareChatView.vue', import.meta.url),
+  'utf8'
+);
+const shareChatScript = parseSfc(shareChatSource).descriptor.scriptSetup?.content ?? '';
+const optimisticAppendIndex = shareChatScript.indexOf('appendOptimisticTurn(text)');
+const streamStartIndex = shareChatScript.indexOf(
+  "await runStream('/chat/stream', { userMessage: text })"
+);
+assert.ok(optimisticAppendIndex >= 0, 'Share chat must append the local turn immediately.');
+assert.ok(
+  streamStartIndex > optimisticAppendIndex,
+  'Share chat must render the local turn before awaiting the model stream.'
+);
+assert.match(
+  shareChatScript,
+  /createLocalMessage\('assistant', '', 'generating'\)/,
+  'Share chat must show an assistant generating placeholder.'
+);
+assert.match(
+  shareChatScript,
+  /message\.messageId = data\.messageId/,
+  'The first model delta must reuse the optimistic assistant placeholder.'
+);
+assert.match(
+  shareChatScript,
+  /appendOptimisticAssistant\(messageId\)/,
+  'Regeneration must identify the assistant message being replaced.'
+);
+assert.match(
+  shareChatScript,
+  /messages\.value\.splice\(replaceIndex, 1, message\)/,
+  'Regeneration must replace the previous reply with a generating placeholder in place.'
+);
 if (process.env.SHARE_LAYOUT_ONLY === '1') {
-  console.log(JSON.stringify({ ok: true, checks: ['drawer-layout'] }));
+  console.log(
+    JSON.stringify({
+      ok: true,
+      checks: ['drawer-layout', 'optimistic-chat-turn', 'in-place-regeneration']
+    })
+  );
   process.exit(0);
 }
 

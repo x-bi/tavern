@@ -38,7 +38,7 @@
           <div class="message__meta">
             <strong>{{ message.role === 'assistant' ? bootstrap.participantName : '访客' }}</strong
             ><span>{{ formatTime(message.createdAt) }}</span
-            ><span v-if="message.status !== 'complete'">{{ message.status }}</span>
+            ><span v-if="message.status !== 'complete'">{{ statusLabel(message.status) }}</span>
           </div>
           <div class="message__content">
             {{ message.content || (message.status === 'generating' ? '正在输入…' : '') }}
@@ -95,6 +95,8 @@ const messageList = ref<HTMLElement | null>(null);
 let events: EventSource | null = null;
 let streamAbort: AbortController | null = null;
 let reloadTimer: number | null = null;
+let localMessageSeed = 0;
+let optimisticAssistantId: string | null = null;
 onMounted(load);
 onBeforeUnmount(() => {
   events?.close();
@@ -128,8 +130,8 @@ async function load() {
 }
 async function reloadMessages() {
   messages.value = await raw<PublicShareMessage[]>('/messages');
-  await nextTick();
-  if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight;
+  optimisticAssistantId = null;
+  await scrollToBottom();
 }
 function connectEvents() {
   events?.close();
@@ -171,9 +173,11 @@ async function send() {
   const text = draft.value.trim();
   if (!text || streaming.value) return;
   draft.value = '';
+  appendOptimisticTurn(text);
   await runStream('/chat/stream', { userMessage: text });
 }
 async function regenerate(messageId: string) {
+  appendOptimisticAssistant(messageId);
   await runStream(`/messages/${encodeURIComponent(messageId)}/regenerate`);
 }
 async function runStream(path: string, body?: unknown) {
@@ -218,6 +222,11 @@ async function consumeStream(stream: ReadableStream<Uint8Array>) {
       const data = JSON.parse(dataText) as { messageId?: string; text?: string; message?: string };
       if (event === 'delta' && data.messageId && data.text) {
         let message = messages.value.find((item) => item.messageId === data.messageId);
+        if (!message && optimisticAssistantId) {
+          message = messages.value.find((item) => item.messageId === optimisticAssistantId);
+          if (message) message.messageId = data.messageId;
+          optimisticAssistantId = null;
+        }
         if (!message) {
           message = {
             messageId: data.messageId,
@@ -230,10 +239,57 @@ async function consumeStream(stream: ReadableStream<Uint8Array>) {
           messages.value.push(message);
         }
         message.content += data.text;
+        void scrollToBottom();
       }
+      if (event === 'done' && data.messageId) completeOptimisticAssistant(data.messageId);
       if (event === 'error') throw new Error(data.message ?? '生成失败');
     }
   }
+}
+function appendOptimisticTurn(content: string) {
+  messages.value.push(createLocalMessage('user', content, 'complete'));
+  appendOptimisticAssistant();
+}
+function appendOptimisticAssistant(replaceMessageId?: string) {
+  const message = createLocalMessage('assistant', '', 'generating');
+  optimisticAssistantId = message.messageId;
+  const replaceIndex = replaceMessageId
+    ? messages.value.findIndex((item) => item.messageId === replaceMessageId)
+    : -1;
+  if (replaceIndex >= 0) messages.value.splice(replaceIndex, 1, message);
+  else messages.value.push(message);
+  void scrollToBottom();
+}
+function createLocalMessage(
+  role: 'user' | 'assistant',
+  content: string,
+  status: 'complete' | 'generating'
+): PublicShareMessage {
+  const now = new Date().toISOString();
+  localMessageSeed += 1;
+  return {
+    messageId: `local-${now}-${localMessageSeed}`,
+    role,
+    content,
+    status,
+    createdAt: now,
+    updatedAt: now
+  };
+}
+function completeOptimisticAssistant(messageId: string) {
+  const message = messages.value.find(
+    (item) => item.messageId === messageId || item.messageId === optimisticAssistantId
+  );
+  if (message) {
+    message.messageId = messageId;
+    message.status = 'complete';
+    message.updatedAt = new Date().toISOString();
+  }
+  optimisticAssistantId = null;
+}
+async function scrollToBottom() {
+  await nextTick();
+  if (messageList.value) messageList.value.scrollTop = messageList.value.scrollHeight;
 }
 async function stop() {
   streamAbort?.abort();
@@ -255,5 +311,21 @@ function formatTime(value: string) {
     hour: '2-digit',
     minute: '2-digit'
   });
+}
+function statusLabel(status: string) {
+  switch (status) {
+    case 'generating':
+      return '生成中';
+    case 'failed':
+      return '失败';
+    case 'stopped':
+      return '已停止';
+    case 'edited':
+      return '已编辑';
+    case 'deleted':
+      return '已删除';
+    default:
+      return status;
+  }
 }
 </script>

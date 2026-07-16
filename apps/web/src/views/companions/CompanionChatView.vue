@@ -1,15 +1,167 @@
 <template>
-  <main class="companion-chat">
-    <header class="companion-chat__header">
-      <n-button secondary @click="router.push('/companion')">返回</n-button>
+  <main class="page-shell companion-chat">
+    <header class="page-shell__header companion-chat__header">
       <div>
         <h2>{{ companion?.name || 'AI 角色' }}</h2>
-        <span>{{ memoryLabel }}</span>
+        <p>持续关系线程 · {{ memoryLabel }}</p>
       </div>
-      <n-button secondary @click="showMemory = !showMemory">记忆与设置</n-button>
+      <n-button secondary @click="router.push('/companion')">返回 AI 角色</n-button>
     </header>
-    <n-alert v-if="error" type="error" :bordered="false">{{ error }}</n-alert>
-    <section v-if="showMemory && memory" class="memory-panel page-panel">
+
+    <div class="companion-chat__layout">
+      <section class="companion-chat__room">
+        <header class="companion-chat__room-header">
+          <div>
+            <h3>{{ companion?.name || 'AI 角色' }} 的对话</h3>
+            <p>{{ memoryLabel }}</p>
+          </div>
+          <n-button secondary :loading="loading" :disabled="streaming" @click="load"
+            >刷新消息</n-button
+          >
+        </header>
+
+        <n-alert v-if="error" class="companion-chat__error" type="error" :bordered="false">
+          {{ error }}
+        </n-alert>
+
+        <section ref="messageList" class="message-list" aria-label="AI 角色消息列表">
+          <div v-if="loading" class="muted">正在加载...</div>
+          <div v-else-if="!messages.length" class="muted">从一句自然的问候开始吧。</div>
+          <article
+            v-for="message in messages"
+            :key="message.id"
+            class="bubble"
+            :class="`bubble--${message.role}`"
+          >
+            <header class="bubble__meta">
+              <strong>{{ message.role === 'assistant' ? companion?.name : '用户' }}</strong>
+              <span>{{ formatTime(message.createdAt) }}</span>
+              <n-tag v-if="message.status !== 'complete'" size="small" :bordered="false">{{
+                message.status
+              }}</n-tag>
+            </header>
+            <n-input
+              v-if="editingMessageId === message.id"
+              v-model:value="editDraft"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 8 }"
+            />
+            <div v-else class="bubble__content">
+              {{ message.content || (message.status === 'generating' ? '正在输入…' : '') }}
+            </div>
+            <footer v-if="message.status !== 'generating'" class="bubble__actions">
+              <n-button size="tiny" quaternary @click="copyMessage(message.content)">复制</n-button>
+              <template v-if="message.role === 'user'">
+                <n-button
+                  v-if="editingMessageId !== message.id"
+                  size="tiny"
+                  quaternary
+                  :disabled="streaming"
+                  @click="startEdit(message.id, message.content)"
+                  >编辑</n-button
+                >
+                <n-button
+                  v-else
+                  size="tiny"
+                  quaternary
+                  type="primary"
+                  :loading="editing"
+                  @click="saveEdit(message.id)"
+                  >保存</n-button
+                >
+                <n-button
+                  v-if="editingMessageId === message.id"
+                  size="tiny"
+                  quaternary
+                  @click="cancelEdit"
+                  >取消</n-button
+                >
+              </template>
+              <n-button
+                size="tiny"
+                quaternary
+                type="error"
+                :disabled="streaming"
+                @click="confirmDelete(message.id)"
+                >删除</n-button
+              >
+              <n-button
+                v-if="message.role === 'assistant'"
+                size="tiny"
+                quaternary
+                :disabled="streaming"
+                @click="regenerate(message.id)"
+                >重新生成</n-button
+              >
+            </footer>
+          </article>
+        </section>
+
+        <footer class="composer">
+          <n-input
+            v-model:value="input"
+            type="textarea"
+            :autosize="{ minRows: 3, maxRows: 6 }"
+            placeholder="输入消息"
+            :disabled="streaming"
+            @keydown="handleKeydown"
+          />
+          <div class="composer__markers" aria-label="角色扮演段落标记">
+            <n-button
+              v-for="marker in roleplayMarkers"
+              :key="marker"
+              size="tiny"
+              secondary
+              :disabled="streaming"
+              @click="appendRoleplayMarker(marker)"
+            >
+              {{ marker }}
+            </n-button>
+          </div>
+          <div class="composer__toolbar">
+            <n-button size="small" secondary @click="showMemory = true">记忆与设置</n-button>
+            <div class="composer__submit-actions">
+              <n-button v-if="streaming" type="error" secondary @click="stop">停止</n-button>
+              <n-button type="primary" :disabled="!input.trim() || streaming" @click="send"
+                >发送</n-button
+              >
+            </div>
+          </div>
+        </footer>
+      </section>
+
+      <aside class="companion-chat__side" aria-label="AI 角色信息">
+        <section class="companion-chat__side-section">
+          <h3>角色</h3>
+          <p>{{ companion?.name || '加载中' }}</p>
+        </section>
+        <section class="companion-chat__side-section">
+          <h3>长期记忆</h3>
+          <p>{{ memoryLabel }}</p>
+        </section>
+        <section class="companion-chat__side-section">
+          <h3>模型</h3>
+          <p>{{ modelLabel }}</p>
+        </section>
+        <section class="companion-chat__side-section">
+          <h3>预设</h3>
+          <p>{{ presetLabel }}</p>
+        </section>
+        <section class="companion-chat__side-section">
+          <h3>Persona</h3>
+          <p>{{ personaLabel }}</p>
+        </section>
+        <section class="companion-chat__side-section">
+          <h3>工具栏</h3>
+          <div class="companion-chat__tool-grid">
+            <n-button size="small" secondary @click="showMemory = true">记忆与设置</n-button>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <n-modal v-model:show="showMemory" preset="card" title="记忆与设置" class="memory-modal">
+      <section v-if="memory" class="memory-panel">
       <strong>角色设置</strong>
       <n-form-item label="名字"
         ><n-input v-model:value="settings.name" maxlength="80"
@@ -79,94 +231,8 @@
           >恢复 v{{ revision.version }}</n-button
         >
       </div>
-    </section>
-    <section ref="messageList" class="message-list page-panel">
-      <div v-if="loading" class="muted">正在加载...</div>
-      <div v-else-if="!messages.length" class="muted">从一句自然的问候开始吧。</div>
-      <article
-        v-for="message in messages"
-        :key="message.id"
-        class="bubble"
-        :class="`bubble--${message.role}`"
-      >
-        <header class="bubble__meta">
-          <strong>{{ message.role === 'assistant' ? companion?.name : '用户' }}</strong>
-          <span>{{ formatTime(message.createdAt) }}</span>
-          <n-tag v-if="message.status !== 'complete'" size="small" :bordered="false">{{
-            message.status
-          }}</n-tag>
-        </header>
-        <n-input
-          v-if="editingMessageId === message.id"
-          v-model:value="editDraft"
-          type="textarea"
-          :autosize="{ minRows: 2, maxRows: 8 }"
-        />
-        <div v-else>
-          {{ message.content || (message.status === 'generating' ? '正在输入…' : '') }}
-        </div>
-        <footer v-if="message.status !== 'generating'" class="bubble__actions">
-          <n-button size="tiny" quaternary @click="copyMessage(message.content)">复制</n-button>
-          <template v-if="message.role === 'user'">
-            <n-button
-              v-if="editingMessageId !== message.id"
-              size="tiny"
-              quaternary
-              :disabled="streaming"
-              @click="startEdit(message.id, message.content)"
-              >编辑</n-button
-            >
-            <n-button
-              v-else
-              size="tiny"
-              quaternary
-              type="primary"
-              :loading="editing"
-              @click="saveEdit(message.id)"
-              >保存</n-button
-            >
-            <n-button
-              v-if="editingMessageId === message.id"
-              size="tiny"
-              quaternary
-              @click="cancelEdit"
-              >取消</n-button
-            >
-          </template>
-          <n-button
-            size="tiny"
-            quaternary
-            type="error"
-            :disabled="streaming"
-            @click="confirmDelete(message.id)"
-            >删除</n-button
-          >
-          <n-button
-            v-if="message.role === 'assistant'"
-            size="tiny"
-            quaternary
-            :disabled="streaming"
-            @click="regenerate(message.id)"
-            >重新生成</n-button
-          >
-        </footer>
-      </article>
-    </section>
-    <footer class="composer">
-      <n-input
-        v-model:value="input"
-        type="textarea"
-        :autosize="{ minRows: 2, maxRows: 5 }"
-        placeholder="输入消息"
-        :disabled="streaming"
-        @keydown="handleKeydown"
-      /><n-space justify="end"
-        ><n-button v-if="streaming" type="error" secondary @click="stop">停止</n-button
-        ><n-button type="primary" :disabled="!input.trim() || streaming" @click="send"
-          >发送</n-button
-        ></n-space
-      >
-    </footer>
+      </section>
+    </n-modal>
   </main>
 </template>
 <script setup lang="ts">
@@ -227,6 +293,7 @@ const settings = reactive({
   promptPresetId: null as string | null,
   personaId: null as string | null
 });
+const roleplayMarkers = ['台词', '我的动作', '对方动作', '旁白'];
 const memoryLabel = computed(() =>
   !memory.value?.isEnabled
     ? '长期记忆未开启'
@@ -234,7 +301,32 @@ const memoryLabel = computed(() =>
       ? '长期记忆已暂停'
       : `长期记忆 ${memory.value.status}`
 );
+const modelLabel = computed(() =>
+  getOptionLabel(modelOptions.value, settings.modelFallbackGroupId, '使用默认模型链')
+);
+const presetLabel = computed(() =>
+  getOptionLabel(presetOptions.value, settings.promptPresetId, '未设置')
+);
+const personaLabel = computed(() =>
+  getOptionLabel(personaOptions.value, settings.personaId, '未设置')
+);
 onMounted(load);
+
+function getOptionLabel(options: SelectOption[], value: string | null, fallback: string) {
+  if (!value) return fallback;
+
+  const option = options.find((item) => item.value === value);
+
+  return typeof option?.label === 'string' ? option.label : fallback;
+}
+
+function appendRoleplayMarker(marker: string) {
+  if (streaming.value) return;
+
+  const separator = input.value && !input.value.endsWith('\n') ? '\n' : '';
+  input.value += `${separator}[${marker}] `;
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -505,34 +597,103 @@ async function scrollBottom() {
 <style scoped>
 .companion-chat {
   display: grid;
-  grid-template-rows: auto auto minmax(320px, 1fr) auto;
-  gap: 12px;
-  height: calc(100vh - 120px);
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 18px;
+  height: calc(100vh - 72px - 48px);
+  overflow: hidden;
 }
+
 .companion-chat__header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
 }
-.companion-chat__header h2 {
+
+.companion-chat__header h2,
+.companion-chat__header p {
   margin: 0;
 }
-.companion-chat__header span,
+
+.companion-chat__header p,
 .muted {
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 13px;
 }
-.message-list {
-  overflow: auto;
-  padding: 18px;
-  display: flex;
-  flex-direction: column;
+
+.companion-chat__layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 16px;
+  min-height: 0;
+}
+
+.companion-chat__room {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: var(--surface-panel);
+}
+
+.companion-chat__room-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-subtle);
 }
+
+.companion-chat__room-header h3,
+.companion-chat__room-header p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companion-chat__room-header h3 {
+  color: var(--text-strong);
+  font-size: 16px;
+}
+
+.companion-chat__room-header p {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.companion-chat__error {
+  margin: 12px 12px 0;
+}
+
+.message-list {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+  scrollbar-width: thin;
+}
+
+.message-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.message-list::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .bubble {
-  align-self: flex-start;
-  max-width: 75%;
+  width: min(75%, 760px);
   padding: 12px 14px;
   border: 1px solid var(--line-subtle);
   border-radius: 8px;
@@ -540,10 +701,12 @@ async function scrollBottom() {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
 .bubble--user {
-  align-self: flex-end;
+  justify-self: end;
   background: #2857a4;
 }
+
 .bubble__meta,
 .bubble__actions {
   display: flex;
@@ -551,24 +714,104 @@ async function scrollBottom() {
   gap: 8px;
   align-items: center;
 }
+
 .bubble__meta strong {
   font-size: 13px;
 }
+
 .bubble__meta span {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+.bubble__content,
 .bubble__actions {
-  min-height: 24px;
+  margin-top: 8px;
 }
+
+.bubble__content {
+  line-height: 1.7;
+}
+
 .composer,
 .memory-panel {
   display: grid;
   gap: 10px;
 }
-.memory-panel {
-  padding: 16px;
+
+.composer {
+  padding: 12px;
+  border-top: 1px solid var(--line-subtle);
+  background: rgba(17, 24, 39, 0.88);
 }
+
+.composer__markers,
+.composer__toolbar,
+.composer__submit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.composer__toolbar {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.companion-chat__side {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: var(--surface-panel);
+}
+
+.companion-chat__side-section {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-subtle);
+}
+
+.companion-chat__side-section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.companion-chat__side-section h3,
+.companion-chat__side-section p {
+  margin: 0;
+}
+
+.companion-chat__side-section h3 {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.companion-chat__side-section p {
+  overflow: hidden;
+  color: var(--text-strong);
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companion-chat__tool-grid {
+  display: grid;
+}
+
+.memory-panel {
+  max-height: min(72vh, 760px);
+  overflow-y: auto;
+}
+
+.memory-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+
 .memory-switches,
 .revision-list {
   display: flex;
@@ -576,12 +819,82 @@ async function scrollBottom() {
   align-items: center;
   flex-wrap: wrap;
 }
+
+@media (max-width: 1020px) {
+  .companion-chat {
+    height: auto;
+    overflow: visible;
+  }
+
+  .companion-chat__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .companion-chat__side {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
   .companion-chat {
-    height: calc(100dvh - 70px);
+    height: calc(100dvh - 68px);
+    gap: 8px;
   }
+
+  .companion-chat__header {
+    gap: 8px;
+  }
+
+  .companion-chat__header p,
+  .companion-chat__room-header p,
+  .companion-chat__side {
+    display: none;
+  }
+
+  .companion-chat__header h2 {
+    font-size: 18px;
+  }
+
+  .companion-chat__room {
+    border-radius: 6px;
+  }
+
+  .companion-chat__room-header {
+    gap: 8px;
+    padding: 10px 12px;
+  }
+
+  .message-list {
+    gap: 12px;
+    padding: 12px;
+  }
+
   .bubble {
-    max-width: 88%;
+    width: min(88%, 760px);
+  }
+
+  .composer {
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  .composer__markers {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+
+  .composer__markers::-webkit-scrollbar {
+    display: none;
+  }
+
+  .composer__toolbar,
+  .composer__submit-actions {
+    width: 100%;
+  }
+
+  .composer__submit-actions {
+    justify-content: flex-end;
   }
 }
 </style>

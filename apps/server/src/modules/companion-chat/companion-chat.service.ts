@@ -16,6 +16,7 @@ import type { ChatResponseLike } from '../chat/chat.types';
 import { StreamCompanionChatDto } from './dto/stream-companion-chat.dto';
 
 type OwnedCompanion = Awaited<ReturnType<CompanionChatService['findOwned']>>;
+const COMPANION_HISTORY_LIMIT = 20;
 
 @Injectable()
 export class CompanionChatService {
@@ -31,7 +32,7 @@ export class CompanionChatService {
 
   async preview(user: CurrentUser, companionId: string, userInput: string) {
     const companion = await this.findOwned(user, companionId);
-    const history = await this.listHistory(companionId, 30);
+    const history = await this.listHistory(companionId, COMPANION_HISTORY_LIMIT);
     const candidates = await this.models.getGatewayCandidates({
       currentUser: user,
       modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
@@ -177,7 +178,7 @@ export class CompanionChatService {
     return {
       user,
       assistant,
-      history: await this.listHistory(companionId, 30, [user.id, assistant.id])
+      history: await this.listHistory(companionId, COMPANION_HISTORY_LIMIT, [user.id, assistant.id])
     };
   }
 
@@ -220,7 +221,9 @@ export class CompanionChatService {
     return {
       user,
       assistant,
-      history: messages.filter((message) => message.id !== id && message.id !== user.id)
+      history: messages
+        .filter((message) => message.id !== id && message.id !== user.id)
+        .slice(-COMPANION_HISTORY_LIMIT)
     };
   }
 

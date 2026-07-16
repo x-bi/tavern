@@ -55,7 +55,7 @@ AI 角色独立 Builder 永远注入受管的 `companion_style`：自然、简�
 
 AI 角色新建自己的 `PromptSectionKind`、`BuildPromptInput` 和 Builder；真实聊天与 Preview 必须复用这一条路径。
 
-构建顺序：`platform` → `companion_identity` → `persona` → `prompt_preset` → `output_rules` → `companion_style` → `companion_memory` → `history` → `current_user_input`。
+构建顺序：`platform` → `companion_identity` → `persona` → `prompt_preset` → `output_rules` → `companion_style` → `companion_memory` → `history` → `anti_repeat` → `current_user_input`。`anti_repeat` 只在已有 assistant 历史时注入：历史文本只用于理解上下文，模型只能回应当前输入，不得回放、拼接或改写旧 assistant 段落；相似 assistant 开头只保留最近两条。
 
 记忆位于身份和输出规则之后、历史之前。`pending`、`updating`、`failed` 继续注入最后有效版本，避免角色突然失忆；只有 `stale` 停止注入。
 

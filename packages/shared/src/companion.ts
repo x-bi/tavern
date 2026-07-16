@@ -120,6 +120,7 @@ export type CompanionPromptSectionKind =
   | 'companion_style'
   | 'companion_memory'
   | 'history'
+  | 'anti_repeat'
   | 'current_user_input';
 export type CompanionPromptPreviewResponse = {
   sections: Array<{

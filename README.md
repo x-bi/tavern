@@ -216,5 +216,3 @@ docker compose exec server pnpm db:migrate-legacy-admin -- --source=demo --targe
 - 开发规则与架构：[AGENTS.md](./AGENTS.md)
 - AI 角色长期陪伴设计：[docs/conversation-long-term-memory.md](./docs/conversation-long-term-memory.md)
 - 阶段资料：[model-context/stages/README.md](./model-context/stages/README.md)
-
-测试服务器自动拉取

@@ -227,6 +227,25 @@ export class CharactersService {
     };
   }
 
+  /** 返回可直接用于角色卡导入的 chara_card_v2 模板。 */
+  getImportTemplate() {
+    return {
+      fileName: 'tavern-lite-character-template.json',
+      template: {
+        spec: 'chara_card_v2',
+        spec_version: '2.0',
+        data: {
+          name: '示例角色',
+          description: '角色的背景、身份与外观设定。',
+          personality: '角色的性格、习惯与表达方式。',
+          scenario: '角色与用户当前所处的场景。',
+          first_mes: '你好，很高兴见到你。',
+          mes_example: '<START>\n{{user}}: 你好\n示例角色: 你好呀，今天过得怎么样？'
+        }
+      }
+    };
+  }
+
   /**
    * 获取单个角色。
    * @param currentUser 当前登录用户。

@@ -62,6 +62,12 @@ export class PresetsController {
     return this.presetsService.importJson(currentUser, dto);
   }
 
+  /** 下载参数预设导入模板。GET /prompt-presets/import-template */
+  @Get('import-template')
+  importTemplate() {
+    return this.presetsService.getImportTemplate();
+  }
+
   /** 更新预设。PUT /prompt-presets/:id */
   @Put(':id')
   update(

@@ -5,6 +5,7 @@
  */
 import { requestJson } from './http';
 import type {
+  ModuleImportTemplateResponse,
   ModuleImportDuplicateNameStrategy,
   PromptPresetImportResponse,
   PromptPresetListResponse,
@@ -118,6 +119,19 @@ export async function importPromptPresetJson(
         duplicateNameStrategy: options.duplicateNameStrategy ?? 'reject'
       }
     }
+  );
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/** 下载参数预设导入模板。GET /prompt-presets/import-template */
+export async function fetchPromptPresetImportTemplate(): Promise<ModuleImportTemplateResponse> {
+  const response = await requestJson<ModuleImportTemplateResponse>(
+    '/prompt-presets/import-template'
   );
 
   if (!response.success) {

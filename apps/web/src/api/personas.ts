@@ -5,6 +5,7 @@
  */
 import { requestJson } from './http';
 import type {
+  ModuleImportTemplateResponse,
   ModuleImportDuplicateNameStrategy,
   PersonaImportResponse,
   PersonaListResponse,
@@ -110,6 +111,17 @@ export async function importPersonaJson(
       duplicateNameStrategy: options.duplicateNameStrategy ?? 'reject'
     }
   });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/** 下载 Persona 导入模板。GET /personas/import-template */
+export async function fetchPersonaImportTemplate(): Promise<ModuleImportTemplateResponse> {
+  const response = await requestJson<ModuleImportTemplateResponse>('/personas/import-template');
 
   if (!response.success) {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);

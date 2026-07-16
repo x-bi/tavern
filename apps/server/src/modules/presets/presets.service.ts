@@ -260,6 +260,27 @@ export class PresetsService {
     }
   }
 
+  /** 返回可直接用于参数预设导入的模板。 */
+  getImportTemplate() {
+    return {
+      fileName: 'tavern-lite-prompt-preset-template.json',
+      template: {
+        formatVersion: 'tavern-lite.prompt-preset.v1',
+        name: '示例参数预设',
+        description: '适用于自然、稳定的日常角色对话。',
+        systemPrompt: '',
+        outputRules: '保持角色设定，使用自然简洁的中文回复。',
+        parameters: {
+          temperature: 0.8,
+          topP: 0.9,
+          maxTokens: 1200
+        },
+        metadata: {},
+        isDefault: false
+      }
+    };
+  }
+
   /**
    * 更新预设（部分更新）。
    * @param currentUser 当前登录用户。

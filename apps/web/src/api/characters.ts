@@ -8,7 +8,8 @@ import { requestJson } from './http';
 import type {
   CharacterExportResponse,
   CharacterImportPayload,
-  CharacterImportResponse as SharedCharacterImportResponse
+  CharacterImportResponse as SharedCharacterImportResponse,
+  ModuleImportTemplateResponse
 } from '@tavern/shared';
 import type {
   CharacterMetadata,
@@ -208,6 +209,17 @@ export async function importCharacterJson(
     method: 'POST',
     body: payload
   });
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/** 下载角色卡导入模板。GET /characters/import-template */
+export async function fetchCharacterImportTemplate(): Promise<ModuleImportTemplateResponse> {
+  const response = await requestJson<ModuleImportTemplateResponse>('/characters/import-template');
 
   if (!response.success) {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);

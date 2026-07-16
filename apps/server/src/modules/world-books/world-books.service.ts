@@ -323,6 +323,37 @@ export class WorldBooksService {
     };
   }
 
+  /** 返回可直接用于世界书导入的模板。 */
+  getImportTemplate() {
+    return {
+      fileName: 'tavern-lite-world-book-template.json',
+      template: {
+        formatVersion: 'tavern-lite.world-book.v1',
+        name: '示例世界书',
+        description: '描述这本世界书适用的角色、场景或背景设定。',
+        characterId: null,
+        isEnabled: true,
+        scanDepth: 6,
+        tokenBudget: 1000,
+        metadata: {},
+        entries: [
+          {
+            title: '示例条目',
+            content: '关键词命中后注入 Prompt 的设定内容。',
+            keywords: ['示例关键词'],
+            secondaryKeywords: [],
+            isEnabled: true,
+            priority: 0,
+            insertionOrder: 'before_history',
+            tokenBudget: null,
+            caseSensitive: false,
+            metadata: {}
+          }
+        ]
+      }
+    };
+  }
+
   /**
    * 获取单个世界书（含条目）。
    * @param currentUser 当前登录用户。

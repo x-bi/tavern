@@ -6,6 +6,9 @@
         <p>维护对话生成参数和输出风格约束，后续聊天页会从这里选择预设。</p>
       </div>
       <n-space justify="end">
+        <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
+          导入模板
+        </n-button>
         <n-button secondary @click="openImport">导入 JSON</n-button>
         <n-button type="primary" @click="openCreate">新建预设</n-button>
       </n-space>
@@ -126,6 +129,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
 import {
+  fetchPromptPresetImportTemplate,
   importPromptPresetJson,
   type PromptPreset,
   type PromptPresetMutationPayload
@@ -136,6 +140,7 @@ import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import PromptPresetForm from '../../components/PromptPresetForm.vue';
 import { usePresetStore } from '../../stores/preset';
+import { downloadJson } from '../../utils/downloadJson';
 import type {
   ModuleImportDuplicateNameStrategy,
   PromptPresetImportPreview,
@@ -155,6 +160,7 @@ const importPreview = ref<PromptPresetImportPreview | null>(null);
 const importError = ref<string | null>(null);
 const importPreviewing = ref(false);
 const importing = ref(false);
+const templateLoading = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 
 onMounted(() => {
@@ -179,6 +185,18 @@ function openImport() {
   importPreview.value = null;
   importError.value = null;
   importDrawerVisible.value = true;
+}
+
+async function downloadImportTemplate() {
+  templateLoading.value = true;
+  try {
+    const result = await fetchPromptPresetImportTemplate();
+    downloadJson(result.fileName, result.template);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '参数预设导入模板下载失败。');
+  } finally {
+    templateLoading.value = false;
+  }
 }
 
 function openEdit(preset: PromptPreset) {

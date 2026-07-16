@@ -243,6 +243,20 @@ export class PersonasService {
     }
   }
 
+  /** 返回可直接用于 Persona 导入的模板。 */
+  getImportTemplate() {
+    return {
+      fileName: 'tavern-lite-persona-template.json',
+      template: {
+        formatVersion: 'tavern-lite.persona.v1',
+        name: '示例 Persona',
+        content: '我是用户希望在对话中呈现的身份、偏好与表达方式。',
+        metadata: {},
+        isDefault: false
+      }
+    };
+  }
+
   /**
    * 更新人设（部分更新）。
    * @param currentUser 当前登录用户。

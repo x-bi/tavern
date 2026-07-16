@@ -121,6 +121,7 @@ export type {
   ModuleImportDuplicateNameStrategy,
   ModuleImportPayload,
   ModuleImportPreviewBase,
+  ModuleImportTemplateResponse,
   ModuleImportWarning,
   PersonaImportPreview,
   PersonaImportResponse,

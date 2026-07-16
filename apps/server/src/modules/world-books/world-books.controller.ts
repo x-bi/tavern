@@ -64,6 +64,12 @@ export class WorldBooksController {
     return this.worldBooksService.importJson(currentUser, dto);
   }
 
+  /** 下载世界书导入模板。GET /world-books/import-template */
+  @Get('world-books/import-template')
+  importTemplate() {
+    return this.worldBooksService.getImportTemplate();
+  }
+
   /** 获取单个世界书。GET /world-books/:id */
   @Get('world-books/:id')
   getById(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {

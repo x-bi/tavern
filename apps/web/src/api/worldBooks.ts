@@ -7,6 +7,7 @@
 import { requestJson } from './http';
 import type {
   ModuleImportDuplicateNameStrategy,
+  ModuleImportTemplateResponse,
   WorldBookEntryPayload,
   WorldBookEntryResponse,
   WorldBookEntryUpdatePayload,
@@ -142,6 +143,17 @@ export async function importWorldBookJson(
       }
     }
   );
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+/** 下载世界书导入模板。GET /world-books/import-template */
+export async function fetchWorldBookImportTemplate(): Promise<ModuleImportTemplateResponse> {
+  const response = await requestJson<ModuleImportTemplateResponse>('/world-books/import-template');
 
   if (!response.success) {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);

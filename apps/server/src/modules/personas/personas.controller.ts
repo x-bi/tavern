@@ -62,6 +62,12 @@ export class PersonasController {
     return this.personasService.importJson(currentUser, dto);
   }
 
+  /** 下载 Persona 导入模板。GET /personas/import-template */
+  @Get('import-template')
+  importTemplate() {
+    return this.personasService.getImportTemplate();
+  }
+
   /** 更新人设。PUT /personas/:id */
   @Put(':id')
   update(

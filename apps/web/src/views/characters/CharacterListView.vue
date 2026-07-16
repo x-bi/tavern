@@ -6,6 +6,9 @@
         <p>管理本地角色卡，进入详情或编辑后续信息。</p>
       </div>
       <n-space class="character-list__actions" justify="end">
+        <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
+          导入模板
+        </n-button>
         <n-button secondary @click="openImport">导入 JSON</n-button>
         <n-button type="primary" @click="goCreate">新建角色</n-button>
       </n-space>
@@ -90,6 +93,7 @@
 
 <script setup lang="ts">
 import type { CharacterImportPreview, ModuleImportDuplicateNameStrategy } from '@tavern/shared';
+import { useMessage } from 'naive-ui';
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -98,17 +102,20 @@ import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
-import { importCharacterJson } from '../../api/characters';
+import { fetchCharacterImportTemplate, importCharacterJson } from '../../api/characters';
 import { useCharacterStore } from '../../stores/character';
+import { downloadJson } from '../../utils/downloadJson';
 
 const router = useRouter();
 const characterStore = useCharacterStore();
+const message = useMessage();
 const searchText = ref(characterStore.search);
 const importDrawerVisible = ref(false);
 const importPreview = ref<CharacterImportPreview | null>(null);
 const importPreviewing = ref(false);
 const importing = ref(false);
 const importError = ref<string | null>(null);
+const templateLoading = ref(false);
 
 onMounted(() => {
   void characterStore.loadCharacters();
@@ -130,6 +137,18 @@ function openImport() {
   importPreview.value = null;
   importError.value = null;
   importDrawerVisible.value = true;
+}
+
+async function downloadImportTemplate() {
+  templateLoading.value = true;
+  try {
+    const result = await fetchCharacterImportTemplate();
+    downloadJson(result.fileName, result.template);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '角色卡导入模板下载失败。');
+  } finally {
+    templateLoading.value = false;
+  }
 }
 
 async function previewCharacterImport(payload: {

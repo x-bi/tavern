@@ -6,6 +6,9 @@
         <p>维护世界书与条目数据，后续阶段会基于这些字段接入命中和注入流程。</p>
       </div>
       <n-space justify="end">
+        <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
+          导入模板
+        </n-button>
         <n-button secondary @click="openImport">导入 JSON</n-button>
         <n-button type="primary" @click="openCreate">新建世界书</n-button>
       </n-space>
@@ -207,13 +210,14 @@ import type {
   WorldBookEntryMutationPayload,
   WorldBookMutationPayload
 } from '../../api/worldBooks';
-import { importWorldBookJson } from '../../api/worldBooks';
+import { fetchWorldBookImportTemplate, importWorldBookJson } from '../../api/worldBooks';
 import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import WorldBookEditor from '../../components/WorldBookEditor.vue';
 import { useWorldBookStore } from '../../stores/worldBook';
+import { downloadJson } from '../../utils/downloadJson';
 import type {
   ModuleImportDuplicateNameStrategy,
   WorldBookEntryPayload,
@@ -242,6 +246,7 @@ const importPreview = ref<WorldBookImportPreview | null>(null);
 const importError = ref<string | null>(null);
 const importPreviewing = ref(false);
 const importing = ref(false);
+const templateLoading = ref(false);
 const createFormRef = ref<FormInst | null>(null);
 const editorRef = ref<InstanceType<typeof WorldBookEditor> | null>(null);
 const drawerWidth = computed(() => Math.min(620, window.innerWidth));
@@ -298,6 +303,18 @@ function openImport() {
   importPreview.value = null;
   importError.value = null;
   importDrawerVisible.value = true;
+}
+
+async function downloadImportTemplate() {
+  templateLoading.value = true;
+  try {
+    const result = await fetchWorldBookImportTemplate();
+    downloadJson(result.fileName, result.template);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '世界书导入模板下载失败。');
+  } finally {
+    templateLoading.value = false;
+  }
 }
 
 function closeCreate() {

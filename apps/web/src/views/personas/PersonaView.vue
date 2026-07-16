@@ -6,6 +6,9 @@
         <p>维护用户身份、偏好和表达方式，后续 Prompt Builder 会从这里读取。</p>
       </div>
       <n-space justify="end">
+        <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
+          导入模板
+        </n-button>
         <n-button secondary @click="openImport">导入 JSON</n-button>
         <n-button type="primary" @click="openCreate">新建 Persona</n-button>
       </n-space>
@@ -125,13 +128,19 @@
 import { computed, onMounted, ref } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
-import { importPersonaJson, type Persona, type PersonaMutationPayload } from '../../api/personas';
+import {
+  fetchPersonaImportTemplate,
+  importPersonaJson,
+  type Persona,
+  type PersonaMutationPayload
+} from '../../api/personas';
 import EmptyState from '../../components/EmptyState.vue';
 import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import PersonaEditor from '../../components/PersonaEditor.vue';
 import { usePersonaStore } from '../../stores/persona';
+import { downloadJson } from '../../utils/downloadJson';
 import type {
   ModuleImportDuplicateNameStrategy,
   PersonaImportPreview,
@@ -151,6 +160,7 @@ const importPreview = ref<PersonaImportPreview | null>(null);
 const importError = ref<string | null>(null);
 const importPreviewing = ref(false);
 const importing = ref(false);
+const templateLoading = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 
 onMounted(() => {
@@ -175,6 +185,18 @@ function openImport() {
   importPreview.value = null;
   importError.value = null;
   importDrawerVisible.value = true;
+}
+
+async function downloadImportTemplate() {
+  templateLoading.value = true;
+  try {
+    const result = await fetchPersonaImportTemplate();
+    downloadJson(result.fileName, result.template);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'Persona 导入模板下载失败。');
+  } finally {
+    templateLoading.value = false;
+  }
 }
 
 function openEdit(persona: Persona) {

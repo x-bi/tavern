@@ -11,6 +11,16 @@ export type ModuleImportPayload = {
   duplicateNameStrategy?: ModuleImportDuplicateNameStrategy;
 };
 
+/** 单模块 JSON 导入模板响应。 */
+export type ModuleImportTemplateResponse<
+  TTemplate extends Record<string, unknown> = Record<string, unknown>
+> = {
+  /** 建议下载文件名。 */
+  fileName: string;
+  /** 可直接编辑并重新导入的 JSON 模板。 */
+  template: TTemplate;
+};
+
 /** 单模块 JSON 导入告警。 */
 export type ModuleImportWarning = {
   /** 告警码。 */

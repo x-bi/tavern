@@ -66,6 +66,12 @@ export class CharactersController {
     return this.charactersService.importJson(currentUser, dto);
   }
 
+  /** 下载角色卡导入模板。GET /characters/import-template */
+  @Get('import-template')
+  importTemplate() {
+    return this.charactersService.getImportTemplate();
+  }
+
   /** 导出角色卡 JSON。GET /characters/:id/export */
   @Get(':id/export')
   exportJson(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {

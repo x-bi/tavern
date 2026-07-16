@@ -16,6 +16,7 @@ import { CompanionChatService } from './companion-chat.service';
     CompanionMemoryModule
   ],
   controllers: [CompanionChatController],
-  providers: [CompanionChatService]
+  providers: [CompanionChatService],
+  exports: [CompanionChatService]
 })
 export class CompanionChatModule {}

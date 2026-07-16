@@ -21,8 +21,10 @@ import { PersonasModule } from './modules/personas/personas.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
 import { PresetsModule } from './modules/presets/presets.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { SharesModule } from './modules/shares/shares.module';
 import { WorldBooksModule } from './modules/world-books/world-books.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { TargetEventsModule } from './services/target-events/target-events.module';
 
 /**
  * 应用根模块。
@@ -40,6 +42,7 @@ import { PrismaModule } from './prisma/prisma.module';
       validate: validateEnv
     }),
     PrismaModule,
+    TargetEventsModule,
     AssetsModule,
     AuthModule,
     BackupsModule,
@@ -57,6 +60,7 @@ import { PrismaModule } from './prisma/prisma.module';
     PromptsModule,
     PresetsModule,
     SettingsModule,
+    SharesModule,
     WorldBooksModule,
     HealthModule
   ]

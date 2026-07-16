@@ -28,6 +28,7 @@ import PersonaView from '../views/personas/PersonaView.vue';
 import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/prompts/PromptPreviewView.vue';
 import SettingView from '../views/settings/SettingView.vue';
+import ShareManagementView from '../views/shares/ShareManagementView.vue';
 import WorldBookView from '../views/world-books/WorldBookView.vue';
 import UserManagementView from '../views/admin/UserManagementView.vue';
 import { fetchCurrentUser, getStoredCurrentUser, logout } from '../api/auth';
@@ -164,7 +165,18 @@ export const router = createRouter({
           }
         },
         {
-          path: 'admin/users', name: 'admin-users', component: UserManagementView, meta: { title: '成员管理', requiresAdmin: true }
+          path: 'admin/users',
+          name: 'admin-users',
+          component: UserManagementView,
+          meta: { title: '成员管理', requiresAdmin: true }
+        },
+        {
+          path: 'shares',
+          name: 'shares',
+          component: ShareManagementView,
+          meta: {
+            title: '分享管理'
+          }
         },
         {
           path: 'settings',
@@ -209,7 +221,12 @@ router.beforeEach(async (to) => {
   if (!getAccessToken()) return { name: 'login' };
   let user = getStoredCurrentUser();
   if (!user) {
-    try { user = await fetchCurrentUser(); } catch { logout(); return { name: 'login' }; }
+    try {
+      user = await fetchCurrentUser();
+    } catch {
+      logout();
+      return { name: 'login' };
+    }
   }
   if (to.meta.requiresAdmin && user.role !== 'admin') return { name: 'characters' };
   return true;

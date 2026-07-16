@@ -5,7 +5,10 @@
         <h2>{{ companion?.name || 'AI 角色' }}</h2>
         <p>持续关系线程 · {{ memoryLabel }}</p>
       </div>
-      <n-button secondary @click="router.push('/companion')">返回 AI 角色</n-button>
+      <n-space>
+        <ShareManager target-type="companion" :target-id="id" />
+        <n-button secondary @click="router.push('/companion')">返回 AI 角色</n-button>
+      </n-space>
     </header>
 
     <div class="companion-chat__layout">
@@ -162,75 +165,79 @@
     <n-drawer v-model:show="showMemory" placement="right" :width="520">
       <n-drawer-content title="记忆与设置" closable>
         <section v-if="memory" class="memory-panel">
-      <strong>角色设置</strong>
-      <n-form-item label="名字"
-        ><n-input v-model:value="settings.name" maxlength="80"
-      /></n-form-item>
-      <n-form-item label="身份设定"
-        ><n-input v-model:value="settings.identityPrompt" type="textarea" :rows="4"
-      /></n-form-item>
-      <n-form-item label="聊天模型链"
-        ><NSelect
-          v-model:value="settings.modelFallbackGroupId"
-          clearable
-          :options="modelOptions"
-          placeholder="使用默认模型链"
-      /></n-form-item>
-      <n-form-item label="Prompt 预设"
-        ><NSelect v-model:value="settings.promptPresetId" clearable :options="presetOptions"
-      /></n-form-item>
-      <n-form-item label="Persona"
-        ><NSelect v-model:value="settings.personaId" clearable :options="personaOptions"
-      /></n-form-item>
-      <n-button :loading="savingSettings" @click="saveSettings">保存角色设置</n-button>
-      <strong>长期记忆</strong>
-      <div class="memory-switches">
-        <n-checkbox v-model:checked="memory.isEnabled">开启长期记忆</n-checkbox
-        ><n-checkbox v-model:checked="memory.isPaused" :disabled="!memory.isEnabled"
-          >暂停更新</n-checkbox
-        ><n-tag
-          :type="
-            memory.status === 'stale' ? 'warning' : memory.status === 'failed' ? 'error' : 'default'
-          "
-          >{{ memory.status }}</n-tag
-        >
-      </div>
-      <n-form-item label="总结模型链"
-        ><NSelect
-          v-model:value="memory.memoryModelFallbackGroupId"
-          clearable
-          :options="modelOptions"
-          placeholder="跟随聊天模型链"
-      /></n-form-item>
-      <n-form-item label="每隔多少条有效消息更新"
-        ><n-input-number v-model:value="memory.updateEveryMessages" :min="1" :max="100"
-      /></n-form-item>
-      <n-form-item label="关系状态"
-        ><n-input
-          v-model:value="memory.relationshipState"
-          type="textarea"
-          :rows="3"
-          maxlength="600"
-      /></n-form-item>
-      <n-form-item label="近期主线"
-        ><n-input v-model:value="memory.currentArc" type="textarea" :rows="3" maxlength="800"
-      /></n-form-item>
-      <n-space
-        ><n-button type="primary" :loading="savingMemory" @click="saveMemory">保存</n-button
-        ><n-button @click="refreshMemory">立即更新</n-button
-        ><n-button type="error" secondary @click="clearMemory">清空记忆</n-button></n-space
-      >
-      <div v-if="memory.revisions.length" class="revision-list">
-        <strong>历史版本</strong
-        ><n-button
-          v-for="revision in memory.revisions"
-          :key="revision.id"
-          size="small"
-          secondary
-          @click="restoreMemory(revision.id)"
-          >恢复 v{{ revision.version }}</n-button
-        >
-      </div>
+          <strong>角色设置</strong>
+          <n-form-item label="名字"
+            ><n-input v-model:value="settings.name" maxlength="80"
+          /></n-form-item>
+          <n-form-item label="身份设定"
+            ><n-input v-model:value="settings.identityPrompt" type="textarea" :rows="4"
+          /></n-form-item>
+          <n-form-item label="聊天模型链"
+            ><NSelect
+              v-model:value="settings.modelFallbackGroupId"
+              clearable
+              :options="modelOptions"
+              placeholder="使用默认模型链"
+          /></n-form-item>
+          <n-form-item label="Prompt 预设"
+            ><NSelect v-model:value="settings.promptPresetId" clearable :options="presetOptions"
+          /></n-form-item>
+          <n-form-item label="Persona"
+            ><NSelect v-model:value="settings.personaId" clearable :options="personaOptions"
+          /></n-form-item>
+          <n-button :loading="savingSettings" @click="saveSettings">保存角色设置</n-button>
+          <strong>长期记忆</strong>
+          <div class="memory-switches">
+            <n-checkbox v-model:checked="memory.isEnabled">开启长期记忆</n-checkbox
+            ><n-checkbox v-model:checked="memory.isPaused" :disabled="!memory.isEnabled"
+              >暂停更新</n-checkbox
+            ><n-tag
+              :type="
+                memory.status === 'stale'
+                  ? 'warning'
+                  : memory.status === 'failed'
+                    ? 'error'
+                    : 'default'
+              "
+              >{{ memory.status }}</n-tag
+            >
+          </div>
+          <n-form-item label="总结模型链"
+            ><NSelect
+              v-model:value="memory.memoryModelFallbackGroupId"
+              clearable
+              :options="modelOptions"
+              placeholder="跟随聊天模型链"
+          /></n-form-item>
+          <n-form-item label="每隔多少条有效消息更新"
+            ><n-input-number v-model:value="memory.updateEveryMessages" :min="1" :max="100"
+          /></n-form-item>
+          <n-form-item label="关系状态"
+            ><n-input
+              v-model:value="memory.relationshipState"
+              type="textarea"
+              :rows="3"
+              maxlength="600"
+          /></n-form-item>
+          <n-form-item label="近期主线"
+            ><n-input v-model:value="memory.currentArc" type="textarea" :rows="3" maxlength="800"
+          /></n-form-item>
+          <n-space
+            ><n-button type="primary" :loading="savingMemory" @click="saveMemory">保存</n-button
+            ><n-button @click="refreshMemory">立即更新</n-button
+            ><n-button type="error" secondary @click="clearMemory">清空记忆</n-button></n-space
+          >
+          <div v-if="memory.revisions.length" class="revision-list">
+            <strong>历史版本</strong
+            ><n-button
+              v-for="revision in memory.revisions"
+              :key="revision.id"
+              size="small"
+              secondary
+              @click="restoreMemory(revision.id)"
+              >恢复 v{{ revision.version }}</n-button
+            >
+          </div>
         </section>
       </n-drawer-content>
     </n-drawer>
@@ -247,6 +254,8 @@ import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseSseFrame } from '../../composables/useChatStream';
+import ShareManager from '../../components/ShareManager.vue';
+import { useTargetEvents } from '../../composables/useTargetEvents';
 import {
   clearCompanionMemory,
   deleteCompanionMessage,
@@ -311,7 +320,19 @@ const presetLabel = computed(() =>
 const personaLabel = computed(() =>
   getOptionLabel(personaOptions.value, settings.personaId, '未设置')
 );
-onMounted(load);
+let syncTimer: number | null = null;
+const targetEvents = useTargetEvents(() => {
+  if (streaming.value) return;
+  if (syncTimer !== null) window.clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(async () => {
+    messages.value = await fetchCompanionMessages(id);
+    await scrollBottom();
+  }, 80);
+});
+onMounted(async () => {
+  targetEvents.connect('companion', id);
+  await load();
+});
 
 function getOptionLabel(options: SelectOption[], value: string | null, fallback: string) {
   if (!value) return fallback;

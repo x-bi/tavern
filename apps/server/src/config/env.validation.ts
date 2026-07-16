@@ -11,6 +11,7 @@ export type ValidatedEnv = {
   AUTH_PRESET_USERS_JSON: string;
   AUTH_TOKEN_SECRET: string;
   AUTH_TOKEN_TTL_SECONDS: string;
+  SHARE_PUBLIC_BASE_URL: string;
 };
 
 /** 环境变量默认值（未显式设置时使用）。 */
@@ -23,7 +24,8 @@ const DEFAULT_ENV: ValidatedEnv = {
   CORS_ORIGINS: 'http://127.0.0.1:5173,http://localhost:5173',
   AUTH_PRESET_USERS_JSON: '',
   AUTH_TOKEN_SECRET: 'dev-only-change-me',
-  AUTH_TOKEN_TTL_SECONDS: '604800'
+  AUTH_TOKEN_TTL_SECONDS: '604800',
+  SHARE_PUBLIC_BASE_URL: 'http://127.0.0.1:5174'
 };
 
 /**
@@ -71,7 +73,8 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     CORS_ORIGINS: merged.CORS_ORIGINS,
     AUTH_PRESET_USERS_JSON: merged.AUTH_PRESET_USERS_JSON,
     AUTH_TOKEN_SECRET: merged.AUTH_TOKEN_SECRET,
-    AUTH_TOKEN_TTL_SECONDS: String(tokenTtlSeconds)
+    AUTH_TOKEN_TTL_SECONDS: String(tokenTtlSeconds),
+    SHARE_PUBLIC_BASE_URL: merged.SHARE_PUBLIC_BASE_URL.replace(/\/$/, '')
   };
 }
 
@@ -88,12 +91,17 @@ function validatePresetUsers(value: string): void {
   const usernames = new Set<string>();
   let adminCount = 0;
   for (const item of users) {
-    if (!item || typeof item !== 'object') throw new Error('AUTH_PRESET_USERS_JSON contains an invalid account.');
+    if (!item || typeof item !== 'object')
+      throw new Error('AUTH_PRESET_USERS_JSON contains an invalid account.');
     const account = item as Record<string, unknown>;
-    if (typeof account.username !== 'string' || !/^[a-zA-Z0-9_.-]{3,64}$/.test(account.username)) throw new Error('Preset username is invalid.');
-    if (typeof account.displayName !== 'string' || !account.displayName.trim()) throw new Error('Preset displayName is required.');
-    if (typeof account.password !== 'string' || account.password.length < 4) throw new Error('Preset password must be at least 4 characters.');
-    if (account.role !== 'admin' && account.role !== 'member') throw new Error('Preset role must be admin or member.');
+    if (typeof account.username !== 'string' || !/^[a-zA-Z0-9_.-]{3,64}$/.test(account.username))
+      throw new Error('Preset username is invalid.');
+    if (typeof account.displayName !== 'string' || !account.displayName.trim())
+      throw new Error('Preset displayName is required.');
+    if (typeof account.password !== 'string' || account.password.length < 4)
+      throw new Error('Preset password must be at least 4 characters.');
+    if (account.role !== 'admin' && account.role !== 'member')
+      throw new Error('Preset role must be admin or member.');
     if (usernames.has(account.username)) throw new Error('Preset usernames must be unique.');
     usernames.add(account.username);
     if (account.role === 'admin') adminCount += 1;

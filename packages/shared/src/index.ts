@@ -143,6 +143,17 @@ export type { PageQuery, PageResult } from './pagination';
 export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
 export type { ApplicationSettings, ApplicationSettingsPayload } from './settings';
 export type {
+  CreateShareLinkPayload,
+  PublicShareBootstrap,
+  PublicShareMessage,
+  ShareLinkItem,
+  SharePermission,
+  ShareStatus,
+  ShareTargetEvent,
+  ShareTargetEventName,
+  ShareTargetType
+} from './share';
+export type {
   BuildPromptDebugInfo,
   BuildPromptInput,
   BuildPromptResult,

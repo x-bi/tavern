@@ -27,6 +27,7 @@ model User {
   modelProviders      ModelProvider[]
   personas            UserPersona[]
   promptPresets       PromptPreset[]
+  shareLinks          ShareLink[]
   worldBooks          WorldBook[]
 
   @@index([isActive])
@@ -215,6 +216,7 @@ model Conversation {
   modelFallbackGroup ModelFallbackGroup? @relation(fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
   persona            UserPersona?        @relation(fields: [personaId], references: [id], onDelete: SetNull)
   promptPreset       PromptPreset?       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
+  shareLinks         ShareLink[]
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, updatedAt])
@@ -361,9 +363,35 @@ model Companion {
   user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages           CompanionMessage[]
   memory             CompanionMemory?
+  shareLinks         ShareLink[]
 
   @@index([userId, updatedAt])
   @@index([deletedAt])
+}
+
+model ShareLink {
+  id             String    @id @default(cuid())
+  ownerUserId    String
+  targetType     String
+  conversationId String?
+  companionId    String?
+  tokenHash      String    @unique
+  permission     String    @default("chat")
+  status         String    @default("active")
+  expiresAt      DateTime?
+  lastAccessAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  revokedAt      DateTime?
+
+  owner        User          @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  companion    Companion?    @relation(fields: [companionId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, createdAt])
+  @@index([conversationId, status])
+  @@index([companionId, status])
+  @@index([status, expiresAt])
 }
 
 model CompanionMessage {

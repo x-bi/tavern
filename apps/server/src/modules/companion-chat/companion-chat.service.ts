@@ -9,6 +9,7 @@ import type { CompanionMessage, PromptPreset, UserPersona } from '@prisma/client
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanionPromptBuilderService } from '../../services/companion-prompt-builder/companion-prompt-builder.service';
 import { ModelGatewayService } from '../../services/model-gateway';
+import { TargetEventsService } from '../../services/target-events/target-events.service';
 import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
 import { ModelsService } from '../models/models.service';
 import type { CurrentUser } from '../users/user.types';
@@ -27,8 +28,25 @@ export class CompanionChatService {
     @Inject(CompanionPromptBuilderService) private readonly builder: CompanionPromptBuilderService,
     @Inject(ModelsService) private readonly models: ModelsService,
     @Inject(ModelGatewayService) private readonly gateway: ModelGatewayService,
-    @Inject(CompanionMemoryService) private readonly memoryService: CompanionMemoryService
+    @Inject(CompanionMemoryService) private readonly memoryService: CompanionMemoryService,
+    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
   ) {}
+
+  streamInternal(params: {
+    owner: CurrentUser;
+    companionId: string;
+    payload: StreamCompanionChatDto;
+    response: ChatResponseLike;
+  }) {
+    return this.stream(params.owner, params.companionId, params.payload, params.response);
+  }
+
+  stopInternal(companionId: string): boolean {
+    const task = this.tasks.get(companionId);
+    if (!task) return false;
+    task.abort();
+    return true;
+  }
 
   async preview(user: CurrentUser, companionId: string, userInput: string) {
     const companion = await this.findOwned(user, companionId);
@@ -85,6 +103,12 @@ export class CompanionChatService {
         ? await this.prepareRegenerate(companionId, dto.regenerateMessageId)
         : await this.prepareNew(companionId, dto.userMessage!);
       assistant = prepared.assistant;
+      this.targetEvents.emit('companion', companionId, 'message_created', {
+        message: this.toPublicEventMessage(prepared.user)
+      });
+      this.targetEvents.emit('companion', companionId, 'generation_started', {
+        message: this.toPublicEventMessage(assistant)
+      });
       const candidates = await this.models.getGatewayCandidates({
         currentUser: user,
         modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
@@ -119,6 +143,10 @@ export class CompanionChatService {
               emitted = true;
               content += event.text;
               this.writeEvent(response, 'delta', { text: event.text, messageId: assistant.id });
+              this.targetEvents.emit('companion', companionId, 'delta', {
+                text: event.text,
+                messageId: assistant.id
+              });
             }
             if (event.type === 'done') {
               finishReason = event.result.finishReason ?? null;
@@ -141,6 +169,10 @@ export class CompanionChatService {
         data: { content, status: 'complete', tokenCount: this.estimateTokens(content) }
       });
       this.writeEvent(response, 'done', { messageId: assistant.id, finishReason });
+      this.targetEvents.emit('companion', companionId, 'generation_done', {
+        messageId: assistant.id,
+        finishReason
+      });
       void this.memoryService.maybeScheduleUpdate(user, companionId);
     } catch {
       const aborted = abort.signal.aborted;
@@ -152,6 +184,10 @@ export class CompanionChatService {
       this.writeEvent(response, 'error', {
         code: aborted ? 'COMPANION_CHAT_STOPPED' : 'COMPANION_CHAT_FAILED',
         message: aborted ? 'Generation stopped.' : 'Companion generation failed.'
+      });
+      this.targetEvents.emit('companion', companionId, 'generation_failed', {
+        messageId: assistant?.id ?? null,
+        code: aborted ? 'COMPANION_CHAT_STOPPED' : 'COMPANION_CHAT_FAILED'
       });
     } finally {
       response.off('close', close);
@@ -300,5 +336,15 @@ export class CompanionChatService {
   }
   private estimateTokens(value: string) {
     return value.length ? Math.ceil(value.length / 4) : 0;
+  }
+  private toPublicEventMessage(message: CompanionMessage) {
+    return {
+      messageId: message.id,
+      role: message.role,
+      content: message.content,
+      status: message.status,
+      createdAt: message.createdAt.toISOString(),
+      updatedAt: message.updatedAt.toISOString()
+    };
   }
 }

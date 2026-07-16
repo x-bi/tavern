@@ -57,6 +57,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话 Web MVP，面向个人�
 │   └── conversation-long-term-memory.md   # 独立 AI 角色长期陪伴设计
 ├── apps/
 │   ├── web/                  # Vue3 + Vite 前端
+│   ├── share-web/            # 独立公共分享聊天前端，只暴露 /s/:token
 │   └── server/               # NestJS 后端
 ├── packages/
 │   └── shared/               # 前后端共享类型、常量、工具
@@ -72,6 +73,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话 Web MVP，面向个人�
 目录职责必须清晰：
 
 - `apps/web` 只写前端页面、组件、路由、状态和 API 调用封装。
+- `apps/share-web` 是不读取主站登录态的独立 Vite 应用，只访问 `/api/public/*`，不包含主站导航或管理路由。
 - `apps/server` 只写后端模块、控制器、服务、DTO、网关、鉴权和文件服务。
 - `packages/shared` 只放跨端稳定契约，不放业务实现。
 - `prisma` 只放数据库 schema、migration 和 seed。
@@ -137,6 +139,8 @@ flowchart LR
 - `views/prompts`：Prompt 预览与组成解释。
 - `views/world-books`：世界书和命中调试。
 - `views/settings`：本地设置、备份恢复入口。
+- `components/ShareManager`：酒馆与 AI 角色共用的认证态分享链接管理。
+- `views/shares`：成员管理自己的全部分享；管理员审计并撤销其他成员的分享。
 - `api/`：REST 和流式接口封装。
 - `stores/`：用户态、模型配置、角色、会话等状态。
 - `composables/useChatStream`：聊天流解析、停止生成、错误处理。
@@ -183,6 +187,7 @@ flowchart LR
 - `backups`：SQLite 与 uploads 的备份恢复。
 - `settings`：本地配置。
 - `health`：健康检查。
+- `shares`：认证态分享管理、公共 token 守卫、公共聊天入口与目标级 SSE 同步。
 
 基础设施服务（不在 `modules/` 下，而在 `services/` 下，被业务模块注入）：
 

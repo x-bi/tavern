@@ -1,9 +1,13 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TargetEventsService } from '../../services/target-events/target-events.service';
 import type { CurrentUser } from '../users/user.types';
 @Injectable()
 export class CompanionMessagesService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
+  ) {}
   async list(user: CurrentUser, companionId: string) {
     await this.assertCompanion(user, companionId);
     return this.prisma.companionMessage.findMany({
@@ -19,7 +23,7 @@ export class CompanionMessagesService {
         message: 'Only user messages can be edited.'
       });
     const stale = await this.affectsSummary(message);
-    return this.prisma.$transaction(async (tx) => {
+    const updated = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.companionMessage.update({
         where: { id },
         data: { content: content.trim(), status: 'edited' }
@@ -31,6 +35,8 @@ export class CompanionMessagesService {
         });
       return updated;
     });
+    this.targetEvents.emit('companion', message.companionId, 'message_updated', { messageId: id });
+    return updated;
   }
   async remove(user: CurrentUser, id: string) {
     const message = await this.find(user, id);
@@ -46,6 +52,7 @@ export class CompanionMessagesService {
           data: { status: 'stale', nextRetryAt: null }
         });
     });
+    this.targetEvents.emit('companion', message.companionId, 'message_deleted', { messageId: id });
     return { deleted: true, id };
   }
   async regenerate(user: CurrentUser, id: string) {

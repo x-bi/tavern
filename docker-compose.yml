@@ -16,11 +16,11 @@ services:
       NODE_ENV: production
       # 容器内必须监听 0.0.0.0,否则 nginx 容器反代不过来
       SERVER_HOST: 0.0.0.0
-      SERVER_PORT: "3100"
+      SERVER_PORT: '3100'
       API_PREFIX: api
       REQUEST_BODY_LIMIT: 5mb
       # 绝对路径,避免相对路径在容器不同 cwd 下解析偏差
-      DATABASE_URL: "file:/app/data/tavern-lite.db"
+      DATABASE_URL: 'file:/app/data/tavern-lite.db'
       # 同源部署(前后端同属一个 nginx)时 CORS 可留空
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       # 预置账号 JSON；不提供公开注册。首次登录会写入数据库。
@@ -28,6 +28,7 @@ services:
       # 必填:未设置则 compose 直接拒绝启动
       AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:?AUTH_TOKEN_SECRET 必须在 .env 中设置}
       AUTH_TOKEN_TTL_SECONDS: ${AUTH_TOKEN_TTL_SECONDS:-604800}
+      SHARE_PUBLIC_BASE_URL: ${SHARE_PUBLIC_BASE_URL:?SHARE_PUBLIC_BASE_URL 必须在 .env 中设置}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -43,6 +44,18 @@ services:
       # 宿主 8080 -> 容器 80。用 8080 避开宝塔自带 nginx 占用的 80。
       # 若想让 web 容器独占 80:先停宝塔 nginx(systemctl stop nginx / 宝塔面板),
       # 再把下方改成 "80:80"。
-      - "8080:80"
+      - '8080:80'
+    depends_on:
+      - server
+
+  share-web:
+    build:
+      context: .
+      dockerfile: Dockerfile.share-web
+    image: tavern-share-web:latest
+    container_name: tavern-share-web
+    restart: unless-stopped
+    ports:
+      - '8081:80'
     depends_on:
       - server

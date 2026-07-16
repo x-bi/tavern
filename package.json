@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter @tavern/web --filter @tavern/server dev",
     "dev:web": "pnpm --filter @tavern/web dev",
+    "dev:share": "pnpm --filter @tavern/share-web dev",
     "dev:server": "pnpm --filter @tavern/server dev",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
@@ -19,6 +20,7 @@
     "format:check": "prettier --check .",
     "db:seed": "node prisma/seed.cjs",
     "db:migrate-legacy-admin": "node prisma/migrate-legacy-data-to-admin.cjs",
+    "verify:share-layer": "node scripts/verify-share-layer.mjs",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check",
     "workspace:list": "pnpm -r list --depth -1"
   },

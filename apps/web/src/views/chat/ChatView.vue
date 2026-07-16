@@ -5,7 +5,14 @@
         <h2>聊天</h2>
         <p>发送用户消息后，角色回复会在消息列表中流式增长。</p>
       </div>
-      <n-button secondary @click="goConversations">返回会话</n-button>
+      <n-space>
+        <ShareManager
+          v-if="conversationId"
+          target-type="conversation"
+          :target-id="conversationId"
+        />
+        <n-button secondary @click="goConversations">返回会话</n-button>
+      </n-space>
     </header>
 
     <EmptyState
@@ -90,7 +97,9 @@ import { useRoute, useRouter } from 'vue-router';
 import { regenerateMessage, type Message } from '../../api/messages';
 import ChatRoom from '../../components/ChatRoom.vue';
 import EmptyState from '../../components/EmptyState.vue';
+import ShareManager from '../../components/ShareManager.vue';
 import { useChatStream } from '../../composables/useChatStream';
+import { useTargetEvents } from '../../composables/useTargetEvents';
 import { useChatStore } from '../../stores/chat';
 import { useConversationStore } from '../../stores/conversation';
 
@@ -102,6 +111,12 @@ const chatStore = useChatStore();
 const conversationStore = useConversationStore();
 const chatStream = useChatStream();
 const chatStreamAbortedCode = 'CHAT_STREAM_ABORTED';
+let syncTimer: number | null = null;
+const targetEvents = useTargetEvents(() => {
+  if (chatStore.isGenerating || !conversationId.value) return;
+  if (syncTimer !== null) window.clearTimeout(syncTimer);
+  syncTimer = window.setTimeout(() => reloadMessages(), 80);
+});
 
 const conversationId = computed(() => {
   const value = route.params.conversationId;
@@ -143,10 +158,13 @@ watch(
 
 async function loadCurrentRoom() {
   if (!conversationId.value) {
+    targetEvents.disconnect();
     chatStore.reset();
 
     return;
   }
+
+  targetEvents.connect('conversation', conversationId.value);
 
   await Promise.allSettled([
     conversationStore.loadConversations({ page: 1, pageSize: 100 }),

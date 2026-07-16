@@ -15,6 +15,7 @@ import {
   PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS
 } from '../../services/prompt-builder/prompt-builder.constants';
 import { PromptBuilderService } from '../../services/prompt-builder/prompt-builder.service';
+import { TargetEventsService } from '../../services/target-events/target-events.service';
 import type {
   BuildPromptInput,
   ChatMessageLike,
@@ -85,8 +86,37 @@ export class ChatService {
     @Inject(WorldBooksService)
     private readonly worldBooksService: WorldBooksService,
     @Inject(SettingsService)
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    @Inject(TargetEventsService)
+    private readonly targetEvents: TargetEventsService
   ) {}
+
+  /** 公共分享入口使用的无认证目标参数入口；目标与 owner 均由 token 服务端解析。 */
+  streamInternal(params: {
+    owner: CurrentUser;
+    conversationId: string;
+    payload: Omit<StreamChatDto, 'conversationId'>;
+    response: ChatResponseLike;
+  }): Promise<void> {
+    if (this.conversationTasks.has(params.conversationId)) {
+      throw new ConflictException({
+        code: ERROR_CODES.CHAT_CONVERSATION_BUSY,
+        message: 'Conversation is already generating a response.'
+      });
+    }
+    return this.stream(
+      params.owner,
+      Object.assign(new StreamChatDto(), params.payload, { conversationId: params.conversationId }),
+      params.response
+    );
+  }
+
+  stopInternal(conversationId: string): boolean {
+    const task = this.conversationTasks.get(conversationId);
+    if (!task) return false;
+    task.abortController.abort();
+    return true;
+  }
 
   /**
    * 流式聊天主流程。
@@ -160,6 +190,12 @@ export class ChatService {
 
       assistantMessage = preparedMessages.assistantMessage;
       task.assistantMessageId = assistantMessage.id;
+      this.targetEvents.emit('conversation', conversation.id, 'message_created', {
+        message: this.toPublicEventMessage(preparedMessages.currentUserMessage)
+      });
+      this.targetEvents.emit('conversation', conversation.id, 'generation_started', {
+        message: this.toPublicEventMessage(assistantMessage)
+      });
 
       // 6. 构建 prompt（promptBuilder 组装各 section、裁剪历史、匹配世界书）
       const prompt = this.promptBuilder.build(
@@ -213,6 +249,10 @@ export class ChatService {
                 text: resolvedDelta.text,
                 messageId: assistantMessage.id
               });
+              this.targetEvents.emit('conversation', conversation.id, 'delta', {
+                text: resolvedDelta.text,
+                messageId: assistantMessage.id
+              });
             }
             continue;
           }
@@ -245,6 +285,10 @@ export class ChatService {
               attempts: fallbackAttempts
             });
             this.writeSse(response, 'done', {
+              messageId: assistantMessage.id,
+              finishReason
+            });
+            this.targetEvents.emit('conversation', conversation.id, 'generation_done', {
               messageId: assistantMessage.id,
               finishReason
             });
@@ -305,6 +349,10 @@ export class ChatService {
           code: candidateError.code,
           message: candidateError.message
         });
+        this.targetEvents.emit('conversation', dto.conversationId, 'generation_failed', {
+          messageId: assistantMessage.id,
+          code: candidateError.code
+        });
         return;
       }
 
@@ -326,6 +374,10 @@ export class ChatService {
       }
       await this.completeAssistantMessage(assistantMessage.id, assistantContent, null, null);
       this.writeSse(response, 'done', {
+        messageId: assistantMessage.id,
+        finishReason
+      });
+      this.targetEvents.emit('conversation', dto.conversationId, 'generation_done', {
         messageId: assistantMessage.id,
         finishReason
       });
@@ -356,6 +408,10 @@ export class ChatService {
       }
 
       this.writeSse(response, 'error', errorPayload);
+      this.targetEvents.emit('conversation', dto.conversationId, 'generation_failed', {
+        messageId: assistantMessage?.id ?? null,
+        code: errorPayload.code
+      });
     } finally {
       // 清理：移除 close 监听、释放会话锁、结束响应
       response.off('close', closeHandler);
@@ -1152,6 +1208,17 @@ export class ChatService {
 
     // 倒序取（最新在前）反转为正序（最早在前）
     return messages.reverse();
+  }
+
+  private toPublicEventMessage(message: Message) {
+    return {
+      messageId: message.id,
+      role: message.role,
+      content: message.content,
+      status: message.status,
+      createdAt: message.createdAt.toISOString(),
+      updatedAt: message.updatedAt.toISOString()
+    };
   }
 
   /**

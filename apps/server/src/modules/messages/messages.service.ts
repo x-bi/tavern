@@ -3,6 +3,7 @@ import { Prisma, type Message } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
+import { TargetEventsService } from '../../services/target-events/target-events.service';
 import type { CurrentUser } from '../users/user.types';
 import type { QueryMessagesDto } from './dto/query-messages.dto';
 import type { UpdateMessageDto } from './dto/update-message.dto';
@@ -22,7 +23,8 @@ import type {
 export class MessagesService {
   constructor(
     @Inject(PrismaService)
-    private readonly prisma: PrismaService
+    private readonly prisma: PrismaService,
+    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
   ) {}
 
   /**
@@ -115,9 +117,14 @@ export class MessagesService {
             ? { status: 'edited' }
             : {}
           : { status: dto.status }),
-        ...(dto.metadata === undefined ? {} : { metadataJson: this.stringifyNullable(dto.metadata) }),
+        ...(dto.metadata === undefined
+          ? {}
+          : { metadataJson: this.stringifyNullable(dto.metadata) }),
         ...(dto.tokenCount === undefined ? {} : { tokenCount: dto.tokenCount })
       }
+    });
+    this.targetEvents.emit('conversation', message.conversationId, 'message_updated', {
+      messageId: message.id
     });
 
     return this.toResponse(message);
@@ -131,7 +138,7 @@ export class MessagesService {
    * @throws NotFoundException 消息不存在或所属会话不属于该用户。
    */
   async remove(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
-    await this.findOwnedActiveMessage(currentUser, id);
+    const existing = await this.findOwnedActiveMessage(currentUser, id);
 
     await this.prisma.message.update({
       where: { id },
@@ -139,6 +146,9 @@ export class MessagesService {
         status: 'deleted',
         deletedAt: new Date()
       }
+    });
+    this.targetEvents.emit('conversation', existing.conversationId, 'message_deleted', {
+      messageId: id
     });
 
     return {
@@ -157,10 +167,7 @@ export class MessagesService {
    * @returns 含 streamPath 等提示信息。
    * @throws BadRequestException 目标不可重新生成（见 assertRegenerateTarget）。
    */
-  async regenerate(
-    currentUser: CurrentUser,
-    id: string
-  ): Promise<MessageRegenerateResponse> {
+  async regenerate(currentUser: CurrentUser, id: string): Promise<MessageRegenerateResponse> {
     const target = await this.findOwnedActiveMessage(currentUser, id);
     // 校验是否可重新生成（必须是 assistant、最新消息、有前一条 user 消息）
     await this.assertRegenerateTarget(target);

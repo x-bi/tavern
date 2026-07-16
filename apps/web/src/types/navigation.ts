@@ -45,6 +45,10 @@ export const navigationItems: NavigationItem[] = [
     label: 'Prompt 预览'
   },
   {
+    path: '/shares',
+    label: '分享管理'
+  },
+  {
     path: '/settings',
     label: '设置'
   },

@@ -20,11 +20,10 @@
           >
         </header>
 
-        <n-alert v-if="error" class="companion-chat__error" type="error" :bordered="false">
-          {{ error }}
-        </n-alert>
-
         <section ref="messageList" class="message-list" aria-label="AI 角色消息列表">
+          <n-alert v-if="error" class="companion-chat__error" type="error" :bordered="false">
+            {{ error }}
+          </n-alert>
           <div v-if="loading" class="muted">正在加载...</div>
           <div v-else-if="!messages.length" class="muted">从一句自然的问候开始吧。</div>
           <article
@@ -160,8 +159,9 @@
       </aside>
     </div>
 
-    <n-modal v-model:show="showMemory" preset="card" title="记忆与设置" class="memory-modal">
-      <section v-if="memory" class="memory-panel">
+    <n-drawer v-model:show="showMemory" placement="right" :width="520">
+      <n-drawer-content title="记忆与设置" closable>
+        <section v-if="memory" class="memory-panel">
       <strong>角色设置</strong>
       <n-form-item label="名字"
         ><n-input v-model:value="settings.name" maxlength="80"
@@ -231,8 +231,9 @@
           >恢复 v{{ revision.version }}</n-button
         >
       </div>
-      </section>
-    </n-modal>
+        </section>
+      </n-drawer-content>
+    </n-drawer>
   </main>
 </template>
 <script setup lang="ts">
@@ -628,7 +629,7 @@ async function scrollBottom() {
 
 .companion-chat__room {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--line-subtle);
@@ -665,7 +666,7 @@ async function scrollBottom() {
 }
 
 .companion-chat__error {
-  margin: 12px 12px 0;
+  margin: 0;
 }
 
 .message-list {
@@ -804,12 +805,7 @@ async function scrollBottom() {
 }
 
 .memory-panel {
-  max-height: min(72vh, 760px);
-  overflow-y: auto;
-}
-
-.memory-modal {
-  width: min(680px, calc(100vw - 32px));
+  padding: 4px;
 }
 
 .memory-switches,

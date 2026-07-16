@@ -6,17 +6,10 @@
         <p>每个角色只有一条持续的关系线程。</p>
       </div>
       <n-space justify="end">
-        <input
-          ref="importInputRef"
-          class="companion-list__file"
-          type="file"
-          accept="application/json,.json"
-          @change="handleImportFile"
-        />
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate"
           >导入模板</n-button
         >
-        <n-button secondary :loading="importLoading" @click="openImportPicker">导入角色</n-button>
+        <n-button secondary @click="openImport">导入角色</n-button>
         <n-button type="primary" @click="showCreate = !showCreate">新建 AI 角色</n-button>
       </n-space>
     </header>
@@ -57,32 +50,6 @@
       ></n-card
     >
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
-    <section v-if="importPreview" class="companion-import page-panel">
-      <div>
-        <h3>导入预览</h3>
-        <p>{{ importFileName }} · {{ importPreview.format }}</p>
-      </div>
-      <n-alert v-if="importPreview.nameConflict" type="warning" :bordered="false">
-        已存在同名角色「{{ importPreview.name }}」，将导入为「{{ importPreview.suggestedName }}」。
-      </n-alert>
-      <n-form-item label="角色名称"><n-input :value="importPreview.name" disabled /></n-form-item>
-      <n-form-item label="身份设定"
-        ><n-input
-          :value="importPreview.identityPrompt || '未提供'"
-          type="textarea"
-          :rows="4"
-          disabled
-      /></n-form-item>
-      <n-alert v-if="importPreview.warnings.length" type="info" :bordered="false">{{
-        importPreview.warnings.join(' ')
-      }}</n-alert>
-      <n-space justify="end"
-        ><n-button @click="clearImport">取消</n-button
-        ><n-button type="primary" :loading="importLoading" @click="confirmImport"
-          >确认导入</n-button
-        ></n-space
-      >
-    </section>
     <n-spin v-if="loading" />
     <section v-else class="companion-grid">
       <n-card
@@ -110,6 +77,24 @@
         </div></n-card
       >
     </section>
+    <ModuleJsonImportDrawer
+      v-model:show="importDrawerVisible"
+      title="导入 AI 角色 JSON"
+      format-label="tavern-lite.companion.v1 / chara_card_v2"
+      :preview="importPreview"
+      :previewing="importPreviewing"
+      :importing="importing"
+      :error="importError || null"
+      @preview="previewCompanionImport"
+      @commit="commitCompanionImport"
+    >
+      <template #preview-details="{ preview }">
+        <div class="companion-import-details">
+          <span>身份设定</span>
+          <p>{{ preview.identityPrompt || '未提供' }}</p>
+        </div>
+      </template>
+    </ModuleJsonImportDrawer>
   </main>
 </template>
 <script setup lang="ts">
@@ -128,6 +113,7 @@ import {
 import { fetchModelFallbackGroups } from '../../api/models';
 import { fetchPersonas } from '../../api/personas';
 import { fetchPromptPresets } from '../../api/presets';
+import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 const router = useRouter();
 const items = ref<CompanionResponse[]>([]);
 const loading = ref(false);
@@ -146,12 +132,12 @@ const avatarName = ref('');
 const modelOptions = ref<SelectOption[]>([]);
 const presetOptions = ref<SelectOption[]>([]);
 const personaOptions = ref<SelectOption[]>([]);
-const importInputRef = ref<HTMLInputElement | null>(null);
-const importLoading = ref(false);
+const importDrawerVisible = ref(false);
+const importPreviewing = ref(false);
+const importing = ref(false);
+const importError = ref('');
 const templateLoading = ref(false);
 const importPreview = ref<CompanionImportPreview | null>(null);
-const importRawJson = ref('');
-const importFileName = ref('');
 onMounted(load);
 async function load() {
   loading.value = true;
@@ -201,51 +187,46 @@ async function save() {
 function open(id: string) {
   void router.push(`/companion/${id}`);
 }
-function openImportPicker() {
-  importInputRef.value?.click();
+function openImport() {
+  importPreview.value = null;
+  importError.value = '';
+  importDrawerVisible.value = true;
 }
-async function handleImportFile(event: Event) {
-  const input = event.target as HTMLInputElement;
-  const file = input.files?.[0] ?? null;
-  input.value = '';
-  if (!file) return;
-  if (!file.name.toLowerCase().endsWith('.json') && file.type !== 'application/json') {
-    error.value = '请选择 JSON 角色文件。';
-    return;
-  }
-  importLoading.value = true;
-  error.value = '';
+async function previewCompanionImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: 'reject' | 'rename';
+}) {
+  importPreviewing.value = true;
+  importError.value = '';
   try {
-    importRawJson.value = await file.text();
-    importFileName.value = file.name;
-    importPreview.value = (await importCompanionJson({ rawJson: importRawJson.value })).preview;
+    importPreview.value = (await importCompanionJson(payload)).preview;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '角色导入预览失败';
+    importPreview.value = null;
+    importError.value = e instanceof Error ? e.message : '角色导入预览失败';
   } finally {
-    importLoading.value = false;
+    importPreviewing.value = false;
   }
 }
-async function confirmImport() {
-  if (!importPreview.value || !importRawJson.value) return;
-  importLoading.value = true;
+async function commitCompanionImport(payload: {
+  rawJson: string;
+  duplicateNameStrategy: 'reject' | 'rename';
+}) {
+  importing.value = true;
+  importError.value = '';
   try {
     const result = await importCompanionJson({
-      rawJson: importRawJson.value,
+      rawJson: payload.rawJson,
       commit: true,
-      duplicateNameStrategy: importPreview.value.nameConflict ? 'rename' : 'reject'
+      duplicateNameStrategy: payload.duplicateNameStrategy
     });
-    clearImport();
+    importPreview.value = result.preview;
+    importDrawerVisible.value = false;
     if (result.companion) await router.push(`/companion/${result.companion.id}`);
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '角色导入失败';
+    importError.value = e instanceof Error ? e.message : '角色导入失败';
   } finally {
-    importLoading.value = false;
+    importing.value = false;
   }
-}
-function clearImport() {
-  importPreview.value = null;
-  importRawJson.value = '';
-  importFileName.value = '';
 }
 async function downloadImportTemplate() {
   templateLoading.value = true;
@@ -309,20 +290,20 @@ function downloadJson(fileName: string, value: unknown) {
   margin-left: 10px;
   color: var(--text-muted);
 }
-.companion-list__file {
-  display: none;
-}
-.companion-import {
+.companion-import-details {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 6px;
 }
-.companion-import h3,
-.companion-import p {
-  margin: 0;
-}
-.companion-import p {
+.companion-import-details span,
+.companion-import-details p {
   color: var(--text-muted);
   font-size: 12px;
+}
+.companion-import-details p {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 </style>

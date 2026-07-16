@@ -54,11 +54,13 @@
 
           <n-alert v-if="preview.warnings.length > 0" type="warning" :bordered="false">
             <ul>
-              <li v-for="warning in preview.warnings" :key="warning.code + warning.field">
-                {{ warning.field ? `${warning.field}: ` : '' }}{{ warning.message }}
+              <li v-for="warning in warningMessages" :key="warning">
+                {{ warning }}
               </li>
             </ul>
           </n-alert>
+
+          <slot name="preview-details" :preview="preview" />
         </section>
 
         <n-space justify="end">
@@ -80,13 +82,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import type {
+  CharacterImportPreview,
+  CompanionImportPreview,
   ModuleImportDuplicateNameStrategy,
   PersonaImportPreview,
   PromptPresetImportPreview,
   WorldBookImportPreview
 } from '@tavern/shared';
 
-type ImportPreview = PersonaImportPreview | PromptPresetImportPreview | WorldBookImportPreview;
+type ImportPreview =
+  | CharacterImportPreview
+  | CompanionImportPreview
+  | PersonaImportPreview
+  | PromptPresetImportPreview
+  | WorldBookImportPreview;
 
 const props = defineProps<{
   show: boolean;
@@ -104,7 +113,12 @@ const emit = defineEmits<{
   commit: [payload: { rawJson: string; duplicateNameStrategy: ModuleImportDuplicateNameStrategy }];
 }>();
 
+defineSlots<{
+  'preview-details'?: (props: { preview: any }) => unknown;
+}>();
+
 const rawJson = ref('');
+const previewedRawJson = ref('');
 const autoRename = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 const duplicateNameStrategy = computed<ModuleImportDuplicateNameStrategy>(() =>
@@ -114,6 +128,7 @@ const canSubmit = computed(() => rawJson.value.trim().length > 0);
 const canImport = computed(
   () =>
     canSubmit.value &&
+    rawJson.value === previewedRawJson.value &&
     props.preview !== null &&
     (!props.preview.nameConflict || duplicateNameStrategy.value === 'rename') &&
     !props.previewing
@@ -144,13 +159,41 @@ const previewItems = computed(() => {
     ];
   }
 
+  if ('firstMessage' in props.preview) {
+    return [
+      { label: '开场白', value: props.preview.firstMessage ? '已提供' : '未提供' },
+      { label: '示例对话', value: `${props.preview.exampleMessages.length} 条` },
+      { label: '元数据', value: `${Object.keys(props.preview.metadata).length} 项` }
+    ];
+  }
+
+  if ('identityPrompt' in props.preview) {
+    return [
+      { label: '来源格式', value: props.preview.format },
+      { label: '身份设定', value: `${props.preview.identityPrompt.length} 字符` }
+    ];
+  }
+
   return [
     { label: '默认 Persona', value: props.preview.isDefault ? '是' : '否' },
     { label: '正文长度', value: `${props.preview.content.length} 字符` }
   ];
 });
 
+const warningMessages = computed(() => {
+  if (!props.preview) {
+    return [];
+  }
+
+  return props.preview.warnings.map((warning) =>
+    typeof warning === 'string'
+      ? warning
+      : `${warning.field ? `${warning.field}: ` : ''}${warning.message}`
+  );
+});
+
 function previewJson() {
+  previewedRawJson.value = rawJson.value;
   emit('preview', {
     rawJson: rawJson.value,
     duplicateNameStrategy: duplicateNameStrategy.value
@@ -173,6 +216,7 @@ async function readFile(event: Event) {
   }
 
   rawJson.value = await file.text();
+  previewedRawJson.value = '';
   input.value = '';
 }
 </script>

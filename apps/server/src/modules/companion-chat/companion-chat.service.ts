@@ -7,8 +7,12 @@ import {
 } from '@nestjs/common';
 import type { CompanionMessage, PromptPreset, UserPersona } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CompanionPromptBuilderService } from '../../services/companion-prompt-builder/companion-prompt-builder.service';
+import {
+  CompanionPromptBuilderService,
+  type CompanionPromptParameters
+} from '../../services/companion-prompt-builder/companion-prompt-builder.service';
 import { ModelGatewayService } from '../../services/model-gateway';
+import { estimatePromptTextTokens } from '../../services/prompt-builder/token-estimator';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
 import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
 import { ModelsService } from '../models/models.service';
@@ -56,7 +60,12 @@ export class CompanionChatService {
       modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
     });
     const result = this.builder.build(
-      this.toPromptInput(companion, history, userInput, this.promptBudget(candidates[0]))
+      this.toPromptInput(
+        companion,
+        history,
+        userInput,
+        this.promptBudget(candidates[0], companion.promptPreset)
+      )
     );
     const revision = await this.prisma.companionMemoryRevision.findFirst({
       where: { companionId },
@@ -123,7 +132,7 @@ export class CompanionChatService {
           companion,
           prepared.history,
           prepared.user.content,
-          this.promptBudget(candidates[0])
+          this.promptBudget(candidates[0], companion.promptPreset)
         )
       );
       let finishReason: string | null = null;
@@ -137,6 +146,7 @@ export class CompanionChatService {
             modelName: candidate.modelName,
             apiKey: candidate.apiKey,
             ...candidate.params,
+            ...(built.parameters ?? {}),
             signal: abort.signal
           })) {
             if (event.type === 'delta') {
@@ -297,7 +307,7 @@ export class CompanionChatService {
       name: companion.name,
       identityPrompt: companion.identityPrompt,
       persona: this.personaText(companion.persona),
-      preset: this.presetText(companion.promptPreset),
+      preset: this.presetContext(companion.promptPreset),
       memory: companion.memory,
       history: history
         .filter(
@@ -309,19 +319,66 @@ export class CompanionChatService {
       maxPromptTokens
     };
   }
-  private promptBudget(candidate?: {
-    contextLength?: number | null;
-    params: { maxTokens?: number };
-  }) {
+  private promptBudget(
+    candidate?: {
+      contextLength?: number | null;
+      params: { maxTokens?: number };
+    },
+    preset?: PromptPreset | null
+  ) {
+    const presetMaxTokens = preset
+      ? this.parsePresetParameters(preset.parametersJson)?.maxTokens
+      : undefined;
+
     return candidate?.contextLength
-      ? Math.max(2000, candidate.contextLength - (candidate.params.maxTokens ?? 1200))
+      ? Math.max(
+          0,
+          candidate.contextLength - (presetMaxTokens ?? candidate.params.maxTokens ?? 1200)
+        )
       : 8000;
   }
   private personaText(persona: UserPersona | null) {
     return persona ? persona.content : null;
   }
-  private presetText(preset: PromptPreset | null) {
-    return preset ? [preset.systemPrompt, preset.outputRules].filter(Boolean).join('\n') : null;
+  private presetContext(preset: PromptPreset | null) {
+    return preset
+      ? {
+          systemPrompt: preset.systemPrompt,
+          outputRules: preset.outputRules,
+          parameters: this.parsePresetParameters(preset.parametersJson)
+        }
+      : null;
+  }
+  private parsePresetParameters(value: string | null): CompanionPromptParameters | null {
+    if (!value) return null;
+
+    try {
+      const parsed = JSON.parse(value) as unknown;
+
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        return null;
+      }
+
+      const record = parsed as Record<string, unknown>;
+      return {
+        ...(typeof record.temperature === 'number' ? { temperature: record.temperature } : {}),
+        ...(typeof record.topP === 'number' ? { topP: record.topP } : {}),
+        ...(typeof record.maxTokens === 'number' && Number.isInteger(record.maxTokens)
+          ? { maxTokens: record.maxTokens }
+          : {}),
+        ...(typeof record.timeout === 'number' && Number.isInteger(record.timeout)
+          ? { timeout: record.timeout }
+          : {}),
+        ...(typeof record.frequencyPenalty === 'number'
+          ? { frequencyPenalty: record.frequencyPenalty }
+          : {}),
+        ...(typeof record.presencePenalty === 'number'
+          ? { presencePenalty: record.presencePenalty }
+          : {})
+      };
+    } catch {
+      return null;
+    }
   }
   private prepareSse(response: ChatResponseLike) {
     response.status(200);
@@ -335,7 +392,7 @@ export class CompanionChatService {
       response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   }
   private estimateTokens(value: string) {
-    return value.length ? Math.ceil(value.length / 4) : 0;
+    return estimatePromptTextTokens(value);
   }
   private toPublicEventMessage(message: CompanionMessage) {
     return {

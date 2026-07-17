@@ -1,6 +1,9 @@
 /** Prompt 构建模式：chat 实际对话 / preview 预览调试。 */
 export type PromptBuildMode = 'chat' | 'preview';
 
+/** Prompt 的实际任务用途；preview 仍可预览任一用途。 */
+export type PromptBuildPurpose = 'chat_reply' | 'user_suggestions';
+
 /** 供应商消息角色（发给模型的最终消息用这个角色集）。 */
 export type PromptProviderMessageRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -248,11 +251,27 @@ export type BuildPromptDebugInfo = {
   finalMessages: ProviderChatMessage[];
   sectionOrder: string[];
   warnings: PromptBuildWarning[];
+  /** 各 Prompt 模块实际纳入内容的 token 估算。 */
+  moduleTokenEstimates: Partial<Record<PromptSectionKind, number>>;
+  /** 统一输入预算及裁剪结果；不包含任何 Prompt 正文。 */
+  budget: {
+    promptBudget: number;
+    fixedTokenEstimate: number;
+    worldBookTokenEstimate: number;
+    historyTokenEstimate: number;
+    currentUserTokenEstimate: number;
+    finalTokenEstimate: number;
+    trimmedHistoryCount: number;
+  };
+  /** 实际解析出的 Preset 参数；不存在 Preset 时为 null。 */
+  presetParameters: PromptModelParameters | null;
 };
 
 /** 构建选项。 */
 export type PromptBuildOptions = {
   mode: PromptBuildMode;
+  /** 默认构建角色回复；候选生成必须显式使用 user_suggestions。 */
+  purpose?: PromptBuildPurpose;
   historyLimit?: number;
   maxHistoryCharacters?: number;
   maxPromptTokens?: number;

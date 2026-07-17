@@ -156,10 +156,8 @@ async function main() {
     },
     update: {
       description: 'Balanced defaults for character chat and prompt preview.',
-      systemPrompt:
-        'Stay in character, keep the scene coherent, and respond with concise but vivid prose.',
-      outputRules:
-        'Avoid exposing system details. Keep replies useful for a lightweight roleplay MVP.',
+      systemPrompt: '',
+      outputRules: 'Use concise but vivid prose suited to the current roleplay scene.',
       parametersJson: json({
         temperature: 0.8,
         presencePenalty: 0.2,
@@ -177,10 +175,8 @@ async function main() {
       userId: user.id,
       name: 'Balanced Roleplay',
       description: 'Balanced defaults for character chat and prompt preview.',
-      systemPrompt:
-        'Stay in character, keep the scene coherent, and respond with concise but vivid prose.',
-      outputRules:
-        'Avoid exposing system details. Keep replies useful for a lightweight roleplay MVP.',
+      systemPrompt: '',
+      outputRules: 'Use concise but vivid prose suited to the current roleplay scene.',
       parametersJson: json({
         temperature: 0.8,
         presencePenalty: 0.2,
@@ -233,8 +229,7 @@ async function main() {
       name: 'Mira, Keeper of the Lantern Archive',
       description:
         'A soft-spoken archive keeper who manages a quiet library built under an old hill.',
-      personality:
-        'Patient, observant, lightly teasing, and protective of forgotten stories.',
+      personality: 'Patient, observant, lightly teasing, and protective of forgotten stories.',
       scenario:
         'The user arrives at the Lantern Archive near closing time while rain taps against the glass roof.',
       firstMessage:
@@ -264,8 +259,7 @@ async function main() {
       name: 'Mira, Keeper of the Lantern Archive',
       description:
         'A soft-spoken archive keeper who manages a quiet library built under an old hill.',
-      personality:
-        'Patient, observant, lightly teasing, and protective of forgotten stories.',
+      personality: 'Patient, observant, lightly teasing, and protective of forgotten stories.',
       scenario:
         'The user arrives at the Lantern Archive near closing time while rain taps against the glass roof.',
       firstMessage:

@@ -12,13 +12,16 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ModelGatewayService, type ModelGatewayStreamEvent } from '../../services/model-gateway';
 import {
   PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
-  PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS
+  PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS,
+  PROMPT_BUILDER_DEFAULT_MAX_PROMPT_TOKENS
 } from '../../services/prompt-builder/prompt-builder.constants';
 import { PromptBuilderService } from '../../services/prompt-builder/prompt-builder.service';
+import { estimatePromptTextTokens } from '../../services/prompt-builder/token-estimator';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
 import type {
   BuildPromptInput,
   ChatMessageLike,
+  PromptBuildPurpose,
   PromptModelParameters,
   WorldBookContext
 } from '../../services/prompt-builder/types';
@@ -482,7 +485,8 @@ export class ChatService {
         promptPreset,
         gatewayConfig,
         worldBooks,
-        dto
+        dto,
+        purpose: 'user_suggestions'
       })
     );
 
@@ -708,9 +712,8 @@ export class ChatService {
       conversationId,
       role: 'user',
       content: [
-        `请根据上面的角色设定、Persona、世界书和最近对话，站在用户视角生成 ${count} 条下一轮可以直接发送的用户发言。`,
-        '要求：每条 1 到 2 句话；自然口语；不要替 assistant 回复；不要解释；不要包含序号以外的额外说明。',
-        '只输出 JSON 字符串数组，例如 ["第一条", "第二条", "第三条"]。'
+        `请根据提供的上下文生成 ${count} 条下一轮可以直接发送的候选发言。`,
+        '每条 1 到 2 句话，使用自然口语。'
       ].join('\n'),
       status: 'complete',
       metadataJson: this.stringifyNullable({
@@ -1235,6 +1238,7 @@ export class ChatService {
     gatewayConfig: ModelGatewayConfig;
     worldBooks: WorldBookContext[];
     dto: StreamChatDto;
+    purpose?: PromptBuildPurpose;
   }): BuildPromptInput {
     return {
       userId: params.currentUser.id,
@@ -1279,9 +1283,11 @@ export class ChatService {
       worldBooks: params.worldBooks,
       options: {
         mode: 'chat',
+        purpose: params.purpose ?? 'chat_reply',
         historyLimit: params.dto.historyLimit,
         maxHistoryCharacters:
           params.dto.maxHistoryCharacters ?? PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS,
+        maxPromptTokens: this.resolvePromptBudget(params.gatewayConfig, params.promptPreset),
         includeDebug: false,
         supportsDeveloperRole: false
       }
@@ -1327,6 +1333,21 @@ export class ChatService {
     );
 
     return Math.max(promptHistoryLimit, worldBookScanDepth);
+  }
+
+  /** 按模型上下文长度扣除输出预算，得到 Builder 可使用的输入 token 预算。 */
+  private resolvePromptBudget(
+    gatewayConfig: ModelGatewayConfig,
+    promptPreset: PromptPreset | null
+  ): number {
+    if (!gatewayConfig.contextLength || gatewayConfig.contextLength <= 0) {
+      return PROMPT_BUILDER_DEFAULT_MAX_PROMPT_TOKENS;
+    }
+
+    const presetParameters = promptPreset ? this.parseParams(promptPreset.parametersJson) : null;
+    const outputBudget = presetParameters?.maxTokens ?? gatewayConfig.params.maxTokens ?? 1200;
+
+    return Math.max(0, Math.floor(gatewayConfig.contextLength - outputBudget));
   }
 
   /**
@@ -1663,12 +1684,8 @@ export class ChatService {
     return value === undefined || value === null ? null : JSON.stringify(value);
   }
 
-  /**
-   * 粗略估算 token 数（每 4 字符约 1 token）。
-   * @param content 文本内容。
-   * @returns 估算的 token 数。
-   */
+  /** 使用统一的中英文混合文本 token 估算。 */
   private estimateTokens(content: string): number {
-    return content.length === 0 ? 0 : Math.ceil(content.length / 4);
+    return estimatePromptTextTokens(content);
   }
 }

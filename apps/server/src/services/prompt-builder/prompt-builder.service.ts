@@ -3,9 +3,19 @@ import { Injectable } from '@nestjs/common';
 import {
   PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
   PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS,
+  PROMPT_BUILDER_DEFAULT_MAX_PROMPT_TOKENS,
   PROMPT_BUILDER_DEFAULT_OUTPUT_RULES,
-  PROMPT_BUILDER_PLATFORM_RULES
+  PROMPT_BUILDER_MAX_CHARACTER_EXAMPLE_TOKENS,
+  PROMPT_BUILDER_MIN_HISTORY_TOKENS,
+  PROMPT_BUILDER_PLATFORM_RULES,
+  PROMPT_BUILDER_SUGGESTION_OUTPUT_RULES,
+  PROMPT_BUILDER_SUGGESTION_PLATFORM_RULES
 } from './prompt-builder.constants';
+import {
+  estimatePromptMessageTokens,
+  estimatePromptMessagesTokens,
+  estimatePromptTextTokens
+} from './token-estimator';
 import type {
   BuildPromptInput,
   BuildPromptResult,
@@ -34,6 +44,11 @@ type RoleplaySegmentKind = 'dialogue' | 'self_action' | 'character_action' | 'na
 type RoleplaySegment = {
   kind: RoleplaySegmentKind;
   content: string;
+};
+
+type AntiRepeatContext = {
+  content: string;
+  sourceMessageId: string;
 };
 
 const ROLEPLAY_SEGMENT_ALIASES: Record<string, RoleplaySegmentKind> = {
@@ -66,9 +81,9 @@ const ROLEPLAY_SEGMENT_TITLES: Record<RoleplaySegmentKind, string> = {
  * Prompt Builder 服务：把会话上下文组装成发给模型的最终消息序列。
  *
  * 构建流程：
- * 1. 生成各 section（平台规则/角色/人设/预设/输出规则/历史/当前输入/世界书）；
+ * 1. 生成各 section（平台规则/预设/角色/人设/输出规则/历史/当前输入/世界书）；
  * 2. 匹配世界书条目（按关键词扫描最近消息）；
- * 3. 裁剪历史（按条数 + 字符上限）；
+ * 3. 在整体 token 预算内按优先级保留世界书，并裁剪最早历史；
  * 4. 把 section 组装成逻辑消息（system/developer/user/assistant）；
  * 5. 逻辑消息 → 最终 provider 消息（不支持 developer 角色时合并进 system）。
  */
@@ -84,19 +99,42 @@ export class PromptBuilderService {
     const warnings: PromptBuildWarning[] = [];
     const sections: PromptSection[] = [];
     const variables = this.createTemplateVariables(input);
+    const promptBudget = this.resolvePromptBudget(input.options.maxPromptTokens);
+    const purpose = input.options.purpose ?? 'chat_reply';
+    const isSuggestionTask = purpose === 'user_suggestions';
+    const hasHistory = this.hasUsableHistory(input.history, input.currentUserMessage);
     // 平台级固定规则（注入到 system 消息）
     const platformSection = this.addSection(sections, {
       kind: 'platform',
       source: 'system',
       title: 'Platform rules',
-      content: PROMPT_BUILDER_PLATFORM_RULES.join('\n')
+      content: (isSuggestionTask
+        ? PROMPT_BUILDER_SUGGESTION_PLATFORM_RULES
+        : PROMPT_BUILDER_PLATFORM_RULES
+      ).join('\n')
     });
-    // 角色卡（名称/描述/性格/场景/开场白）
+    // Preset 文本只控制角色回复；候选生成只复用模型参数，不继承角色输出风格。
+    const presetSection =
+      !isSuggestionTask && input.promptPreset && this.hasContent(input.promptPreset.systemPrompt)
+        ? this.addSection(sections, {
+            kind: 'prompt_preset',
+            source: 'prompt_preset',
+            title: 'Prompt preset',
+            content: this.formatTitledBlock(
+              input.promptPreset.name,
+              this.resolveTemplateVariables(input.promptPreset.systemPrompt, variables)
+            ),
+            sourceId: input.promptPreset.id
+          })
+        : null;
+    // 开场白和示例对话只在首轮提供，避免长会话持续被开场场景锚定。
     const characterSection = this.addSection(sections, {
       kind: 'character',
       source: 'character',
       title: 'Character card',
-      content: this.formatCharacter(input.character, variables),
+      content: this.formatCharacter(input.character, variables, {
+        includeOpeningContext: !hasHistory
+      }),
       sourceId: input.character.id
     });
     // 用户人设（可选）
@@ -112,39 +150,33 @@ export class PromptBuilderService {
           sourceId: input.persona.id
         })
       : null;
-    // 预设 systemPrompt（可选，有内容才加）
-    const presetSection =
-      input.promptPreset && this.hasContent(input.promptPreset.systemPrompt)
-        ? this.addSection(sections, {
-            kind: 'prompt_preset',
-            source: 'prompt_preset',
-            title: 'Prompt preset',
-            content: this.formatTitledBlock(
-              input.promptPreset.name,
-              this.resolveTemplateVariables(input.promptPreset.systemPrompt, variables)
-            ),
-            sourceId: input.promptPreset.id
-          })
-        : null;
     // 输出规则（预设的或默认的）
+    const usesPresetOutputRules =
+      !isSuggestionTask && this.hasContent(input.promptPreset?.outputRules ?? '');
     const outputRulesSection = this.addSection(sections, {
       kind: 'output_rules',
-      source: input.promptPreset?.id ? 'prompt_preset' : 'system',
+      source: isSuggestionTask ? 'runtime' : usesPresetOutputRules ? 'prompt_preset' : 'system',
       title: 'Output rules',
-      content: this.formatOutputRules(input.promptPreset?.outputRules ?? '', variables),
-      sourceId: input.promptPreset?.id ?? null
+      content: this.formatOutputRules(input.promptPreset?.outputRules ?? '', variables, purpose),
+      sourceId: usesPresetOutputRules ? (input.promptPreset?.id ?? null) : null
     });
-    // 裁剪历史（按条数 + 字符上限）
-    const historyResult = this.selectRecentHistory(
-      input.history,
+    const currentUserContent = this.formatConversationMessageContent(
       input.currentUserMessage,
-      input,
-      warnings
+      variables
     );
-    // 历史去重：连续多条 assistant 用相似开头时只保留最近 2 条。
-    // 同质化历史是模型陷入套话循环的主因——历史里堆 5 条雷同回复，模型会认定这是角色固定语气并复刻。
-    const dedupedHistory = this.dedupeSimilarAssistantHistory(historyResult.history, warnings);
-    historyResult.history = dedupedHistory;
+    const potentialAntiRepeat = isSuggestionTask
+      ? null
+      : this.createAntiRepeatContext(input.history);
+    const baseFixedTokenEstimate =
+      [platformSection, presetSection, characterSection, personaSection, outputRulesSection]
+        .filter((section): section is PromptSection => section !== null && section.isIncluded)
+        .reduce(
+          (total, section) =>
+            total + estimatePromptMessageTokens(this.formatSectionForMessage(section)),
+          0
+        ) +
+      estimatePromptMessageTokens(currentUserContent) +
+      (potentialAntiRepeat ? estimatePromptMessageTokens(potentialAntiRepeat.content) : 0);
     // 匹配世界书（扫描最近消息触发关键词）
     const worldBook = matchWorldBookEntries({
       worldBooks: input.worldBooks,
@@ -152,7 +184,38 @@ export class PromptBuilderService {
       currentUserMessage: input.currentUserMessage,
       estimateTokens: (content) => this.estimateTokens(content)
     });
-    const resolvedWorldBook = this.resolveWorldBookVariables(worldBook, variables);
+    const resolvedWorldBook = this.trimWorldBookToPromptBudget(
+      this.resolveWorldBookVariables(worldBook, variables),
+      Math.max(
+        0,
+        promptBudget - baseFixedTokenEstimate - (hasHistory ? PROMPT_BUILDER_MIN_HISTORY_TOKENS : 0)
+      ),
+      warnings
+    );
+    const worldBookTokenEstimate = resolvedWorldBook.matchedEntries.reduce(
+      (total, entry) =>
+        total + estimatePromptMessageTokens(`## World book: ${entry.title}\n${entry.content}`),
+      0
+    );
+    const historyTokenBudget = Math.max(
+      0,
+      promptBudget - baseFixedTokenEstimate - worldBookTokenEstimate
+    );
+    // 历史先按条数/字符限制，再在剩余统一 token 预算内从新到旧保留完整消息。
+    const historyResult = this.selectRecentHistory(
+      input.history,
+      input.currentUserMessage,
+      input,
+      historyTokenBudget,
+      warnings
+    );
+    const selectedHistoryCount = historyResult.history.length;
+    // 角色回复需要抑制重复模式；候选生成保留完整最近历史，避免删除对方语义。
+    const dedupedHistory = isSuggestionTask
+      ? historyResult.history
+      : this.dedupeSimilarAssistantHistory(historyResult.history, warnings);
+    historyResult.history = dedupedHistory;
+    const antiRepeat = isSuggestionTask ? null : this.createAntiRepeatContext(dedupedHistory);
     // 世界书 section 分四组插入（按 position）
     const worldBookSections = this.createEmptyWorldBookSectionGroups();
     worldBookSections.before_history = this.addWorldBookSections(
@@ -185,7 +248,7 @@ export class PromptBuilderService {
       kind: 'current_user_input',
       source: 'message',
       title: 'Current user input',
-      content: this.formatConversationMessageContent(input.currentUserMessage, variables),
+      content: currentUserContent,
       sourceId: input.currentUserMessage.id
     });
     worldBookSections.after_current_user_input = this.addWorldBookSections(
@@ -195,9 +258,9 @@ export class PromptBuilderService {
     );
     // 归类到 developer 角色的 section（角色/人设/预设/输出规则）
     const developerSections = [
+      presetSection,
       characterSection,
       personaSection,
-      presetSection,
       outputRulesSection
     ].filter((section): section is PromptSection => section !== null && section.isIncluded);
     // 组装逻辑消息（system/developer/user/assistant + 世界书插入点）
@@ -207,13 +270,31 @@ export class PromptBuilderService {
       worldBookSections,
       history: historyResult.history,
       historySections,
-      currentUserSection
+      currentUserSection,
+      antiRepeat
     });
     // 逻辑消息 → 最终 provider 消息（不支持 developer 时合并进 system）
     const finalMessages = this.buildProviderMessages(
       logicalMessages,
       input.options.supportsDeveloperRole ?? false
     );
+    const finalTokenEstimate = estimatePromptMessagesTokens(finalMessages);
+    const moduleTokenEstimates = this.sumModuleTokenEstimates(sections);
+    const historyTokenEstimate = historyResult.history.reduce(
+      (total, message) => total + estimatePromptMessageTokens(message.content),
+      0
+    );
+    const fixedTokenEstimate = Math.max(0, finalTokenEstimate - historyTokenEstimate);
+
+    if (fixedTokenEstimate > promptBudget) {
+      warnings.push({
+        code: 'PROMPT_FIXED_CONTEXT_EXCEEDS_BUDGET',
+        message:
+          'Required prompt context exceeds the configured prompt budget; current user input and core rules were preserved.',
+        details: { promptBudget, fixedTokenEstimate }
+      });
+    }
+
     return {
       conversationId: input.conversation.id,
       sections,
@@ -221,15 +302,25 @@ export class PromptBuilderService {
       finalMessages,
       worldBook: resolvedWorldBook,
       truncatedHistory: historyResult.truncatedHistory,
-      tokenEstimate: this.estimateTokens(
-        finalMessages.map((message) => message.content).join('\n')
-      ),
+      tokenEstimate: finalTokenEstimate,
       debug: {
-        matchedEntries: resolvedWorldBook.matchedEntries,
+        matchedEntries: input.options.includeDebug ? resolvedWorldBook.matchedEntries : [],
         truncatedHistory: historyResult.truncatedHistory,
-        finalMessages,
+        finalMessages: input.options.includeDebug ? finalMessages : [],
         sectionOrder: sections.map((section) => section.id),
-        warnings
+        warnings,
+        moduleTokenEstimates,
+        budget: {
+          promptBudget,
+          fixedTokenEstimate,
+          worldBookTokenEstimate: resolvedWorldBook.usedTokenEstimate,
+          historyTokenEstimate,
+          currentUserTokenEstimate: currentUserSection.tokenEstimate ?? 0,
+          finalTokenEstimate,
+          trimmedHistoryCount:
+            historyResult.truncatedHistory.length + selectedHistoryCount - dedupedHistory.length
+        },
+        presetParameters: input.promptPreset?.parameters ?? null
       }
     };
   }
@@ -252,6 +343,7 @@ export class PromptBuilderService {
     history: ChatMessageLike[];
     historySections: PromptSection[];
     currentUserSection: PromptSection;
+    antiRepeat: AntiRepeatContext | null;
   }): PromptBuilderMessage[] {
     // 1. 平台规则放第一条 system 消息
     const messages: PromptBuilderMessage[] = [
@@ -282,7 +374,7 @@ export class PromptBuilderService {
 
     // 6. 动态反重复提示：提取最近一条 assistant 回复的开头，明确禁止本轮复用相同/相近开头或句式。
     //    这是针对"模型每轮复刻同一开头"最直接的约束——告诉模型上轮以 X 开头，本轮禁止雷同。
-    this.pushAntiRepeatMessage(messages, params.history);
+    this.pushAntiRepeatMessage(messages, params.antiRepeat);
 
     // 7. 当前用户输入（user 消息）
     messages.push(this.toLogicalMessage('user', [params.currentUserSection]));
@@ -303,42 +395,41 @@ export class PromptBuilderService {
    */
   private pushAntiRepeatMessage(
     messages: PromptBuilderMessage[],
-    history: ChatMessageLike[]
+    antiRepeat: AntiRepeatContext | null
   ): void {
-    // 从后往前找最近一条 assistant 历史回复
-    let lastAssistant: ChatMessageLike | null = null;
-
-    for (let index = history.length - 1; index >= 0; index -= 1) {
-      if (history[index].role === 'assistant' && this.hasContent(history[index].content)) {
-        lastAssistant = history[index];
-
-        break;
-      }
-    }
-
-    if (!lastAssistant) {
+    if (!antiRepeat) {
       return;
     }
 
-    const content = [
-      '【本轮反重复约束】',
-      '上一轮 assistant 回复已经发生，本轮不得重写、续写同一个开头段落，或复述上一轮已表达过的动作、台词和旁白结构。',
-      '请从当前用户输入造成的新变化切入，只保留必要承接；优先写新的动作、观察、决策、位置变化或关系推进。',
-      '除非用户明确要求总结，否则不要回放完整历史，不要把其他未在当前场景行动的角色逐个点名。'
-    ].join('\n');
-
     messages.push({
       role: 'system',
-      content,
+      content: antiRepeat.content,
       sectionIds: [],
-      tokenEstimate: this.estimateTokens(content),
+      tokenEstimate: this.estimateTokens(antiRepeat.content),
       metadata: {
         sectionKinds: ['anti_repeat'],
         antiRepeat: {
-          sourceMessageId: lastAssistant.id
+          sourceMessageId: antiRepeat.sourceMessageId
         }
       }
     });
+  }
+
+  /** 根据最近一条 assistant 历史生成本轮结构性反重复约束。 */
+  private createAntiRepeatContext(history: ChatMessageLike[]): AntiRepeatContext | null {
+    const lastAssistant = [...history]
+      .reverse()
+      .find((message) => message.role === 'assistant' && this.hasContent(message.content));
+
+    if (!lastAssistant) {
+      return null;
+    }
+
+    return {
+      sourceMessageId: lastAssistant.id,
+      content:
+        '【本轮反重复约束】不要复用最近 assistant 回复的开头或整段动作、台词；直接回应当前输入带来的新变化，仅保留理解所需的承接。'
+    };
   }
 
   /**
@@ -401,7 +492,8 @@ export class PromptBuilderService {
    * 裁剪历史：按条数上限 + 字符上限选出最近的历史消息。
    *
    * 流程：过滤无效消息（当前消息/空内容/不支持的角色）→ 按条数取最近 N 条 →
-   * 从最新往最旧套用字符预算，超预算的裁剪（但至少保留最新一条）。
+   * 从最新往最旧套用字符和 token 预算；任一消息放不下时连同更早消息一起裁剪，
+   * 保证保留下来的历史始终是连续的最近消息。
    *
    * @param history 原始历史。
    * @param currentUserMessage 当前消息（从历史中排除）。
@@ -413,6 +505,7 @@ export class PromptBuilderService {
     history: ChatMessageLike[],
     currentUserMessage: ChatMessageLike,
     input: BuildPromptInput,
+    historyTokenBudget: number,
     warnings: PromptBuildWarning[]
   ): { history: ChatMessageLike[]; truncatedHistory: PromptTruncatedHistoryItem[] } {
     // 限制参数兜底
@@ -451,27 +544,33 @@ export class PromptBuilderService {
       Math.max(0, normalizedHistory.length - historyLimit)
     );
     // 取最近 historyLimit 条作为候选
-    const candidates = normalizedHistory.slice(-historyLimit);
+    const candidates = historyLimit === 0 ? [] : normalizedHistory.slice(-historyLimit);
     const selected: ChatMessageLike[] = [];
     const characterTruncated: ChatMessageLike[] = [];
     let usedCharacters = 0;
+    let usedTokens = 0;
 
-    // 第二重裁剪-字符：从最新往最旧套用字符预算，超预算的裁剪（但至少保留最新一条）
+    // 第二重裁剪：从最新往最旧套用字符 + token 预算，只保留连续的最近历史。
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
       const message = candidates[index];
       const messageLength = message.content.length;
-      const canFit =
+      const messageTokens = estimatePromptMessageTokens(message.content);
+      const fitsCharacterBudget =
         maxHistoryCharacters === 0 || usedCharacters + messageLength <= maxHistoryCharacters;
+      const fitsTokenBudget =
+        historyTokenBudget > 0 && usedTokens + messageTokens <= historyTokenBudget;
 
-      // 能放下，或至少要保留最新一条（selected 为空时强制保留）
-      if (canFit || selected.length === 0) {
+      // 只保留可完整放入两个预算的消息，不截断消息正文或破坏 role/content 结构。
+      if (fitsCharacterBudget && fitsTokenBudget) {
         selected.unshift({
           ...message,
           content: message.content.trim()
         });
         usedCharacters += messageLength;
+        usedTokens += messageTokens;
       } else {
-        characterTruncated.unshift(message);
+        characterTruncated.unshift(...candidates.slice(0, index + 1));
+        break;
       }
     }
 
@@ -564,11 +663,97 @@ export class PromptBuilderService {
    * @returns 归一化后的前缀（小写、无空白）。
    */
   private normalizePrefixForCompare(content: string, length: number): string {
-    return content
-      .trim()
-      .replace(/\s+/g, '')
-      .slice(0, length)
-      .toLowerCase();
+    return content.trim().replace(/\s+/g, '').slice(0, length).toLowerCase();
+  }
+
+  /** 归一化整体 Prompt 预算；非法值回退到兼容默认值。 */
+  private resolvePromptBudget(value: number | undefined): number {
+    if (value === undefined || !Number.isFinite(value)) {
+      return PROMPT_BUILDER_DEFAULT_MAX_PROMPT_TOKENS;
+    }
+
+    return Math.max(0, Math.floor(value));
+  }
+
+  /** 判断是否存在可作为历史保留的有效消息。 */
+  private hasUsableHistory(
+    history: ChatMessageLike[],
+    currentUserMessage: ChatMessageLike
+  ): boolean {
+    return history.some(
+      (message) =>
+        message.id !== currentUserMessage.id &&
+        this.hasContent(message.content) &&
+        this.toProviderHistoryRole(message.role) !== null
+    );
+  }
+
+  /**
+   * 在各世界书自身预算之后再套用整体 Prompt 剩余预算。
+   * matchedEntries 已按 priority 降序稳定排序，因此这里会先保留高优先级条目。
+   */
+  private trimWorldBookToPromptBudget(
+    worldBook: WorldBookMatchResult,
+    tokenBudget: number,
+    warnings: PromptBuildWarning[]
+  ): WorldBookMatchResult {
+    const matchedEntries: WorldBookMatchResult['matchedEntries'] = [];
+    const skippedEntries = [...worldBook.skippedEntries];
+    let usedWithMessageBoundaries = 0;
+
+    worldBook.matchedEntries.forEach((entry) => {
+      const messageCost = estimatePromptMessageTokens(
+        `## World book: ${entry.title}\n${entry.content}`
+      );
+
+      if (usedWithMessageBoundaries + messageCost > tokenBudget) {
+        skippedEntries.push({
+          worldBookId: entry.worldBookId,
+          entryId: entry.entryId,
+          title: entry.title,
+          reason: 'token_budget_exceeded',
+          tokenEstimate: entry.tokenEstimate
+        });
+        return;
+      }
+
+      matchedEntries.push(entry);
+      usedWithMessageBoundaries += messageCost;
+    });
+
+    const trimmedCount = worldBook.matchedEntries.length - matchedEntries.length;
+
+    if (trimmedCount > 0) {
+      warnings.push({
+        code: 'PROMPT_WORLD_BOOK_GLOBAL_BUDGET_TRIMMED',
+        message: `Removed ${trimmedCount} matched world book entr${trimmedCount === 1 ? 'y' : 'ies'} because the overall prompt budget was exhausted.`,
+        details: { tokenBudget, trimmedCount }
+      });
+    }
+
+    return {
+      ...worldBook,
+      matchedEntries,
+      skippedEntries,
+      usedTokenEstimate: matchedEntries.reduce(
+        (total, entry) => total + (entry.tokenEstimate ?? 0),
+        0
+      )
+    };
+  }
+
+  /** 汇总实际纳入的 section token，用于预览调试，不包含 Prompt 正文。 */
+  private sumModuleTokenEstimates(
+    sections: PromptSection[]
+  ): Partial<Record<PromptSectionKind, number>> {
+    return sections.reduce<Partial<Record<PromptSectionKind, number>>>((summary, section) => {
+      if (!section.isIncluded) {
+        return summary;
+      }
+
+      summary[section.kind] = (summary[section.kind] ?? 0) + (section.tokenEstimate ?? 0);
+      return summary;
+    }, {});
   }
 
   /**
@@ -710,13 +895,14 @@ export class PromptBuilderService {
   }
 
   /**
-   * 格式化角色卡为文本（名称/描述/性格/场景/开场白）。
+   * 格式化角色卡为文本；开场白和示例对话只在无历史的首轮注入。
    * @param character 角色上下文。
    * @returns 格式化后的文本。
    */
   private formatCharacter(
     character: BuildPromptInput['character'],
-    variables: PromptTemplateVariables
+    variables: PromptTemplateVariables,
+    options: { includeOpeningContext: boolean }
   ): string {
     const blocks = [
       this.formatTitledBlock('Name', character.name),
@@ -731,12 +917,22 @@ export class PromptBuilderService {
       this.formatTitledBlock(
         'Scenario',
         this.resolveTemplateVariables(character.scenario, variables)
-      ),
-      this.formatTitledBlock(
-        'First message',
-        this.resolveTemplateVariables(character.firstMessage, variables)
       )
     ];
+    if (options.includeOpeningContext) {
+      blocks.push(
+        this.formatTitledBlock(
+          'Opening message from Character',
+          this.resolveTemplateVariables(character.firstMessage, variables)
+        )
+      );
+      blocks.push(
+        this.formatTitledBlock(
+          'Example dialogue',
+          this.formatCharacterExamples(character.exampleMessages ?? [], variables)
+        )
+      );
+    }
     // 角色级系统提示（metadata.systemPrompt）：前端可编辑、可展示，但此前未被消费。
     // 这里补上，让角色专属约束也能进入 developer 消息，与预设级 systemPrompt 共存。
     const charSystemPrompt =
@@ -750,17 +946,57 @@ export class PromptBuilderService {
   }
 
   /**
-   * 格式化输出规则：默认规则 + 预设规则，每条前加 `- `。
+   * 格式化输出规则：候选生成使用专用规则；普通回复优先使用 Preset，否则使用默认规则。
    * @param outputRules 预设的输出规则文本。
    * @returns 格式化后的规则文本。
    */
-  private formatOutputRules(outputRules: string, variables: PromptTemplateVariables): string {
-    const rules = [
-      ...PROMPT_BUILDER_DEFAULT_OUTPUT_RULES,
-      ...this.splitLines(this.resolveTemplateVariables(outputRules, variables))
-    ];
+  private formatOutputRules(
+    outputRules: string,
+    variables: PromptTemplateVariables,
+    purpose: BuildPromptInput['options']['purpose']
+  ): string {
+    const presetRules = this.splitLines(this.resolveTemplateVariables(outputRules, variables));
+    const sourceRules =
+      purpose === 'user_suggestions'
+        ? PROMPT_BUILDER_SUGGESTION_OUTPUT_RULES
+        : presetRules.length > 0
+          ? presetRules
+          : PROMPT_BUILDER_DEFAULT_OUTPUT_RULES;
+    const seen = new Set<string>();
+    const rules = sourceRules.filter((rule) => {
+      const key = rule.trim().toLocaleLowerCase();
+
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     return rules.map((rule) => `- ${rule}`).join('\n');
+  }
+
+  /** 首轮按完整消息边界、固定预算注入角色示例对话。 */
+  private formatCharacterExamples(
+    examples: ChatMessageLike[],
+    variables: PromptTemplateVariables
+  ): string {
+    const selected: string[] = [];
+    let usedTokens = 0;
+
+    for (const message of examples) {
+      if (message.role !== 'user' && message.role !== 'assistant') continue;
+
+      const content = this.resolveTemplateVariables(message.content, variables).trim();
+      if (!content) continue;
+
+      const line = `${message.role === 'user' ? 'User' : 'Character'}: ${content}`;
+      const cost = estimatePromptTextTokens(line);
+
+      if (usedTokens + cost > PROMPT_BUILDER_MAX_CHARACTER_EXAMPLE_TOKENS) break;
+      selected.push(line);
+      usedTokens += cost;
+    }
+
+    return selected.join('\n');
   }
 
   /**
@@ -994,9 +1230,9 @@ export class PromptBuilderService {
     };
   }
 
-  /** 粗略估算 token 数（每 4 字符约 1 token）。 */
+  /** 使用统一的中英文混合文本 token 估算。 */
   private estimateTokens(content: string): number {
-    return content.length === 0 ? 0 : Math.ceil(content.length / 4);
+    return estimatePromptTextTokens(content);
   }
 
   /** 内容是否非空（trim 后有字符）。 */

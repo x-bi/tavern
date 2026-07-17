@@ -3,6 +3,9 @@ import type { MessageRole } from './message';
 /** Prompt 构建模式：真实聊天或预览。 */
 export type PromptBuildMode = 'chat' | 'preview';
 
+/** Prompt 的实际任务用途。 */
+export type PromptBuildPurpose = 'chat_reply' | 'user_suggestions';
+
 /** 发往供应商的消息角色（不含 developer，OpenAI 兼容口径）。 */
 export type PromptProviderMessageRole = Extract<
   MessageRole,
@@ -211,6 +214,10 @@ export type PromptModelParameters = {
   maxTokens?: number | null;
   /** 请求超时时间（毫秒）；未设置时为 null。 */
   timeout?: number | null;
+  /** 频率惩罚；未设置时为 null。 */
+  frequencyPenalty?: number | null;
+  /** 存在惩罚；未设置时为 null。 */
+  presencePenalty?: number | null;
 };
 
 /** 模型网关上下文（Builder 输入之一）。 */
@@ -385,12 +392,28 @@ export type BuildPromptDebugInfo = {
   sectionOrder: string[];
   /** 构建过程中的告警列表。 */
   warnings: PromptBuildWarning[];
+  /** 各 Prompt 模块实际纳入内容的 token 估算。 */
+  moduleTokenEstimates: Partial<Record<PromptSectionKind, number>>;
+  /** 统一输入预算及裁剪结果；不包含任何 Prompt 正文。 */
+  budget: {
+    promptBudget: number;
+    fixedTokenEstimate: number;
+    worldBookTokenEstimate: number;
+    historyTokenEstimate: number;
+    currentUserTokenEstimate: number;
+    finalTokenEstimate: number;
+    trimmedHistoryCount: number;
+  };
+  /** 实际解析出的 Preset 参数；不存在 Preset 时为 null。 */
+  presetParameters: PromptModelParameters | null;
 };
 
 /** Builder 的构建选项。 */
 export type PromptBuildOptions = {
   /** 构建模式。 */
   mode: PromptBuildMode;
+  /** 默认构建角色回复；候选生成使用 user_suggestions。 */
+  purpose?: PromptBuildPurpose;
   /** 历史消息最多取多少条。 */
   historyLimit?: number;
   /** 历史消息总字符数上限。 */

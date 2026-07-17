@@ -108,7 +108,7 @@ export class CompanionsService {
       template: {
         formatVersion: 'tavern-lite.companion.v1',
         name: '示例 AI 角色',
-        identityPrompt: '你是一位温柔、真诚的 AI 陪伴角色。请用自然简短的中文和用户交流。'
+        identityPrompt: '性格温柔、真诚，表达克制而有耐心。'
       }
     };
   }

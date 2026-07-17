@@ -160,6 +160,7 @@ export type {
   ChatMessageLike,
   PromptBuildMode,
   PromptBuildOptions,
+  PromptBuildPurpose,
   PromptBuildWarning,
   PromptBuilderMessage,
   PromptCharacterContext,

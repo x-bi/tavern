@@ -88,7 +88,7 @@ export function matchWorldBookEntries(input: {
       }
 
       // 判定2：主关键词命中
-      const matchedKeywords = matchKeywords(entry.keywords, bookMessages);
+      const matchedKeywords = matchKeywords(entry.keywords, bookMessages, entry.caseSensitive);
 
       if (matchedKeywords.length === 0) {
         skippedEntries.push({
@@ -99,7 +99,11 @@ export function matchWorldBookEntries(input: {
       }
 
       // 判定3：次要关键词（有配置时必须至少命中一个）
-      const matchedSecondaryKeywords = matchKeywords(entry.secondaryKeywords ?? [], bookMessages);
+      const matchedSecondaryKeywords = matchKeywords(
+        entry.secondaryKeywords ?? [],
+        bookMessages,
+        entry.caseSensitive
+      );
 
       if ((entry.secondaryKeywords?.length ?? 0) > 0 && matchedSecondaryKeywords.length === 0) {
         skippedEntries.push({
@@ -128,7 +132,8 @@ export function matchWorldBookEntries(input: {
         // 命中的来源消息 ID（用于追溯是哪条消息触发的）
         sourceMessageIds: findSourceMessageIds(
           [...matchedKeywords, ...matchedSecondaryKeywords],
-          bookMessages
+          bookMessages,
+          entry.caseSensitive
         ),
         metadata: entry.metadata ?? null,
         originalIndex
@@ -227,16 +232,21 @@ function selectScannedMessages(input: {
  * @param messages 待扫描消息。
  * @returns 命中的关键词数组（去重）。
  */
-function matchKeywords(keywords: string[], messages: ChatMessageLike[]): string[] {
-  // 消息内容统一小写化，做大小写不敏感匹配
-  const normalizedMessages = messages.map((message) => message.content.toLocaleLowerCase());
+function matchKeywords(
+  keywords: string[],
+  messages: ChatMessageLike[],
+  caseSensitive: boolean
+): string[] {
+  const normalizedMessages = messages.map((message) =>
+    caseSensitive ? message.content : message.content.toLocaleLowerCase()
+  );
 
   return unique(
     keywords
       .map((keyword) => keyword.trim())
       .filter((keyword) => keyword.length > 0)
       .filter((keyword) => {
-        const normalizedKeyword = keyword.toLocaleLowerCase();
+        const normalizedKeyword = caseSensitive ? keyword : keyword.toLocaleLowerCase();
 
         return normalizedMessages.some((message) => message.includes(normalizedKeyword));
       })
@@ -249,9 +259,17 @@ function matchKeywords(keywords: string[], messages: ChatMessageLike[]): string[
  * @param messages 待扫描消息。
  * @returns 命中的消息 ID 数组。
  */
-function findSourceMessageIds(keywords: string[], messages: ChatMessageLike[]): string[] {
+function findSourceMessageIds(
+  keywords: string[],
+  messages: ChatMessageLike[],
+  caseSensitive: boolean
+): string[] {
   const normalizedKeywords = keywords
-    .map((keyword) => keyword.trim().toLocaleLowerCase())
+    .map((keyword) => {
+      const trimmed = keyword.trim();
+
+      return caseSensitive ? trimmed : trimmed.toLocaleLowerCase();
+    })
     .filter((keyword) => keyword.length > 0);
 
   if (normalizedKeywords.length === 0) {
@@ -260,7 +278,9 @@ function findSourceMessageIds(keywords: string[], messages: ChatMessageLike[]): 
 
   return messages
     .filter((message) => {
-      const normalizedContent = message.content.toLocaleLowerCase();
+      const normalizedContent = caseSensitive
+        ? message.content
+        : message.content.toLocaleLowerCase();
 
       return normalizedKeywords.some((keyword) => normalizedContent.includes(keyword));
     })
@@ -292,7 +312,8 @@ function toSkippedEntry(
 
 /** 去掉候选条目的内部排序状态（originalIndex），转成最终匹配条目。 */
 function stripCandidateState(candidate: MatchCandidate): WorldBookMatchedEntry {
-  const { originalIndex, ...entry } = candidate;
+  const entry = { ...candidate };
+  Reflect.deleteProperty(entry, 'originalIndex');
 
   return entry;
 }

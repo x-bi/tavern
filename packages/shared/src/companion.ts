@@ -1,3 +1,5 @@
+import type { PromptModelParameters, ProviderChatMessage } from './prompt-builder';
+
 export type CompanionPayload = {
   name: string;
   identityPrompt?: string;
@@ -123,6 +125,8 @@ export type CompanionPromptSectionKind =
   | 'anti_repeat'
   | 'current_user_input';
 export type CompanionPromptPreviewResponse = {
+  messages: ProviderChatMessage[];
+  parameters: PromptModelParameters | null;
   sections: Array<{
     kind: CompanionPromptSectionKind;
     content: string;
@@ -135,5 +139,6 @@ export type CompanionPromptPreviewResponse = {
   historyTrimmed: number;
   promptBudget: number;
   historyBudget: number;
+  tokenEstimate: number;
   generatedAt: string;
 };

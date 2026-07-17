@@ -21,6 +21,7 @@
     "db:seed": "node prisma/seed.cjs",
     "db:migrate-legacy-admin": "node prisma/migrate-legacy-data-to-admin.cjs",
     "verify:share-layer": "node scripts/verify-share-layer.mjs",
+    "verify:prompt-builder": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-prompt-builder.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check",
     "workspace:list": "pnpm -r list --depth -1"
   },

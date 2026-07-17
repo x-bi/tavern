@@ -7,7 +7,7 @@
  */
 import type { ApiResponse, ApplicationSettings, ApplicationSettingsPayload } from '@tavern/shared';
 
-import { toApiUrl } from './http';
+import { authHeaders, toApiUrl } from './http';
 
 export type { ApplicationSettings, ApplicationSettingsPayload };
 
@@ -49,7 +49,8 @@ export async function fetchApplicationSettings(): Promise<ApplicationSettings> {
   const response = await fetch(toApiUrl('/settings'), {
     method: 'GET',
     headers: {
-      Accept: 'application/json'
+      Accept: 'application/json',
+      ...authHeaders()
     }
   });
 
@@ -70,7 +71,8 @@ export async function updateApplicationSettings(
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      Accept: 'application/json'
+      Accept: 'application/json',
+      ...authHeaders()
     },
     body: JSON.stringify(payload)
   });

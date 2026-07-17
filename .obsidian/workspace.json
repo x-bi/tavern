@@ -185,6 +185,7 @@
   },
   "active": "e34b73eecd086bb6",
   "lastOpenFiles": [
+    "plans/shared-content-library.md",
     "docs/api-reference/conversations.md",
     "docs/api-reference/companions.md",
     "docs/api-reference/companion-chat-memory.md",
@@ -220,7 +221,6 @@
     "model-context/stages/stage-39-世界书关键词匹配逻辑.md",
     "model-context/stages/stage-37-worldbook-api.md",
     "model-context/README.md",
-    "model-context/source-map.md",
     "uploads/avatars/characters/1a801e83-fce1-4597-98fa-ed7fb6496356.png",
     "uploads/avatars/characters/22c500b8-d49d-4560-90ca-a8b9f3247c6f.png",
     "uploads/avatars/characters/40b56634-435a-4cbb-9e3f-3178b1299447.png",

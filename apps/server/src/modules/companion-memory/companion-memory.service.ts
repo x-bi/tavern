@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit
@@ -23,6 +24,7 @@ import {
 
 @Injectable()
 export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(CompanionMemoryService.name);
   private readonly tasks = new Set<string>();
   private retryTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -47,8 +49,10 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
       },
       data: { nextRetryAt: new Date() }
     });
-    this.retryTimer = setInterval(() => void this.retryDue(), 60_000);
-    void this.retryDue();
+    await this.retryDue();
+    this.retryTimer = setInterval(() => {
+      void this.retryDue().catch((error: unknown) => this.logRetryFailure(error));
+    }, 60_000);
   }
   onModuleDestroy() {
     if (this.retryTimer) clearInterval(this.retryTimer);
@@ -605,6 +609,10 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
         item.companionId,
         item.status === 'stale'
       );
+  }
+  private logRetryFailure(error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    this.logger.error(`Companion memory retry scan failed: ${message}`);
   }
   private async find(user: CurrentUser, companionId: string) {
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(user);

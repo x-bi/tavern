@@ -1,4 +1,6 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   getMemoryUpdateMode,
   parseMemorySummary,
@@ -63,4 +65,36 @@ assert.deepEqual(
   { relationshipState: '旧关系', currentArc: '新主线 {保留花括号}' }
 );
 
-console.log('Companion memory regression checks passed (7 groups).');
+const serverPackage = JSON.parse(
+  readFileSync(resolve(__dirname, '../apps/server/package.json'), 'utf8')
+) as { scripts?: Record<string, string> };
+assert.equal(serverPackage.scripts?.predev, 'pnpm db:migrate');
+assert.equal(serverPackage.scripts?.prestart, 'pnpm db:migrate');
+assert.equal(
+  serverPackage.scripts?.['db:migrate'],
+  'prisma migrate deploy --schema ../../prisma/schema.prisma'
+);
+
+const rebuildCursorMigration = readFileSync(
+  resolve(
+    __dirname,
+    '../prisma/migrations/20260717220000_add_companion_memory_rebuild_cursors/migration.sql'
+  ),
+  'utf8'
+);
+for (const column of [
+  'CompanionMemory" ADD COLUMN "rebuildFromMessageId',
+  'CompanionMemory" ADD COLUMN "historyFloorMessageId',
+  'CompanionMemoryRevision" ADD COLUMN "historyFloorMessageId'
+]) {
+  assert.ok(rebuildCursorMigration.includes(column), `Missing migration column: ${column}`);
+}
+
+const memoryService = readFileSync(
+  resolve(__dirname, '../apps/server/src/modules/companion-memory/companion-memory.service.ts'),
+  'utf8'
+);
+assert.ok(memoryService.includes('await this.retryDue();'));
+assert.ok(memoryService.includes('this.retryDue().catch'));
+
+console.log('Companion memory regression checks passed (10 groups).');

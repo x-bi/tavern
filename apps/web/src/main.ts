@@ -27,10 +27,14 @@ import {
   NLoadingBarProvider,
   NMenu,
   NMessageProvider,
+  NModal,
   NNotificationProvider,
   NResult,
+  NSelect,
   NSpace,
   NSpin,
+  NTab,
+  NTabs,
   NTag
 } from 'naive-ui';
 
@@ -61,10 +65,14 @@ app.component('NLayoutSider', NLayoutSider);
 app.component('NLoadingBarProvider', NLoadingBarProvider);
 app.component('NMenu', NMenu);
 app.component('NMessageProvider', NMessageProvider);
+app.component('NModal', NModal);
 app.component('NNotificationProvider', NNotificationProvider);
 app.component('NResult', NResult);
+app.component('NSelect', NSelect);
 app.component('NSpace', NSpace);
 app.component('NSpin', NSpin);
+app.component('NTab', NTab);
+app.component('NTabs', NTabs);
 app.component('NTag', NTag);
 
 app.use(createPinia());

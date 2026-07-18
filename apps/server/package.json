@@ -4,8 +4,11 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
+    "db:migrate": "prisma migrate deploy --schema ../../prisma/schema.prisma",
+    "predev": "pnpm db:migrate",
     "dev": "tsx watch src/main.ts",
     "build": "tsc -p tsconfig.json",
+    "prestart": "pnpm db:migrate",
     "start": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

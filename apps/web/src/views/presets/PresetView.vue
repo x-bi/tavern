@@ -17,7 +17,12 @@
     <n-tabs v-model:value="activeScope" type="segment">
       <n-tab name="owned">我的预设</n-tab>
       <n-tab name="library">内容库</n-tab>
+      <n-tab v-if="isAdmin" name="managed">成员内容</n-tab>
     </n-tabs>
+
+    <n-alert v-if="activeScope === 'library'" type="info" :bordered="false">
+      内容库遵循当前账号的“显示敏感内容”设置；敏感共享预设未显示时，请先到设置中开启。
+    </n-alert>
 
     <section class="preset-view__toolbar">
       <n-input
@@ -47,7 +52,9 @@
       :description="
         activeScope === 'owned'
           ? '新建预设后，可以集中维护生成参数和输出风格约束。'
-          : '管理员尚未发布共享预设。'
+          : activeScope === 'library'
+            ? '管理员尚未发布共享预设，或共享内容被敏感内容设置隐藏。'
+            : '当前还没有成员创建预设。'
       "
     />
 
@@ -95,6 +102,10 @@
               复制到我的预设
             </n-button>
             <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+          </n-space>
+          <n-space v-else-if="activeScope === 'managed'" justify="space-between">
+            <n-tag :bordered="false">{{ preset.ownerName ?? '成员' }}</n-tag>
+            <n-tag type="info" :bordered="false">只读</n-tag>
           </n-space>
           <n-space v-else justify="end">
             <n-button
@@ -164,6 +175,7 @@ import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import PromptPresetForm from '../../components/PromptPresetForm.vue';
+import { getStoredCurrentUser } from '../../api/auth';
 import { usePresetStore } from '../../stores/preset';
 import { downloadJson } from '../../utils/downloadJson';
 import type {
@@ -187,6 +199,7 @@ const importError = ref<string | null>(null);
 const importPreviewing = ref(false);
 const importing = ref(false);
 const templateLoading = ref(false);
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
 const activeScope = ref<ContentLibraryScope>('owned');
 const visiblePresets = computed(() =>
@@ -198,13 +211,13 @@ onMounted(() => {
 });
 
 watch(activeScope, (scope) => {
-  if (scope === 'library') void presetStore.loadLibrary(searchText.value);
+  if (scope !== 'owned') void presetStore.loadLibrary(searchText.value, scope);
 });
 
 function applySearch() {
   presetStore.setSearch(searchText.value);
-  if (activeScope.value === 'library') {
-    void presetStore.loadLibrary(searchText.value);
+  if (activeScope.value !== 'owned') {
+    void presetStore.loadLibrary(searchText.value, activeScope.value);
     return;
   }
   void presetStore.loadPresets({

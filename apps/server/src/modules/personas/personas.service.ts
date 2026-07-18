@@ -77,10 +77,14 @@ export class PersonasService {
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: access.owner.id,
+      ...(access.isManaged
+        ? { userId: { not: currentUser.id } }
+        : access.owner
+          ? { userId: access.owner.id }
+          : {}),
       ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
-      ...(showSensitiveContent ? {} : { isSensitive: false }),
+      ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
       ...(query.isDefault === undefined ? {} : { isDefault: query.isDefault }),
       // search 关键字：匹配 name/content 任一包含
@@ -101,9 +105,14 @@ export class PersonasService {
       }),
       this.prisma.userPersona.count({ where })
     ]);
+    const ownerNames = access.isManaged
+      ? await this.contentLibraryService.getOwnerNameMap(items.map((item) => item.userId))
+      : null;
 
     return {
-      items: items.map((persona) => this.toResponse(persona, currentUser, access.ownerName)),
+      items: items.map((persona) =>
+        this.toResponse(persona, currentUser, ownerNames?.get(persona.userId) ?? access.ownerName)
+      ),
       total,
       page,
       pageSize

@@ -11,7 +11,7 @@ import {
   type PersonaListParams,
   type PersonaMutationPayload
 } from '../api/personas';
-import type { PersonaPayload } from '@tavern/shared';
+import type { ContentLibraryScope, PersonaPayload } from '@tavern/shared';
 
 type PersonaState = {
   items: Persona[];
@@ -93,7 +93,7 @@ export const usePersonaStore = defineStore('persona', {
         this.saving = false;
       }
     },
-    async loadLibrary(search = '') {
+    async loadLibrary(search = '', scope: Exclude<ContentLibraryScope, 'owned'> = 'library') {
       this.libraryLoading = true;
       this.error = null;
       try {
@@ -101,11 +101,11 @@ export const usePersonaStore = defineStore('persona', {
           page: 1,
           pageSize: 100,
           search: search.trim() || undefined,
-          scope: 'library'
+          scope
         });
         this.libraryItems = result.items;
       } catch (error) {
-        this.error = error instanceof Error ? error.message : 'Persona 内容库加载失败。';
+        this.error = error instanceof Error ? error.message : 'Persona 列表加载失败。';
       } finally {
         this.libraryLoading = false;
       }

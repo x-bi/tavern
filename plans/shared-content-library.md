@@ -100,12 +100,14 @@ isSensitive Boolean @default(false)
 ```text
 scope=owned    # 默认，只返回当前用户数据
 scope=library  # 只返回内置管理员已共享主数据
+scope=managed  # 仅管理员，只读返回其他用户数据
 ```
 
 约束：
 
 - 默认必须是 `owned`，确保现有会话、Companion、世界书等选择器行为不变。
 - `scope=library` 查询固定内容库 owner 的 `userId + isShared=true + deletedAt=null`。
+- `scope=managed` 仅允许管理员查询，返回其他用户的未删除数据并附带 ownerName；它只扩展可见性，不扩展任何写入、聊天或运行时引用权限。
 - 两种范围都继续复用 `showSensitiveContent` 后端过滤。
 - 不使用“自己 OR isShared”混合默认列表，避免共享主数据进入现有业务选择器。
 

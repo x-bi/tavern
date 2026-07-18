@@ -16,7 +16,7 @@ import {
   type WorldBookListParams,
   type WorldBookMutationPayload
 } from '../api/worldBooks';
-import type { WorldBookEntryPayload, WorldBookPayload } from '@tavern/shared';
+import type { ContentLibraryScope, WorldBookEntryPayload, WorldBookPayload } from '@tavern/shared';
 
 type WorldBookState = {
   items: WorldBook[];
@@ -109,7 +109,7 @@ export const useWorldBookStore = defineStore('worldBook', {
         return null;
       }
     },
-    async loadLibrary(search = '') {
+    async loadLibrary(search = '', scope: Exclude<ContentLibraryScope, 'owned'> = 'library') {
       this.libraryLoading = true;
       this.error = null;
       try {
@@ -117,11 +117,11 @@ export const useWorldBookStore = defineStore('worldBook', {
           page: 1,
           pageSize: 100,
           search: search.trim() || undefined,
-          scope: 'library'
+          scope
         });
         this.libraryItems = result.items;
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '世界书内容库加载失败。';
+        this.error = error instanceof Error ? error.message : '世界书列表加载失败。';
       } finally {
         this.libraryLoading = false;
       }

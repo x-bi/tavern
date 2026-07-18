@@ -49,10 +49,16 @@
         </n-button>
       </n-space>
       <n-space v-else-if="character" class="character-detail__actions" justify="end">
-        <n-tag :bordered="false">{{ character.ownerName ?? '管理员内容库' }}</n-tag>
-        <n-button type="primary" :loading="characterStore.saving" @click="forkCurrent">
+        <n-tag :bordered="false">{{ character.ownerName ?? '其他用户' }}</n-tag>
+        <n-button
+          v-if="character.canFork"
+          type="primary"
+          :loading="characterStore.saving"
+          @click="forkCurrent"
+        >
           复制到我的角色
         </n-button>
+        <n-tag v-else type="info" :bordered="false">成员内容（只读）</n-tag>
       </n-space>
     </header>
 

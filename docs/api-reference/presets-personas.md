@@ -7,13 +7,13 @@
 - **说明**：分页查询当前用户参数预设列表。
 - **查询参数**：
 
-  | 字段      | 类型                   | 必填 | 默认  | 校验规则                                             |
-  | --------- | ---------------------- | ---- | ----- | ---------------------------------------------------- |
-  | page      | number                 | 否   | 1     | int ≥1                                               |
-  | pageSize  | number                 | 否   | 20    | int 1~100                                            |
-  | search    | string                 | 否   | -     | `@MaxLength(120)`；匹配 name/description/outputRules |
-  | isDefault | boolean                | 否   | -     | 'true'/'false' 转布尔                                |
-  | scope     | `'owned' \| 'library'` | 否   | owned | library 只返回固定管理员共享主数据                   |
+  | 字段      | 类型                                | 必填 | 默认  | 校验规则                                                               |
+  | --------- | ----------------------------------- | ---- | ----- | ---------------------------------------------------------------------- |
+  | page      | number                              | 否   | 1     | int ≥1                                                                 |
+  | pageSize  | number                              | 否   | 20    | int 1~100                                                              |
+  | search    | string                              | 否   | -     | `@MaxLength(120)`；匹配 name/description/outputRules                   |
+  | isDefault | boolean                             | 否   | -     | 'true'/'false' 转布尔                                                  |
+  | scope     | `'owned' \| 'library' \| 'managed'` | 否   | owned | library 返回固定管理员共享主数据；managed 仅管理员只读查看其他用户数据 |
 
 ## POST /api/prompt-presets
 
@@ -71,13 +71,13 @@
 - **说明**：分页查询当前用户 Persona 列表。
 - **查询参数**：
 
-  | 字段      | 类型                   | 必填 | 默认  | 校验规则                             |
-  | --------- | ---------------------- | ---- | ----- | ------------------------------------ |
-  | page      | number                 | 否   | 1     | int ≥1                               |
-  | pageSize  | number                 | 否   | 20    | int 1~100                            |
-  | search    | string                 | 否   | -     | `@MaxLength(120)`；匹配 name/content |
-  | isDefault | boolean                | 否   | -     | 'true'/'false' 转布尔                |
-  | scope     | `'owned' \| 'library'` | 否   | owned | library 只返回固定管理员共享主数据   |
+  | 字段      | 类型                                | 必填 | 默认  | 校验规则                                                               |
+  | --------- | ----------------------------------- | ---- | ----- | ---------------------------------------------------------------------- |
+  | page      | number                              | 否   | 1     | int ≥1                                                                 |
+  | pageSize  | number                              | 否   | 20    | int 1~100                                                              |
+  | search    | string                              | 否   | -     | `@MaxLength(120)`；匹配 name/content                                   |
+  | isDefault | boolean                             | 否   | -     | 'true'/'false' 转布尔                                                  |
+  | scope     | `'owned' \| 'library' \| 'managed'` | 否   | owned | library 返回固定管理员共享主数据；managed 仅管理员只读查看其他用户数据 |
 
 ## POST /api/personas
 

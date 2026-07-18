@@ -28,6 +28,11 @@ export async function fetchCompanions(search = '', scope: ContentLibraryScope = 
 export async function forkCompanion(id: string) {
   return unwrap(await requestJson<CompanionResponse>(`/companions/${id}/fork`, { method: 'POST' }));
 }
+export async function duplicateCompanion(id: string) {
+  return unwrap(
+    await requestJson<CompanionResponse>(`/companions/${id}/duplicate`, { method: 'POST' })
+  );
+}
 export async function fetchCompanion(id: string) {
   return unwrap(await requestJson<CompanionResponse>(`/companions/${id}`));
 }

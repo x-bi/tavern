@@ -3,8 +3,8 @@ import { IsIn, IsOptional } from 'class-validator';
 import type { ContentLibraryScope } from '../content-library.types';
 
 export class QueryContentLibraryDto {
-  /** owned 默认只查自己的数据；library 只查固定管理员公开的主数据。 */
+  /** owned 查自己；library 查共享主数据；managed 仅管理员只读查看全部用户数据。 */
   @IsOptional()
-  @IsIn(['owned', 'library'])
+  @IsIn(['owned', 'library', 'managed'])
   scope?: ContentLibraryScope = 'owned';
 }

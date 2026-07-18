@@ -179,6 +179,17 @@ export class UsersService {
     return user.id === (await this.getContentLibraryOwner()).id;
   }
 
+  /** 批量读取资源归属人名称，供管理员只读审计列表展示。 */
+  async getDisplayNamesByIds(userIds: string[]): Promise<Map<string, string>> {
+    const ids = [...new Set(userIds.filter(Boolean))];
+    if (ids.length === 0) return new Map();
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, displayName: true }
+    });
+    return new Map(users.map((user) => [user.id, user.displayName]));
+  }
+
   private getPresetUsers(): PresetUser[] {
     return JSON.parse(
       this.configService.getOrThrow<string>('AUTH_PRESET_USERS_JSON')

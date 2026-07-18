@@ -53,6 +53,9 @@ export class CompanionsController {
   @Post(':id/fork') fork(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
     return this.service.fork(user, id);
   }
+  @Post(':id/duplicate') duplicate(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
+    return this.service.duplicate(user, id);
+  }
   @Get(':id') get(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
     return this.service.getById(user, id);
   }

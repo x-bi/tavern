@@ -9,14 +9,14 @@
 - **说明**：分页查询世界书列表（含条目，按 priority 倒序）。默认仅返回 `isSensitive=false`，除非用户开启敏感内容展示。
 - **查询参数**（`QueryWorldBooksDto`）：
 
-  | 字段        | 类型                   | 必填 | 默认  | 说明                                     |
-  | ----------- | ---------------------- | ---- | ----- | ---------------------------------------- |
-  | page        | number                 | 否   | 1     | int ≥1                                   |
-  | pageSize    | number                 | 否   | 20    | 1~100                                    |
-  | search      | string                 | 否   | -     | `@MaxLength(120)`；匹配 name/description |
-  | characterId | string                 | 否   | -     | 按角色 ID 过滤                           |
-  | isEnabled   | boolean                | 否   | -     | 'true'/'false' 转布尔                    |
-  | scope       | `'owned' \| 'library'` | 否   | owned | library 只返回固定管理员共享主数据       |
+  | 字段        | 类型                                | 必填 | 默认  | 说明                                                                   |
+  | ----------- | ----------------------------------- | ---- | ----- | ---------------------------------------------------------------------- |
+  | page        | number                              | 否   | 1     | int ≥1                                                                 |
+  | pageSize    | number                              | 否   | 20    | 1~100                                                                  |
+  | search      | string                              | 否   | -     | `@MaxLength(120)`；匹配 name/description                               |
+  | characterId | string                              | 否   | -     | 按角色 ID 过滤                                                         |
+  | isEnabled   | boolean                             | 否   | -     | 'true'/'false' 转布尔                                                  |
+  | scope       | `'owned' \| 'library' \| 'managed'` | 否   | owned | library 返回固定管理员共享主数据；managed 仅管理员只读查看其他用户数据 |
 
 - **响应**：`data` 为 `{ items: WorldBookResponse[], total, page, pageSize }`（含 `entries`）
 

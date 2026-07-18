@@ -153,9 +153,67 @@ try {
   ) {
     throw new Error('Companion fork did not deep-copy Persona and PromptPreset dependencies.');
   }
+
+  await assertManagedContains(adminToken, 'characters', memberCharacter.id);
+  await assertManagedContains(adminToken, 'prompt-presets', memberPreset.id);
+  await assertManagedContains(adminToken, 'personas', memberPersona.id);
+  await assertManagedContains(adminToken, 'world-books', memberWorldBook.id);
+  await assertManagedContains(adminToken, 'companions', memberCompanion.id);
+  await assertManagedExcludes(adminToken, 'characters', adminCharacter.id);
+  const managedCharacterDetail = await api(adminToken, `characters/${memberCharacter.id}`);
+  if (
+    managedCharacterDetail.isOwner ||
+    !managedCharacterDetail.ownerName ||
+    managedCharacterDetail.canFork
+  ) {
+    throw new Error('Administrator could not inspect member character detail as read-only data.');
+  }
+
+  const forbiddenManaged = await rawApi(
+    memberToken,
+    'characters?scope=managed&page=1&pageSize=100'
+  );
+  if (forbiddenManaged.status !== 403) {
+    throw new Error(`Member managed scope should return 403, received ${forbiddenManaged.status}.`);
+  }
+
   const memory = await api(memberToken, `companions/${memberCompanion.id}/memory`);
   if (memory.relationshipState || memory.currentArc || memory.revisions.length) {
     throw new Error('Companion fork copied relationship memory unexpectedly.');
+  }
+
+  const duplicatedCompanion = await api(memberToken, `companions/${memberCompanion.id}/duplicate`, {
+    method: 'POST'
+  });
+  remember('member', 'companions', duplicatedCompanion.id);
+  if (
+    duplicatedCompanion.id === memberCompanion.id ||
+    duplicatedCompanion.name === memberCompanion.name ||
+    duplicatedCompanion.identityPrompt !== memberCompanion.identityPrompt ||
+    duplicatedCompanion.promptPresetId !== memberCompanion.promptPresetId ||
+    duplicatedCompanion.personaId !== memberCompanion.personaId ||
+    duplicatedCompanion.isShared ||
+    !duplicatedCompanion.isOwner
+  ) {
+    throw new Error('Owned companion duplicate did not preserve private configuration correctly.');
+  }
+  const duplicatedMemory = await api(memberToken, `companions/${duplicatedCompanion.id}/memory`);
+  if (
+    duplicatedMemory.relationshipState ||
+    duplicatedMemory.currentArc ||
+    duplicatedMemory.revisions.length
+  ) {
+    throw new Error('Owned companion duplicate copied relationship memory unexpectedly.');
+  }
+  const deletedCompanion = await api(memberToken, `companions/${duplicatedCompanion.id}`, {
+    method: 'DELETE'
+  });
+  if (!deletedCompanion.deleted || deletedCompanion.id !== duplicatedCompanion.id) {
+    throw new Error('Owned companion delete did not return the expected result.');
+  }
+  const deletedLookup = await rawApi(memberToken, `companions/${duplicatedCompanion.id}`);
+  if (deletedLookup.ok || deletedLookup.status !== 404) {
+    throw new Error('Deleted companion remained accessible.');
   }
 
   const forbiddenUpdate = await rawApi(memberToken, `characters/${adminCharacter.id}`, {
@@ -238,6 +296,21 @@ async function assertLibraryContains(token, path, id) {
   const result = await api(token, `${path}?scope=library&page=1&pageSize=100`);
   if (!result.items.some((item) => item.id === id && item.isShared && item.canFork)) {
     throw new Error(`${path} library did not expose the shared master as fork-only data.`);
+  }
+}
+
+async function assertManagedContains(token, path, id) {
+  const result = await api(token, `${path}?scope=managed&page=1&pageSize=100`);
+  const item = result.items.find((candidate) => candidate.id === id);
+  if (!item || item.isOwner || !item.ownerName || item.canFork) {
+    throw new Error(`${path} managed scope did not expose member-owned data as read-only.`);
+  }
+}
+
+async function assertManagedExcludes(token, path, id) {
+  const result = await api(token, `${path}?scope=managed&page=1&pageSize=100`);
+  if (result.items.some((item) => item.id === id)) {
+    throw new Error(`${path} managed scope unexpectedly repeated administrator-owned data.`);
   }
 }
 

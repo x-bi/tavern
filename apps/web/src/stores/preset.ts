@@ -10,7 +10,7 @@ import {
   type PromptPresetListParams,
   type PromptPresetMutationPayload
 } from '../api/presets';
-import type { PromptPresetPayload } from '@tavern/shared';
+import type { ContentLibraryScope, PromptPresetPayload } from '@tavern/shared';
 
 type PromptPresetState = {
   items: PromptPreset[];
@@ -91,7 +91,7 @@ export const usePresetStore = defineStore('preset', {
         this.saving = false;
       }
     },
-    async loadLibrary(search = '') {
+    async loadLibrary(search = '', scope: Exclude<ContentLibraryScope, 'owned'> = 'library') {
       this.libraryLoading = true;
       this.error = null;
       try {
@@ -99,11 +99,11 @@ export const usePresetStore = defineStore('preset', {
           page: 1,
           pageSize: 100,
           search: search.trim() || undefined,
-          scope: 'library'
+          scope
         });
         this.libraryItems = result.items;
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '预设内容库加载失败。';
+        this.error = error instanceof Error ? error.message : '预设列表加载失败。';
       } finally {
         this.libraryLoading = false;
       }

@@ -17,6 +17,22 @@ export class ContentLibraryService {
     currentUser: CurrentUser,
     scope: ContentLibraryScope = 'owned'
   ): Promise<ContentLibraryAccess> {
+    if (scope === 'managed') {
+      if (currentUser.role !== 'admin') {
+        throw new ForbiddenException({
+          code: ERROR_CODES.ADMIN_ROLE_REQUIRED,
+          message: 'Only administrators can inspect member content.'
+        });
+      }
+
+      return {
+        owner: null,
+        isOwner: false,
+        ownerName: null,
+        isManaged: true
+      };
+    }
+
     const owner =
       scope === 'library' ? await this.usersService.getContentLibraryOwner() : currentUser;
     const isOwner = owner.id === currentUser.id;
@@ -24,8 +40,14 @@ export class ContentLibraryService {
     return {
       owner,
       isOwner,
-      ownerName: isOwner ? null : owner.displayName
+      ownerName: isOwner ? null : owner.displayName,
+      isManaged: false
     };
+  }
+
+  /** 批量解析管理员审计列表中的内容归属人名称。 */
+  async getOwnerNameMap(userIds: string[]): Promise<Map<string, string>> {
+    return this.usersService.getDisplayNamesByIds(userIds);
   }
 
   async assertCanSetShared(currentUser: CurrentUser, value: boolean | undefined): Promise<void> {

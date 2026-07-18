@@ -9,12 +9,12 @@ AI 角色形态（独立长期陪伴分支），与酒馆形态隔离。`Compani
 - **说明**：分页查询当前用户 AI 角色列表。
 - **查询参数**：
 
-  | 字段     | 类型                   | 必填 | 校验规则 + 注释                                |
-  | -------- | ---------------------- | ---- | ---------------------------------------------- |
-  | page     | number                 | 否   | `@IsInt @Min(1)`，默认 1                       |
-  | pageSize | number                 | 否   | `@IsInt @Min(1) @Max(100)`，默认 20            |
-  | search   | string                 | 否   | `@MaxLength(80)`                               |
-  | scope    | `'owned' \| 'library'` | 否   | 默认 owned；library 只返回固定管理员共享主数据 |
+  | 字段     | 类型                                | 必填 | 校验规则 + 注释                                                                    |
+  | -------- | ----------------------------------- | ---- | ---------------------------------------------------------------------------------- |
+  | page     | number                              | 否   | `@IsInt @Min(1)`，默认 1                                                           |
+  | pageSize | number                              | 否   | `@IsInt @Min(1) @Max(100)`，默认 20                                                |
+  | search   | string                              | 否   | `@MaxLength(80)`                                                                   |
+  | scope    | `'owned' \| 'library' \| 'managed'` | 否   | 默认 owned；library 返回固定管理员共享主数据；managed 仅管理员只读查看其他用户数据 |
 
 ## POST /api/companions
 

@@ -39,10 +39,14 @@ export class CompanionsService {
     const access = await this.contentLibraryService.resolveAccess(currentUser, query.scope);
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const where = {
-      userId: access.owner.id,
+      ...(access.isManaged
+        ? { userId: { not: currentUser.id } }
+        : access.owner
+          ? { userId: access.owner.id }
+          : {}),
       deletedAt: null,
       ...(query.scope === 'library' ? { isShared: true } : {}),
-      ...(showSensitiveContent ? {} : { isSensitive: false }),
+      ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       ...(query.search?.trim() ? { name: { contains: query.search.trim() } } : {})
     };
     const [items, total] = await this.prisma.$transaction([
@@ -55,8 +59,13 @@ export class CompanionsService {
       }),
       this.prisma.companion.count({ where })
     ]);
+    const ownerNames = access.isManaged
+      ? await this.contentLibraryService.getOwnerNameMap(items.map((item) => item.userId))
+      : null;
     return {
-      items: items.map((item) => this.toResponse(item, currentUser, access.ownerName)),
+      items: items.map((item) =>
+        this.toResponse(item, currentUser, ownerNames?.get(item.userId) ?? access.ownerName)
+      ),
       total,
       page,
       pageSize
@@ -238,6 +247,39 @@ export class CompanionsService {
       await this.assetsService.discardPreparedAvatarCopy(preparedAvatar);
       throw error;
     }
+  }
+
+  /** 复制当前用户自己的 Companion；保留配置引用，但不复制消息、记忆和分享。 */
+  async duplicate(currentUser: CurrentUser, id: string): Promise<CompanionResponse> {
+    const source = await this.findOwned(currentUser, id);
+    const existingNames = new Set(
+      (
+        await this.prisma.companion.findMany({
+          where: { userId: currentUser.id, deletedAt: null },
+          select: { name: true }
+        })
+      ).map((item) => item.name)
+    );
+    const baseName = `${source.name.slice(0, 70)} 副本`;
+    const name = existingNames.has(baseName)
+      ? createAvailableName(baseName, existingNames)
+      : baseName;
+    const item = await this.prisma.companion.create({
+      data: {
+        userId: currentUser.id,
+        name,
+        identityPrompt: source.identityPrompt,
+        avatarAssetId: source.avatarAssetId,
+        modelFallbackGroupId: source.modelFallbackGroupId,
+        promptPresetId: source.promptPresetId,
+        personaId: source.personaId,
+        isSensitive: source.isSensitive,
+        isShared: false,
+        memory: { create: {} }
+      },
+      include: { avatarAsset: true, memory: true }
+    });
+    return this.toResponse(item, currentUser);
   }
 
   async update(

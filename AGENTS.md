@@ -241,7 +241,8 @@ SQLite 与 Prisma 约束：
 ### 8.1 固定管理员内容库
 
 - 内容库主数据固定归属 `AUTH_PRESET_USERS_JSON` 中第一个内置管理员，不随普通 admin 角色转移；内置管理员账号仍不可降级或删除。
-- Character、Companion、WorldBook、PromptPreset、UserPersona 通过 `isShared` 发布；列表 `scope=owned` 默认只查当前用户，`scope=library` 只查固定管理员的共享主数据。
+- Character、Companion、WorldBook、PromptPreset、UserPersona 通过 `isShared` 发布；列表 `scope=owned` 默认只查当前用户，`scope=library` 只查固定管理员的共享主数据，`scope=managed` 仅管理员可用并只读查看其他用户数据。
+- 管理员通过“成员内容”范围审计成员创建的数据；该范围不授予编辑、删除、导出、聊天、设默认或运行时引用权限，资源操作仍按实际 `userId` 校验所有权。
 - 成员对主数据只有查看和 fork 权限，不可编辑、删除、导出、聊天、设默认或在 Prompt 中直接引用；所有运行时选择器和 Prompt 查询仍只读取当前成员自己的数据。
 - fork 是复制时快照，复制后不再同步；`isSensitive` 随快照复制，副本固定 `isShared=false`。Character/Companion 头像必须复制文件和 Asset，禁止跨账号引用原 Asset。
 - WorldBook 通过 `WorldBookCharacter` 关联零到多个 Character；没有角色关联只表示在该 `userId` 内全局生效。绑定角色的共享世界书 fork 时必须选择成员自己的目标 Character。

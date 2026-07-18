@@ -72,10 +72,14 @@ export class CharactersService {
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: access.owner.id,
+      ...(access.isManaged
+        ? { userId: { not: currentUser.id } }
+        : access.owner
+          ? { userId: access.owner.id }
+          : {}),
       ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
-      ...(showSensitiveContent ? {} : { isSensitive: false }),
+      ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       // isArchived 未传时不加条件（查全部），传了则按值过滤归档/未归档
       ...(query.isArchived === undefined ? {} : { isArchived: query.isArchived }),
       // search 关键字：匹配 name/description/personality/scenario 任一包含
@@ -104,9 +108,18 @@ export class CharactersService {
       }),
       this.prisma.character.count({ where })
     ]);
+    const ownerNames = access.isManaged
+      ? await this.contentLibraryService.getOwnerNameMap(items.map((item) => item.userId))
+      : null;
 
     return {
-      items: items.map((character) => this.toResponse(character, currentUser, access.ownerName)),
+      items: items.map((character) =>
+        this.toResponse(
+          character,
+          currentUser,
+          ownerNames?.get(character.userId) ?? access.ownerName
+        )
+      ),
       total,
       page,
       pageSize
@@ -266,9 +279,11 @@ export class CharactersService {
    */
   async getById(currentUser: CurrentUser, id: string): Promise<CharacterResponse> {
     const character = await this.findVisibleActiveCharacter(currentUser, id);
-    const owner =
-      character.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
-    return this.toResponse(character, currentUser, owner?.displayName ?? null);
+    const ownerNames =
+      character.userId === currentUser.id
+        ? null
+        : await this.contentLibraryService.getOwnerNameMap([character.userId]);
+    return this.toResponse(character, currentUser, ownerNames?.get(character.userId) ?? null);
   }
 
   /** 复制内容库主数据和头像，生成只属于当前用户的静态副本。 */
@@ -453,8 +468,10 @@ export class CharactersService {
       where: {
         id,
         deletedAt: null,
-        ...(showSensitiveContent ? {} : { isSensitive: false }),
-        OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
+        ...(currentUser.role === 'admin' || showSensitiveContent ? {} : { isSensitive: false }),
+        ...(currentUser.role === 'admin'
+          ? {}
+          : { OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }] })
       },
       include: { avatarAsset: true }
     });

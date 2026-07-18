@@ -9,13 +9,13 @@
 - **说明**：当前用户角色列表分页查询。
 - **查询参数**（`QueryCharactersDto`）：
 
-  | 字段       | 类型                   | 必填 | 校验/默认                                                          |
-  | ---------- | ---------------------- | ---- | ------------------------------------------------------------------ |
-  | page       | number                 | 否   | int ≥1，默认 1                                                     |
-  | pageSize   | number                 | 否   | int 1~100，默认 20                                                 |
-  | search     | string                 | 否   | `@MaxLength(120)`；匹配 name/description/personality/scenario 包含 |
-  | isArchived | boolean                | 否   | 'true'/'false' 转布尔，默认不过滤                                  |
-  | scope      | `'owned' \| 'library'` | 否   | 默认 owned；library 只返回固定管理员 `isShared=true` 主数据        |
+  | 字段       | 类型                                | 必填 | 校验/默认                                                                          |
+  | ---------- | ----------------------------------- | ---- | ---------------------------------------------------------------------------------- |
+  | page       | number                              | 否   | int ≥1，默认 1                                                                     |
+  | pageSize   | number                              | 否   | int 1~100，默认 20                                                                 |
+  | search     | string                              | 否   | `@MaxLength(120)`；匹配 name/description/personality/scenario 包含                 |
+  | isArchived | boolean                             | 否   | 'true'/'false' 转布尔，默认不过滤                                                  |
+  | scope      | `'owned' \| 'library' \| 'managed'` | 否   | 默认 owned；library 返回固定管理员共享主数据；managed 仅管理员只读查看其他用户数据 |
 
 - **响应**：`data` 为 `{ items: Character[], total, page, pageSize }`
 

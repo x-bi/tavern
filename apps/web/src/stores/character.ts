@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import type { ContentLibraryScope } from '@tavern/shared';
 
 import {
   createCharacter,
@@ -100,7 +101,7 @@ export const useCharacterStore = defineStore('character', {
         this.detailLoading = false;
       }
     },
-    async loadLibrary(search = '') {
+    async loadLibrary(search = '', scope: Exclude<ContentLibraryScope, 'owned'> = 'library') {
       this.libraryLoading = true;
       this.error = null;
       try {
@@ -108,11 +109,11 @@ export const useCharacterStore = defineStore('character', {
           page: 1,
           pageSize: 100,
           search: search.trim() || undefined,
-          scope: 'library'
+          scope
         });
         this.libraryItems = result.items;
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '角色内容库加载失败。';
+        this.error = error instanceof Error ? error.message : '角色列表加载失败。';
       } finally {
         this.libraryLoading = false;
       }

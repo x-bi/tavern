@@ -16,7 +16,11 @@
     <n-tabs v-model:value="activeScope" type="segment">
       <n-tab name="owned">我的 AI 角色</n-tab>
       <n-tab name="library">内容库</n-tab>
+      <n-tab v-if="isAdmin" name="managed">成员内容</n-tab>
     </n-tabs>
+    <n-alert v-if="activeScope === 'library'" type="info" :bordered="false">
+      内容库遵循当前账号的“显示敏感内容”设置；敏感共享 AI 角色未显示时，请先到设置中开启。
+    </n-alert>
     <n-card v-if="activeScope === 'owned' && showCreate" title="新建 AI 角色"
       ><n-form
         ><n-form-item label="名字"
@@ -60,6 +64,16 @@
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <n-spin v-if="loading" />
     <section v-else class="companion-grid">
+      <n-empty
+        v-if="!visibleItems.length"
+        :description="
+          activeScope === 'owned'
+            ? '还没有 AI 角色。'
+            : activeScope === 'library'
+              ? '管理员尚未发布共享 AI 角色，或共享内容被敏感内容设置隐藏。'
+              : '当前还没有成员创建 AI 角色。'
+        "
+      />
       <n-card
         v-for="item in visibleItems"
         :key="item.id"
@@ -81,17 +95,36 @@
                 item.memoryEnabled ? (item.memoryPaused ? '已暂停' : '已开启') : '未开启'
               }}</n-tag
             >
-            <n-button
-              size="tiny"
-              quaternary
-              @click.stop="downloadCompanion(item.id)"
-              v-if="activeScope === 'owned'"
-              >导出</n-button
-            >
+            <n-space v-if="activeScope === 'owned'" size="small" class="companion-card__actions">
+              <n-button size="tiny" quaternary @click.stop="openSettings(item.id)"
+                >记忆与设置</n-button
+              >
+              <n-button size="tiny" quaternary @click.stop="downloadCompanion(item.id)"
+                >导出</n-button
+              >
+              <n-button
+                size="tiny"
+                quaternary
+                :loading="busyId === item.id && busyAction === 'duplicate'"
+                :disabled="busyId !== null"
+                @click.stop="copyOwned(item)"
+                >复制</n-button
+              >
+              <n-button
+                size="tiny"
+                quaternary
+                type="error"
+                :loading="busyId === item.id && busyAction === 'delete'"
+                :disabled="busyId !== null"
+                @click.stop="confirmDelete(item)"
+                >删除</n-button
+              >
+            </n-space>
             <n-space v-else align="center">
               <n-tag size="small" :bordered="false">{{ item.ownerName ?? '内容库' }}</n-tag>
+              <n-tag v-if="activeScope === 'managed'" type="info" :bordered="false">只读</n-tag>
               <n-button
-                v-if="item.canFork"
+                v-else-if="item.canFork"
                 size="small"
                 type="primary"
                 :loading="saving"
@@ -131,13 +164,15 @@ import type {
   CompanionResponse,
   ContentLibraryScope
 } from '@tavern/shared';
-import { NSelect, type SelectOption } from 'naive-ui';
+import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { uploadAsset } from '../../api/assets';
 import { getStoredCurrentUser } from '../../api/auth';
 import {
   createCompanion,
+  deleteCompanion,
+  duplicateCompanion,
   exportCompanionJson,
   fetchCompanionImportTemplate,
   fetchCompanions,
@@ -149,6 +184,8 @@ import { fetchPersonas } from '../../api/personas';
 import { fetchPromptPresets } from '../../api/presets';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 const router = useRouter();
+const dialog = useDialog();
+const message = useMessage();
 const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const items = ref<CompanionResponse[]>([]);
 const libraryItems = ref<CompanionResponse[]>([]);
@@ -158,6 +195,8 @@ const visibleItems = computed(() =>
 );
 const loading = ref(false);
 const saving = ref(false);
+const busyId = ref<string | null>(null);
+const busyAction = ref<'duplicate' | 'delete' | null>(null);
 const error = ref('');
 const showCreate = ref(false);
 const draft = reactive({
@@ -182,7 +221,7 @@ const templateLoading = ref(false);
 const importPreview = ref<CompanionImportPreview | null>(null);
 onMounted(load);
 watch(activeScope, (scope) => {
-  if (scope === 'library') void loadLibrary();
+  if (scope !== 'owned') void loadLibrary(scope);
 });
 async function load() {
   loading.value = true;
@@ -204,11 +243,11 @@ async function load() {
     loading.value = false;
   }
 }
-async function loadLibrary() {
+async function loadLibrary(scope: Exclude<ContentLibraryScope, 'owned'>) {
   loading.value = true;
   error.value = '';
   try {
-    libraryItems.value = (await fetchCompanions('', 'library')).items;
+    libraryItems.value = (await fetchCompanions('', scope)).items;
   } catch (e) {
     error.value = e instanceof Error ? e.message : '内容库加载失败';
   } finally {
@@ -254,8 +293,50 @@ async function copyFromLibrary(id: string) {
     saving.value = false;
   }
 }
+async function copyOwned(item: CompanionResponse) {
+  busyId.value = item.id;
+  busyAction.value = 'duplicate';
+  error.value = '';
+  try {
+    const copied = await duplicateCompanion(item.id);
+    items.value = [copied, ...items.value];
+    message.success(`已复制为「${copied.name}」，聊天记录和长期记忆未复制。`);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'AI 角色复制失败';
+  } finally {
+    busyId.value = null;
+    busyAction.value = null;
+  }
+}
+function confirmDelete(item: CompanionResponse) {
+  dialog.warning({
+    title: '删除 AI 角色',
+    content: `确认删除「${item.name}」？删除后角色、聊天、长期记忆和分享入口将不再可访问。`,
+    positiveText: '删除',
+    negativeText: '取消',
+    onPositiveClick: () => removeOwned(item)
+  });
+}
+async function removeOwned(item: CompanionResponse) {
+  busyId.value = item.id;
+  busyAction.value = 'delete';
+  error.value = '';
+  try {
+    await deleteCompanion(item.id);
+    items.value = items.value.filter((candidate) => candidate.id !== item.id);
+    message.success(`已删除「${item.name}」。`);
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'AI 角色删除失败';
+  } finally {
+    busyId.value = null;
+    busyAction.value = null;
+  }
+}
 function open(id: string) {
   void router.push(`/companion/${id}`);
+}
+function openSettings(id: string) {
+  void router.push({ path: `/companion/${id}`, query: { panel: 'memory' } });
 }
 function openImport() {
   importPreview.value = null;
@@ -344,6 +425,9 @@ function downloadJson(fileName: string, value: unknown) {
 .companion-card__body {
   display: flex;
   gap: 14px;
+}
+.companion-card__actions {
+  margin-top: 8px;
 }
 .companion-card h3 {
   margin: 0 0 6px;

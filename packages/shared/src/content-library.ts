@@ -1,4 +1,4 @@
-export type ContentLibraryScope = 'owned' | 'library';
+export type ContentLibraryScope = 'owned' | 'library' | 'managed';
 
 export type ContentLibraryFields = {
   isShared: boolean;

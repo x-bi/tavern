@@ -119,10 +119,14 @@ export class WorldBooksService {
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: access.owner.id,
+      ...(access.isManaged
+        ? { userId: { not: currentUser.id } }
+        : access.owner
+          ? { userId: access.owner.id }
+          : {}),
       ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
-      ...(showSensitiveContent ? {} : { isSensitive: false }),
+      ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       // characterId/isEnabled 未传时不加条件，传了则按关联角色过滤
       ...(query.characterId === undefined
         ? {}
@@ -158,10 +162,17 @@ export class WorldBooksService {
       }),
       this.prisma.worldBook.count({ where })
     ]);
+    const ownerNames = access.isManaged
+      ? await this.contentLibraryService.getOwnerNameMap(items.map((item) => item.userId))
+      : null;
 
     return {
       items: items.map((worldBook) =>
-        this.toWorldBookResponse(worldBook, currentUser, access.ownerName)
+        this.toWorldBookResponse(
+          worldBook,
+          currentUser,
+          ownerNames?.get(worldBook.userId) ?? access.ownerName
+        )
       ),
       total,
       page,

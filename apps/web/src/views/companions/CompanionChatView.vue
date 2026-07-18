@@ -162,9 +162,13 @@
       </aside>
     </div>
 
-    <n-drawer v-model:show="showMemory" placement="right" :width="520">
+    <n-drawer v-model:show="showMemory" placement="right" width="min(520px, 100vw)">
       <n-drawer-content title="记忆与设置" closable>
-        <section v-if="memory" class="memory-panel">
+        <n-spin v-if="loading && !memory" description="正在加载记忆与设置" />
+        <n-alert v-else-if="!memory" type="error">
+          {{ error || '记忆与设置加载失败，请刷新后重试。' }}
+        </n-alert>
+        <section v-else class="memory-panel">
           <strong>角色设置</strong>
           <n-form-item label="名字"
             ><n-input v-model:value="settings.name" maxlength="80"
@@ -285,7 +289,7 @@ const input = ref('');
 const error = ref('');
 const loading = ref(true);
 const streaming = ref(false);
-const showMemory = ref(false);
+const showMemory = ref(route.query.panel === 'memory');
 const savingMemory = ref(false);
 const savingSettings = ref(false);
 const editing = ref(false);

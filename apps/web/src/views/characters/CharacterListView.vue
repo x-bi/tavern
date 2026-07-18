@@ -17,7 +17,12 @@
     <n-tabs v-model:value="activeScope" type="segment">
       <n-tab name="owned">我的角色</n-tab>
       <n-tab name="library">内容库</n-tab>
+      <n-tab v-if="isAdmin" name="managed">成员内容</n-tab>
     </n-tabs>
+
+    <n-alert v-if="activeScope === 'library'" type="info" :bordered="false">
+      内容库遵循当前账号的“显示敏感内容”设置；敏感共享角色未显示时，请先到设置中开启。
+    </n-alert>
 
     <section class="character-list__toolbar">
       <n-input
@@ -49,7 +54,11 @@
       "
       title="还没有角色"
       :description="
-        activeScope === 'owned' ? '创建第一个角色后，它会出现在这里。' : '管理员尚未发布共享角色。'
+        activeScope === 'owned'
+          ? '创建第一个角色后，它会出现在这里。'
+          : activeScope === 'library'
+            ? '管理员尚未发布共享角色，或共享角色被敏感内容设置隐藏。'
+            : '当前还没有成员创建角色。'
       "
     />
 
@@ -73,8 +82,11 @@
         <template #footer>
           <n-space justify="space-between">
             <n-tag :bordered="false">{{ character.ownerName ?? '内容库' }}</n-tag>
+            <n-button v-if="activeScope === 'managed'" secondary @click="goDetail(character.id)">
+              只读查看
+            </n-button>
             <n-button
-              v-if="character.canFork"
+              v-else-if="character.canFork"
               type="primary"
               :loading="characterStore.saving"
               @click="copyFromLibrary(character.id)"
@@ -145,6 +157,7 @@ import ErrorState from '../../components/ErrorState.vue';
 import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import { fetchCharacterImportTemplate, importCharacterJson } from '../../api/characters';
+import { getStoredCurrentUser } from '../../api/auth';
 import { useCharacterStore } from '../../stores/character';
 import { downloadJson } from '../../utils/downloadJson';
 
@@ -158,6 +171,7 @@ const importPreviewing = ref(false);
 const importing = ref(false);
 const importError = ref<string | null>(null);
 const templateLoading = ref(false);
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const activeScope = ref<ContentLibraryScope>('owned');
 
 onMounted(() => {
@@ -165,13 +179,13 @@ onMounted(() => {
 });
 
 watch(activeScope, (scope) => {
-  if (scope === 'library') void characterStore.loadLibrary(searchText.value);
+  if (scope !== 'owned') void characterStore.loadLibrary(searchText.value, scope);
 });
 
 function applySearch() {
   characterStore.setSearch(searchText.value);
-  if (activeScope.value === 'library') {
-    void characterStore.loadLibrary(searchText.value);
+  if (activeScope.value !== 'owned') {
+    void characterStore.loadLibrary(searchText.value, activeScope.value);
     return;
   }
   void characterStore.loadCharacters({

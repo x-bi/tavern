@@ -22,6 +22,7 @@
     "db:migrate-legacy-admin": "node prisma/migrate-legacy-data-to-admin.cjs",
     "verify:share-layer": "node scripts/verify-share-layer.mjs",
     "verify:content-library": "node scripts/verify-content-library.mjs",
+    "verify:companion-ui": "node scripts/verify-companion-ui.mjs",
     "verify:world-book-ui": "node scripts/verify-world-book-ui.mjs",
     "verify:prompt-builder": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-prompt-builder.ts",
     "verify:companion-memory": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.companion-memory.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-companion-memory.ts",

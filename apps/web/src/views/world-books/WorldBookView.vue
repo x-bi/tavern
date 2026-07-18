@@ -17,7 +17,12 @@
     <n-tabs v-model:value="activeScope" type="segment">
       <n-tab name="owned">我的世界书</n-tab>
       <n-tab name="library">内容库</n-tab>
+      <n-tab v-if="isAdmin" name="managed">成员内容</n-tab>
     </n-tabs>
+
+    <n-alert v-if="activeScope === 'library'" type="info" :bordered="false">
+      内容库遵循当前账号的“显示敏感内容”设置；敏感共享世界书未显示时，请先到设置中开启。
+    </n-alert>
 
     <section class="world-book-view__toolbar">
       <n-input
@@ -120,8 +125,12 @@
 
     <EmptyState
       v-else-if="!worldBookStore.libraryItems.length"
-      title="内容库还没有世界书"
-      description="管理员尚未发布共享世界书。"
+      :title="activeScope === 'library' ? '内容库还没有世界书' : '成员还没有世界书'"
+      :description="
+        activeScope === 'library'
+          ? '管理员尚未发布共享世界书，或共享内容被敏感内容设置隐藏。'
+          : '当前还没有成员创建世界书。'
+      "
     />
 
     <section v-else class="world-book-library">
@@ -140,8 +149,9 @@
         <template #footer>
           <n-space justify="space-between">
             <span>{{ worldBook.ownerName ?? '内容库' }}</span>
+            <n-tag v-if="activeScope === 'managed'" type="info" :bordered="false">只读</n-tag>
             <n-button
-              v-if="worldBook.canFork"
+              v-else-if="worldBook.canFork"
               type="primary"
               :loading="worldBookStore.saving"
               @click="prepareLibraryFork(worldBook)"
@@ -385,16 +395,18 @@ onMounted(() => {
 });
 
 watch(activeScope, (scope) => {
+  if (scope !== 'owned') {
+    void worldBookStore.loadLibrary(searchText.value, scope);
+  }
   if (scope === 'library') {
-    void worldBookStore.loadLibrary(searchText.value);
     void characterStore.loadCharacters({ page: 1, pageSize: 100, isArchived: false });
   }
 });
 
 function applySearch() {
   worldBookStore.setSearch(searchText.value);
-  if (activeScope.value === 'library') {
-    void worldBookStore.loadLibrary(searchText.value);
+  if (activeScope.value !== 'owned') {
+    void worldBookStore.loadLibrary(searchText.value, activeScope.value);
     return;
   }
   void worldBookStore.loadWorldBooks({

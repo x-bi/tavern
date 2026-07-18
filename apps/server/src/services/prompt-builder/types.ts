@@ -173,7 +173,8 @@ export type WorldBookEntryContext = {
 export type WorldBookContext = {
   id: string;
   userId: string;
-  characterId?: string | null;
+  /** 关联角色 ID 列表；为空时为全局世界书。 */
+  characterIds?: string[];
   name: string;
   description: string;
   isEnabled: boolean;

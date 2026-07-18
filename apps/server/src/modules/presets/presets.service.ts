@@ -16,6 +16,7 @@ import {
 } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { ContentLibraryService } from '../content-library/content-library.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreatePromptPresetDto } from './dto/create-prompt-preset.dto';
 import type { QueryPromptPresetsDto } from './dto/query-prompt-presets.dto';
@@ -68,6 +69,8 @@ export class PresetsService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
+    @Inject(ContentLibraryService)
+    private readonly contentLibraryService: ContentLibraryService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService
   ) {}
@@ -84,10 +87,12 @@ export class PresetsService {
   ): Promise<PromptPresetListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const access = await this.contentLibraryService.resolveAccess(currentUser, query.scope);
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: currentUser.id,
+      userId: access.owner.id,
+      ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
       ...(showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
@@ -116,7 +121,7 @@ export class PresetsService {
     ]);
 
     return {
-      items: items.map((preset) => this.toResponse(preset)),
+      items: items.map((preset) => this.toResponse(preset, currentUser, access.ownerName)),
       total,
       page,
       pageSize
@@ -134,6 +139,7 @@ export class PresetsService {
     currentUser: CurrentUser,
     dto: CreatePromptPresetDto
   ): Promise<PromptPresetResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     const data = {
       userId: currentUser.id,
       name: dto.name,
@@ -143,7 +149,8 @@ export class PresetsService {
       // 参数提取后序列化成 JSON 存储
       parametersJson: this.stringifyParams(this.pickParams(dto)),
       isDefault: dto.isDefault ?? false,
-      isSensitive: dto.isSensitive ?? false
+      isSensitive: dto.isSensitive ?? false,
+      isShared: dto.isShared ?? false
     };
 
     try {
@@ -165,7 +172,7 @@ export class PresetsService {
           })
         : await this.prisma.promptPreset.create({ data });
 
-      return this.toResponse(preset);
+      return this.toResponse(preset, currentUser);
     } catch (error) {
       // 捕获唯一名冲突（P2002）转成 409
       this.throwIfUniqueNameConflict(error);
@@ -227,7 +234,8 @@ export class PresetsService {
         parametersJson: this.stringifyParams(normalized.parameters),
         metadataJson: this.stringifyNullable(normalized.metadata),
         isDefault: normalized.isDefault,
-        isSensitive: false
+        isSensitive: false,
+        isShared: false
       };
       const preset = data.isDefault
         ? await this.prisma.$transaction(async (tx) => {
@@ -252,12 +260,39 @@ export class PresetsService {
           ...preview,
           name
         },
-        promptPreset: this.toResponse(preset)
+        promptPreset: this.toResponse(preset, currentUser)
       };
     } catch (error) {
       this.throwIfUniqueNameConflict(error);
       throw error;
     }
+  }
+
+  async getById(currentUser: CurrentUser, id: string): Promise<PromptPresetResponse> {
+    const preset = await this.findVisibleActivePromptPreset(currentUser, id);
+    const owner =
+      preset.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
+    return this.toResponse(preset, currentUser, owner?.displayName ?? null);
+  }
+
+  async fork(currentUser: CurrentUser, id: string): Promise<PromptPresetResponse> {
+    const source = await this.findLibraryPromptPreset(currentUser, id);
+    const names = await this.loadExistingNames(currentUser);
+    const preset = await this.prisma.promptPreset.create({
+      data: {
+        userId: currentUser.id,
+        name: createAvailableName(source.name, names),
+        description: source.description,
+        systemPrompt: source.systemPrompt,
+        outputRules: source.outputRules,
+        parametersJson: source.parametersJson,
+        metadataJson: source.metadataJson,
+        isSensitive: source.isSensitive,
+        isShared: false,
+        isDefault: false
+      }
+    });
+    return this.toResponse(preset, currentUser);
   }
 
   /** 返回可直接用于参数预设导入的模板。 */
@@ -295,6 +330,7 @@ export class PresetsService {
     id: string,
     dto: UpdatePromptPresetDto
   ): Promise<PromptPresetResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     // 取现有配置，用于合并参数
     const existing = await this.findOwnedActivePromptPreset(currentUser, id);
     // 合并参数：现有参数 + DTO 传入的参数（后者覆盖）
@@ -307,6 +343,7 @@ export class PresetsService {
       ...(dto.outputRules === undefined ? {} : { outputRules: dto.outputRules }),
       ...(this.hasParamUpdate(dto) ? { parametersJson: this.stringifyParams(params) } : {}),
       ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
+      ...(dto.isShared === undefined ? {} : { isShared: dto.isShared }),
       ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault })
     };
 
@@ -342,7 +379,7 @@ export class PresetsService {
         await this.refreshConversationSensitivityForPreset(currentUser, id, dto.isSensitive);
       }
 
-      return this.toResponse(preset);
+      return this.toResponse(preset, currentUser);
     } catch (error) {
       this.throwIfUniqueNameConflict(error);
       throw error;
@@ -461,25 +498,82 @@ export class PresetsService {
     return preset;
   }
 
+  private async findVisibleActivePromptPreset(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<PromptPreset> {
+    const owner = await this.contentLibraryService.getOwner();
+    const preset = await this.prisma.promptPreset.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false }),
+        OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
+      }
+    });
+    if (!preset)
+      throw new NotFoundException({
+        code: ERROR_CODES.PROMPT_PRESET_NOT_FOUND,
+        message: 'Prompt preset not found.'
+      });
+    return preset;
+  }
+
+  private async findLibraryPromptPreset(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<PromptPreset> {
+    const owner = await this.contentLibraryService.getOwner();
+    const preset = await this.prisma.promptPreset.findFirst({
+      where: {
+        id,
+        userId: owner.id,
+        isShared: true,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
+      }
+    });
+    if (!preset)
+      throw new NotFoundException({
+        code: ERROR_CODES.CONTENT_LIBRARY_ITEM_NOT_FOUND,
+        message: 'Shared prompt preset not found.'
+      });
+    return preset;
+  }
+
   /**
    * 数据库记录 → 对外响应（解析参数 JSON、格式化时间）。
    * @param preset 预设数据库记录。
    * @returns 预设响应。
    */
-  private toResponse(preset: PromptPreset): PromptPresetResponse {
+  private toResponse(
+    preset: PromptPreset,
+    currentUser: CurrentUser,
+    ownerName: string | null = null
+  ): PromptPresetResponse {
     const params = this.parseParams(preset.parametersJson);
+    const isOwner = preset.userId === currentUser.id;
 
     return {
       id: preset.id,
       userId: preset.userId,
       name: preset.name,
       description: preset.description,
+      systemPrompt: preset.systemPrompt,
       outputRules: preset.outputRules,
       temperature: params.temperature ?? null,
       topP: params.topP ?? null,
       maxTokens: params.maxTokens ?? null,
       isDefault: preset.isDefault,
       isSensitive: preset.isSensitive,
+      isShared: preset.isShared,
+      isOwner,
+      ownerName,
+      canFork: !isOwner && preset.isShared,
       createdAt: preset.createdAt.toISOString(),
       updatedAt: preset.updatedAt.toISOString()
     };

@@ -2,8 +2,8 @@
   "format": "tavern-lite.world-book.v1",
   "name": "雾港与钟楼",
   "description": "用于雾港调查线的地点、组织和传闻设定。",
-  "characterId": null,
-  "isEnabled": true,
+  "characterIds": [],
+  "isEnabled": false,
   "scanDepth": 8,
   "tokenBudget": 1400,
   "metadata": {

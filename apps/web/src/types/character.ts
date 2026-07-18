@@ -49,6 +49,8 @@ export type CharacterEditorForm = {
   exampleMessagesText: string;
   /** 是否标记为敏感内容。 */
   isSensitive: boolean;
+  /** 固定管理员可发布到内容库。 */
+  isShared: boolean;
 };
 
 /**
@@ -75,4 +77,6 @@ export type CharacterMutationPayload = {
   metadata: CharacterMetadata;
   /** 是否标记为敏感内容。 */
   isSensitive?: boolean;
+  /** 是否发布到固定管理员内容库。 */
+  isShared?: boolean;
 };

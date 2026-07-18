@@ -62,4 +62,8 @@ export class CreatePromptPresetDto {
   @IsOptional()
   @IsBoolean()
   isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 }

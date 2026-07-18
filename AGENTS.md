@@ -223,7 +223,7 @@ flowchart LR
 - 本地文件系统：头像、导入文件、备份文件。
 - Prisma migration：数据库结构演进。
 
-关键实体（`prisma/schema.prisma`）：User、Character、CharacterAsset、ModelProvider、ProviderModel、ModelFallbackGroup、ModelFallbackCandidate、PromptPreset、UserPersona、Conversation、Message、WorldBook、WorldBookEntry、Asset、AppSetting，以及独立 AI 角色的 Companion、CompanionMessage、CompanionMemory、CompanionMemoryRevision。所有业务实体为用户级（直接或经 Companion 归属 `userId`）。数据结构只通过 migration 演进，不应手工改表。
+关键实体（`prisma/schema.prisma`）：User、Character、CharacterAsset、ModelProvider、ProviderModel、ModelFallbackGroup、ModelFallbackCandidate、PromptPreset、UserPersona、Conversation、Message、WorldBook、WorldBookCharacter、WorldBookEntry、Asset、AppSetting，以及独立 AI 角色的 Companion、CompanionMessage、CompanionMemory、CompanionMemoryRevision。所有业务实体为用户级（直接或经 Companion 归属 `userId`）。数据结构只通过 migration 演进，不应手工改表。
 
 SQLite 与 Prisma 约束：
 
@@ -237,6 +237,15 @@ SQLite 与 Prisma 约束：
 - 原始 SQL 只在 Prisma 无法表达且有明确理由时使用，并必须局部封装。
 - seed 数据不得包含真实 API Key 或私人聊天内容。
 - 备份恢复必须同时考虑 SQLite 文件和 uploads 目录。
+
+### 8.1 固定管理员内容库
+
+- 内容库主数据固定归属 `AUTH_PRESET_USERS_JSON` 中第一个内置管理员，不随普通 admin 角色转移；内置管理员账号仍不可降级或删除。
+- Character、Companion、WorldBook、PromptPreset、UserPersona 通过 `isShared` 发布；列表 `scope=owned` 默认只查当前用户，`scope=library` 只查固定管理员的共享主数据。
+- 成员对主数据只有查看和 fork 权限，不可编辑、删除、导出、聊天、设默认或在 Prompt 中直接引用；所有运行时选择器和 Prompt 查询仍只读取当前成员自己的数据。
+- fork 是复制时快照，复制后不再同步；`isSensitive` 随快照复制，副本固定 `isShared=false`。Character/Companion 头像必须复制文件和 Asset，禁止跨账号引用原 Asset。
+- WorldBook 通过 `WorldBookCharacter` 关联零到多个 Character；没有角色关联只表示在该 `userId` 内全局生效。绑定角色的共享世界书 fork 时必须选择成员自己的目标 Character。
+- Companion fork 会深复制绑定的 Persona 与 PromptPreset，不复制消息、记忆内容或记忆版本；只创建空白 CompanionMemory。ModelFallbackGroup 仍为全站共享配置。
 
 ## 9. 统一响应规范
 
@@ -437,6 +446,7 @@ AI 角色是酒馆之外的独立 AI 女友 / 长期陪伴产品区。一个 `Co
 - AI 角色不复用酒馆的 `Conversation` / `Character` / `Message` / `PromptBuilderService` / `POST /api/chat/stream`；使用 `Companion`、`CompanionMessage`、`CompanionMemory`、独立 `/api/companions/:id/chat/stream` 与前端 `/companion`。
 - AI 角色 Prompt Builder 是独立新建实现，拥有自己的 `PromptSectionKind` / `BuildPromptInput` / `build()`；它包含受管的 `companion_style` 与条件 `companion_memory` section，酒馆 Builder 永远不含这两项。
 - 长期记忆仅按 `Companion.id` 隔离、显式开启；不会写回酒馆角色卡、Persona、世界书或酒馆会话。
+- 共享 Companion 只作为固定管理员内容库中的可复制模板；成员 fork 后获得新的 Companion、依赖副本、空消息线程和空长期记忆，不能直接使用或修改管理员主数据。
 
 共享层只包括 `ModelGatewayService`、`PrismaService`、Auth、SSE 帧解析，以及用户级 `ModelFallbackGroup` / `PromptPreset` / `UserPersona` / `Asset`。总结可单独选择模型链，不影响 AI 角色聊天模型链。
 

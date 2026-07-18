@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -34,12 +40,18 @@ export class UsersService {
   }
 
   async findActiveByUsername(username: string): Promise<UserRecord | null> {
-    const user = await this.prisma.user.findFirst({ where: { username, isActive: true, deletedAt: null }, select: this.userSelect() });
+    const user = await this.prisma.user.findFirst({
+      where: { username, isActive: true, deletedAt: null },
+      select: this.userSelect()
+    });
     return user ? this.toUserRecord(user) : null;
   }
 
   async findActiveById(id: string): Promise<UserRecord | null> {
-    const user = await this.prisma.user.findFirst({ where: { id, isActive: true, deletedAt: null }, select: this.userSelect() });
+    const user = await this.prisma.user.findFirst({
+      where: { id, isActive: true, deletedAt: null },
+      select: this.userSelect()
+    });
     return user ? this.toUserRecord(user) : null;
   }
 
@@ -62,7 +74,10 @@ export class UsersService {
     return this.toManagedUser(user);
   }
 
-  async createManaged(input: { username: string; displayName: string; password: string; role: UserRole }, hash: (value: string) => string) {
+  async createManaged(
+    input: { username: string; displayName: string; password: string; role: UserRole },
+    hash: (value: string) => string
+  ) {
     const username = input.username.trim();
     const exists = await this.prisma.user.findUnique({ where: { username } });
     if (exists) this.throwUsernameExists();
@@ -78,13 +93,23 @@ export class UsersService {
     return this.toManagedUser(user);
   }
 
-  async updateManaged(id: string, input: { username?: string; displayName?: string; password?: string; role?: UserRole }, hash: (value: string) => string) {
+  async updateManaged(
+    id: string,
+    input: { username?: string; displayName?: string; password?: string; role?: UserRole },
+    hash: (value: string) => string
+  ) {
     const exists = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
     if (!exists) this.throwUserNotFound();
     const builtIn = this.isBuiltIn(exists.username);
     const username = input.username?.trim();
-    if (builtIn && ((username && username !== exists.username) || (input.role && input.role !== exists.role))) {
-      throw new ForbiddenException({ code: ERROR_CODES.USER_BUILT_IN_PROTECTED, message: '内置账号的账号名和角色不能修改。' });
+    if (
+      builtIn &&
+      ((username && username !== exists.username) || (input.role && input.role !== exists.role))
+    ) {
+      throw new ForbiddenException({
+        code: ERROR_CODES.USER_BUILT_IN_PROTECTED,
+        message: '内置账号的账号名和角色不能修改。'
+      });
     }
     if (username && username !== exists.username) {
       const duplicate = await this.prisma.user.findUnique({ where: { username } });
@@ -110,10 +135,16 @@ export class UsersService {
     const exists = await this.prisma.user.findFirst({ where: { id, deletedAt: null } });
     if (!exists) this.throwUserNotFound();
     if (this.isBuiltIn(exists.username)) {
-      throw new ForbiddenException({ code: ERROR_CODES.USER_BUILT_IN_PROTECTED, message: '内置账号不能删除。' });
+      throw new ForbiddenException({
+        code: ERROR_CODES.USER_BUILT_IN_PROTECTED,
+        message: '内置账号不能删除。'
+      });
     }
     if (exists.role === 'admin') await this.assertAnotherAdminExists(id);
-    await this.prisma.user.update({ where: { id }, data: { isActive: false, deletedAt: new Date() } });
+    await this.prisma.user.update({
+      where: { id },
+      data: { isActive: false, deletedAt: new Date() }
+    });
   }
 
   toCurrentUser(user: UserRecord): CurrentUser {
@@ -124,24 +155,101 @@ export class UsersService {
   async getSharedModelOwner(): Promise<CurrentUser> {
     const presetAdmin = this.getPresetUsers().find((user) => user.role === 'admin');
     const user = presetAdmin ? await this.findActiveByUsername(presetAdmin.username) : null;
-    if (!user) throw new NotFoundException({ code: ERROR_CODES.USER_NOT_FOUND, message: '共享模型管理员账号不存在。' });
+    if (!user)
+      throw new NotFoundException({
+        code: ERROR_CODES.USER_NOT_FOUND,
+        message: '共享模型管理员账号不存在。'
+      });
     return this.toCurrentUser(user);
   }
 
-  private getPresetUsers(): PresetUser[] { return JSON.parse(this.configService.getOrThrow<string>('AUTH_PRESET_USERS_JSON')) as PresetUser[]; }
-  private isBuiltIn(username: string): boolean { return this.getPresetUsers().some((user) => user.username === username); }
-  private managedUserSelect() { return { id: true, username: true, displayName: true, role: true, isActive: true, createdAt: true, updatedAt: true } as const; }
-  private toManagedUser(user: { id: string; username: string; displayName: string; role: string; isActive: boolean; createdAt: Date; updatedAt: Date }) {
-    return { ...user, role: user.role === 'admin' ? 'admin' as const : 'member' as const, isBuiltIn: this.isBuiltIn(user.username) };
+  /** 共享内容库固定归属到第一个内置管理员，与普通 admin 角色账号区分。 */
+  async getContentLibraryOwner(): Promise<CurrentUser> {
+    const presetAdmin = this.getPresetUsers().find((user) => user.role === 'admin');
+    const user = presetAdmin ? await this.findActiveByUsername(presetAdmin.username) : null;
+    if (!user)
+      throw new NotFoundException({
+        code: ERROR_CODES.USER_NOT_FOUND,
+        message: '共享内容库管理员账号不存在。'
+      });
+    return this.toCurrentUser(user);
+  }
+
+  async isContentLibraryOwner(user: CurrentUser): Promise<boolean> {
+    return user.id === (await this.getContentLibraryOwner()).id;
+  }
+
+  private getPresetUsers(): PresetUser[] {
+    return JSON.parse(
+      this.configService.getOrThrow<string>('AUTH_PRESET_USERS_JSON')
+    ) as PresetUser[];
+  }
+  private isBuiltIn(username: string): boolean {
+    return this.getPresetUsers().some((user) => user.username === username);
+  }
+  private managedUserSelect() {
+    return {
+      id: true,
+      username: true,
+      displayName: true,
+      role: true,
+      isActive: true,
+      createdAt: true,
+      updatedAt: true
+    } as const;
+  }
+  private toManagedUser(user: {
+    id: string;
+    username: string;
+    displayName: string;
+    role: string;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+  }) {
+    return {
+      ...user,
+      role: user.role === 'admin' ? ('admin' as const) : ('member' as const),
+      isBuiltIn: this.isBuiltIn(user.username)
+    };
   }
   private async assertAnotherAdminExists(excludedId: string): Promise<void> {
-    const count = await this.prisma.user.count({ where: { id: { not: excludedId }, role: 'admin', isActive: true, deletedAt: null } });
-    if (count === 0) throw new ForbiddenException({ code: ERROR_CODES.USER_LAST_ADMIN_PROTECTED, message: '至少需要保留一个管理员账号。' });
+    const count = await this.prisma.user.count({
+      where: { id: { not: excludedId }, role: 'admin', isActive: true, deletedAt: null }
+    });
+    if (count === 0)
+      throw new ForbiddenException({
+        code: ERROR_CODES.USER_LAST_ADMIN_PROTECTED,
+        message: '至少需要保留一个管理员账号。'
+      });
   }
-  private throwUserNotFound(): never { throw new NotFoundException({ code: ERROR_CODES.USER_NOT_FOUND, message: '成员账号不存在。' }); }
-  private throwUsernameExists(): never { throw new ConflictException({ code: ERROR_CODES.USER_USERNAME_EXISTS, message: '账号已存在。' }); }
-  private userSelect() { return { id: true, username: true, displayName: true, passwordHash: true, isActive: true, role: true } as const; }
-  private toUserRecord(user: { id: string; username: string; displayName: string; passwordHash: string | null; isActive: boolean; role: string }): UserRecord {
+  private throwUserNotFound(): never {
+    throw new NotFoundException({ code: ERROR_CODES.USER_NOT_FOUND, message: '成员账号不存在。' });
+  }
+  private throwUsernameExists(): never {
+    throw new ConflictException({
+      code: ERROR_CODES.USER_USERNAME_EXISTS,
+      message: '账号已存在。'
+    });
+  }
+  private userSelect() {
+    return {
+      id: true,
+      username: true,
+      displayName: true,
+      passwordHash: true,
+      isActive: true,
+      role: true
+    } as const;
+  }
+  private toUserRecord(user: {
+    id: string;
+    username: string;
+    displayName: string;
+    passwordHash: string | null;
+    isActive: boolean;
+    role: string;
+  }): UserRecord {
     return { ...user, role: user.role === 'admin' ? 'admin' : 'member' };
   }
 }

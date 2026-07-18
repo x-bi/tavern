@@ -6,7 +6,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  NotImplementedException,
   Param,
   Post,
   Put,
@@ -14,7 +13,6 @@ import {
   UseGuards
 } from '@nestjs/common';
 
-import { ERROR_CODES } from '../../common/dto/error-codes';
 import { DtoValidationPipe } from '../../common/pipes/dto-validation.pipe';
 import { AuthGuard } from '../auth/auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -101,12 +99,9 @@ export class CharactersController {
     return this.charactersService.remove(currentUser, id);
   }
 
-  /** 复制角色。POST /characters/:id/duplicate —— 尚未实现。 */
-  @Post(':id/duplicate')
-  duplicate(@Param('id') id: string) {
-    throw new NotImplementedException({
-      code: ERROR_CODES.CHARACTER_DUPLICATE_NOT_IMPLEMENTED,
-      message: `Character duplicate is not implemented yet. Character id: ${id}`
-    });
+  /** 把内容库角色复制为当前成员的独立副本。 */
+  @Post(':id/fork')
+  fork(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.charactersService.fork(currentUser, id);
   }
 }

@@ -48,8 +48,9 @@ AI 角色独立 Builder 永远注入受管的 `companion_style`：自然、简�
 - Prisma enum `status`：`ready`、`pending`、`updating`、`stale`、`failed`。
 - `relationshipState`（最多 600 中文字符）与 `currentArc`（最多 800 中文字符）。
 - `lastSummarizedMessageId`、`updateEveryMessages`（默认 8）、`lastErrorCode`、`retryCount`、`nextRetryAt` 与审计时间。
+- 内部一致性游标 `rebuildFromMessageId` 记录最早受影响消息，`historyFloorMessageId` 记录“清空记忆”后的历史下界；二者不进入公开 API。
 
-`CompanionMemoryRevision` 记录每一次写入后的完整不可变版本（版本号、两个区块、游标、原因、时间），至少保留最近 10 个；当前记忆和 revision 在同一短事务内写入，并在该事务内裁剪超出的旧版本。Revision 不使用软删除或状态字段；索引使用 `@@index([companionId, createdAt])` 与 `@@unique([companionId, version])`。
+`CompanionMemoryRevision` 记录每一次写入后的完整不可变版本（版本号、两个区块、游标、历史下界、原因、时间），至少保留最近 10 个；当前记忆和 revision 在同一短事务内写入，并在该事务内裁剪超出的旧版本。Revision 不使用软删除或状态字段；索引使用 `@@index([companionId, createdAt])` 与 `@@unique([companionId, version])`。
 
 ## 4. 独立 Prompt Builder
 
@@ -69,7 +70,7 @@ assistant 消息完成落库并发送 SSE `done` 后，满足启用、未暂停�
 
 服务启动时把遗留 `pending` / `updating` 转为可立即重试的 `failed`，并以轻量定时扫描兜底重启后和到期的重试任务；进程内定时器只用于加速当前实例，不作为唯一调度依据。
 
-编辑、删除或重新生成游标及之前的消息时，记忆标记 `stale` 并停止注入。重建运行期间也必须保持 `stale`，不得改成 `updating` 后重新注入旧记忆；运行状态只由角色级任务锁记录。重建从受影响消息之前的安全 revision 起，按消息顺序分块重放直到当前消息；若没有检查点则从该角色第一条消息开始。不得只重放最近消息而称为完整重建。
+编辑、删除或重新生成已总结消息，或者在总结运行期间修改其输入消息时，记忆标记 `stale` 并停止注入，同时立即安排后台重建。重建运行期间也必须保持 `stale`，不得改成 `updating` 后重新注入旧记忆；运行状态只由角色级任务锁记录。重建从受影响消息之前的安全 revision 起，按消息顺序分块重放直到当前消息，并在批次间保存仍保持 `stale` 的 `rebuild_checkpoint`；若没有检查点则从 `historyFloorMessageId` 之后开始。不得跨过“清空记忆”边界重新学习旧对话，也不得只重放最近消息而称为完整重建。
 
 ## 6. API、UI 与实现顺序
 

@@ -9,7 +9,8 @@ import type {
   CompanionMessageResponse,
   CompanionPayload,
   CompanionPromptPreviewResponse,
-  CompanionResponse
+  CompanionResponse,
+  ContentLibraryScope
 } from '@tavern/shared';
 import { API_BASE_URL, authHeaders, requestJson } from './http';
 
@@ -17,12 +18,15 @@ function unwrap<T>(response: Awaited<ReturnType<typeof requestJson<T>>>): T {
   if (!response.success) throw new Error(response.error.message);
   return response.data;
 }
-export async function fetchCompanions(search = '') {
+export async function fetchCompanions(search = '', scope: ContentLibraryScope = 'owned') {
   return unwrap(
     await requestJson<CompanionListResponse>(
-      `/companions?page=1&pageSize=100${search ? `&search=${encodeURIComponent(search)}` : ''}`
+      `/companions?page=1&pageSize=100&scope=${scope}${search ? `&search=${encodeURIComponent(search)}` : ''}`
     )
   );
+}
+export async function forkCompanion(id: string) {
+  return unwrap(await requestJson<CompanionResponse>(`/companions/${id}/fork`, { method: 'POST' }));
 }
 export async function fetchCompanion(id: string) {
   return unwrap(await requestJson<CompanionResponse>(`/companions/${id}`));

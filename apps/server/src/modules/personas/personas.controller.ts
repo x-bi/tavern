@@ -68,6 +68,16 @@ export class PersonasController {
     return this.personasService.getImportTemplate();
   }
 
+  @Post(':id/fork')
+  fork(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.personasService.fork(currentUser, id);
+  }
+
+  @Get(':id')
+  getById(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.personasService.getById(currentUser, id);
+  }
+
   /** 更新人设。PUT /personas/:id */
   @Put(':id')
   update(

@@ -4,6 +4,7 @@ import {
   createPromptPreset,
   deletePromptPreset,
   fetchPromptPresets,
+  forkPromptPreset,
   updatePromptPreset,
   type PromptPreset,
   type PromptPresetListParams,
@@ -13,11 +14,13 @@ import type { PromptPresetPayload } from '@tavern/shared';
 
 type PromptPresetState = {
   items: PromptPreset[];
+  libraryItems: PromptPreset[];
   total: number;
   page: number;
   pageSize: number;
   search: string;
   loading: boolean;
+  libraryLoading: boolean;
   saving: boolean;
   error: string | null;
   saveError: string | null;
@@ -26,11 +29,13 @@ type PromptPresetState = {
 export const usePresetStore = defineStore('preset', {
   state: (): PromptPresetState => ({
     items: [],
+    libraryItems: [],
     total: 0,
     page: 1,
     pageSize: 20,
     search: '',
     loading: false,
+    libraryLoading: false,
     saving: false,
     error: null,
     saveError: null
@@ -81,6 +86,37 @@ export const usePresetStore = defineStore('preset', {
       } catch (error) {
         this.saveError = error instanceof Error ? error.message : '参数预设创建失败。';
 
+        return null;
+      } finally {
+        this.saving = false;
+      }
+    },
+    async loadLibrary(search = '') {
+      this.libraryLoading = true;
+      this.error = null;
+      try {
+        const result = await fetchPromptPresets({
+          page: 1,
+          pageSize: 100,
+          search: search.trim() || undefined,
+          scope: 'library'
+        });
+        this.libraryItems = result.items;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '预设内容库加载失败。';
+      } finally {
+        this.libraryLoading = false;
+      }
+    },
+    async forkLibraryPreset(id: string): Promise<PromptPreset | null> {
+      this.saving = true;
+      this.saveError = null;
+      try {
+        const preset = await forkPromptPreset(id);
+        await this.loadPresets({ page: 1 });
+        return preset;
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '预设复制失败。';
         return null;
       } finally {
         this.saving = false;

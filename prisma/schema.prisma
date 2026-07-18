@@ -46,6 +46,7 @@ model Character {
   exampleMessagesJson String?
   metadataJson        String?
   isSensitive         Boolean   @default(false)
+  isShared            Boolean   @default(false)
   isArchived          Boolean   @default(false)
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -54,10 +55,11 @@ model Character {
   avatarAsset   Asset?         @relation("CharacterAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
   conversations Conversation[]
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  worldBooks    WorldBook[]
+  worldBookLinks WorldBookCharacter[]
 
   @@index([userId])
   @@index([userId, isSensitive])
+  @@index([isShared])
   @@index([userId, isArchived])
   @@index([name])
   @@index([deletedAt])
@@ -120,11 +122,11 @@ model ModelFallbackGroup {
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
-  candidates    ModelFallbackCandidate[]
-  conversations Conversation[]
-  companions    Companion[]       @relation("CompanionModelFallbackGroup")
-  memoryFallbacks CompanionMemory[] @relation("CompanionMemoryFallbackGroup")
-  user          User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidates      ModelFallbackCandidate[]
+  conversations   Conversation[]
+  companions      Companion[]              @relation("CompanionModelFallbackGroup")
+  memoryFallbacks CompanionMemory[]        @relation("CompanionMemoryFallbackGroup")
+  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
   @@index([userId, isEnabled])
@@ -158,6 +160,7 @@ model PromptPreset {
   parametersJson String?
   metadataJson   String?
   isSensitive    Boolean   @default(false)
+  isShared       Boolean   @default(false)
   isDefault      Boolean   @default(false)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -169,6 +172,7 @@ model PromptPreset {
 
   @@unique([userId, name])
   @@index([userId, isSensitive])
+  @@index([isShared])
   @@index([userId, isDefault])
   @@index([deletedAt])
 }
@@ -180,6 +184,7 @@ model UserPersona {
   content      String    @default("")
   metadataJson String?
   isSensitive  Boolean   @default(false)
+  isShared     Boolean   @default(false)
   isDefault    Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
@@ -191,25 +196,26 @@ model UserPersona {
 
   @@unique([userId, name])
   @@index([userId, isSensitive])
+  @@index([isShared])
   @@index([userId, isDefault])
   @@index([deletedAt])
 }
 
 model Conversation {
-  id                   String    @id @default(cuid())
-  userId               String
-  characterId          String
-  modelFallbackGroupId String?
-  promptPresetId       String?
-  personaId            String?
-  title                String
-  status               String    @default("active")
-  metadataJson         String?
+  id                    String    @id @default(cuid())
+  userId                String
+  characterId           String
+  modelFallbackGroupId  String?
+  promptPresetId        String?
+  personaId             String?
+  title                 String
+  status                String    @default("active")
+  metadataJson          String?
   usesSensitiveResource Boolean   @default(false)
-  lastMessageAt        DateTime?
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  deletedAt            DateTime?
+  lastMessageAt         DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  deletedAt             DateTime?
 
   character          Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
   messages           Message[]
@@ -239,7 +245,7 @@ model Message {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  conversation          Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
   @@index([role])
@@ -249,7 +255,6 @@ model Message {
 model WorldBook {
   id           String    @id @default(cuid())
   userId       String
-  characterId  String?
   name         String
   description  String    @default("")
   isEnabled    Boolean   @default(true)
@@ -257,18 +262,31 @@ model WorldBook {
   tokenBudget  Int       @default(1000)
   metadataJson String?
   isSensitive  Boolean   @default(false)
+  isShared     Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  character Character?       @relation(fields: [characterId], references: [id], onDelete: SetNull)
-  entries   WorldBookEntry[]
-  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterLinks WorldBookCharacter[]
+  entries        WorldBookEntry[]
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isEnabled])
   @@index([userId, isSensitive])
-  @@index([characterId])
+  @@index([isShared])
   @@index([deletedAt])
+}
+
+model WorldBookCharacter {
+  worldBookId String
+  characterId String
+  createdAt   DateTime @default(now())
+
+  worldBook WorldBook @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@id([worldBookId, characterId])
+  @@index([characterId])
 }
 
 model WorldBookEntry {
@@ -352,6 +370,8 @@ model Companion {
   personaId            String?
   name                 String
   identityPrompt       String    @default("")
+  isSensitive          Boolean   @default(false)
+  isShared             Boolean   @default(false)
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
   deletedAt            DateTime?
@@ -366,6 +386,8 @@ model Companion {
   shareLinks         ShareLink[]
 
   @@index([userId, updatedAt])
+  @@index([userId, isSensitive])
+  @@index([isShared])
   @@index([deletedAt])
 }
 
@@ -395,16 +417,16 @@ model ShareLink {
 }
 
 model CompanionMessage {
-  id          String    @id @default(cuid())
-  companionId String
-  role        String
-  content     String
-  status      String    @default("complete")
+  id           String    @id @default(cuid())
+  companionId  String
+  role         String
+  content      String
+  status       String    @default("complete")
   metadataJson String?
-  tokenCount  Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  deletedAt   DateTime?
+  tokenCount   Int?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   companion Companion @relation(fields: [companionId], references: [id], onDelete: Cascade)
 
@@ -422,6 +444,8 @@ model CompanionMemory {
   relationshipState          String                @default("")
   currentArc                 String                @default("")
   lastSummarizedMessageId    String?
+  rebuildFromMessageId       String?
+  historyFloorMessageId      String?
   updateEveryMessages        Int                   @default(8)
   lastErrorCode              String?
   retryCount                 Int                   @default(0)
@@ -429,8 +453,8 @@ model CompanionMemory {
   createdAt                  DateTime              @default(now())
   updatedAt                  DateTime              @updatedAt
 
-  companion                Companion           @relation(fields: [companionId], references: [id], onDelete: Cascade)
-  memoryModelFallbackGroup ModelFallbackGroup? @relation("CompanionMemoryFallbackGroup", fields: [memoryModelFallbackGroupId], references: [id], onDelete: SetNull)
+  companion                Companion                 @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  memoryModelFallbackGroup ModelFallbackGroup?       @relation("CompanionMemoryFallbackGroup", fields: [memoryModelFallbackGroupId], references: [id], onDelete: SetNull)
   revisions                CompanionMemoryRevision[]
 
   @@index([status, nextRetryAt])
@@ -443,11 +467,12 @@ model CompanionMemoryRevision {
   relationshipState       String
   currentArc              String
   lastSummarizedMessageId String?
+  historyFloorMessageId   String?
   reason                  String
   createdAt               DateTime @default(now())
 
   memory CompanionMemory @relation(fields: [companionId], references: [companionId], onDelete: Cascade)
 
-  @@index([companionId, createdAt])
   @@unique([companionId, version])
+  @@index([companionId, createdAt])
 }

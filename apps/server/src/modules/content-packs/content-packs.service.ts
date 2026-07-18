@@ -393,16 +393,22 @@ export class ContentPacksService {
         const created = await tx.worldBook.create({
           data: {
             userId: currentUser.id,
-            characterId: worldBook.characterRef
-              ? (characterIds.get(worldBook.characterRef) ?? null)
-              : null,
             name: worldBook.finalName,
             description: worldBook.description,
             isEnabled: worldBook.isEnabled,
             isSensitive: false,
             scanDepth: worldBook.scanDepth,
             tokenBudget: worldBook.tokenBudget,
-            metadataJson: this.stringifyNullable(worldBook.metadata)
+            metadataJson: this.stringifyNullable(worldBook.metadata),
+            ...(worldBook.characterRef
+              ? {
+                  characterLinks: {
+                    create: {
+                      characterId: characterIds.get(worldBook.characterRef)!
+                    }
+                  }
+                }
+              : {})
           }
         });
 

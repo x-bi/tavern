@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** 更新独立 AI 角色；关联字段可传 null 解绑。 */
 export class UpdateCompanionDto {
@@ -31,4 +31,12 @@ export class UpdateCompanionDto {
   @IsString()
   @MaxLength(128)
   personaId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 }

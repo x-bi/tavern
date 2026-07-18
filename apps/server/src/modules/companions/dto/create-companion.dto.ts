@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** 创建独立 AI 角色。 */
 export class CreateCompanionDto {
@@ -30,4 +30,12 @@ export class CreateCompanionDto {
   @IsString()
   @MaxLength(128)
   personaId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 }

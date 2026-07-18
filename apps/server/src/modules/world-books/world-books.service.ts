@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import type { Character, WorldBook, WorldBookEntry } from '@prisma/client';
+import type { WorldBook, WorldBookEntry } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
@@ -28,6 +28,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import type { WorldBookContext, WorldBookEntryContext } from '../../services/prompt-builder/types';
 import { SettingsService } from '../settings/settings.service';
+import { ContentLibraryService } from '../content-library/content-library.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreateWorldBookEntryDto } from './dto/create-world-book-entry.dto';
 import type { CreateWorldBookDto } from './dto/create-world-book.dto';
@@ -58,7 +59,7 @@ type WorldBookEntryImportPreview = {
 type WorldBookImportPreview = {
   name: string;
   description: string;
-  characterId: string | null;
+  characterIds: string[];
   isEnabled: boolean;
   scanDepth: number;
   tokenBudget: number;
@@ -80,6 +81,7 @@ type NormalizedWorldBookImport = Omit<WorldBookImportPreview, 'nameConflict' | '
 /** 世界书 + 其条目（include 后的形态）。 */
 type WorldBookWithEntries = WorldBook & {
   entries: WorldBookEntry[];
+  characterLinks: Array<{ characterId: string }>;
 };
 
 /** 条目 + 其世界书（include 后的形态）。 */
@@ -90,7 +92,7 @@ type WorldBookEntryWithBook = WorldBookEntry & {
 /**
  * 世界书服务：世界书及其条目的 CRUD，并提供 prompt 构建所需的世界书上下文。
  *
- * 世界书可绑定特定角色（characterId）或全局（characterId=null，所有角色共享）。
+ * 世界书可绑定多个角色（characterIds）或全局（无角色关联，所有角色共享）。
  * 所有查询按 userId 隔离；删除世界书时级联软删除其条目。
  */
 @Injectable()
@@ -98,6 +100,8 @@ export class WorldBooksService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
+    @Inject(ContentLibraryService)
+    private readonly contentLibraryService: ContentLibraryService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService
   ) {}
@@ -111,14 +115,18 @@ export class WorldBooksService {
   async list(currentUser: CurrentUser, query: QueryWorldBooksDto): Promise<WorldBookListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const access = await this.contentLibraryService.resolveAccess(currentUser, query.scope);
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: currentUser.id,
+      userId: access.owner.id,
+      ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
       ...(showSensitiveContent ? {} : { isSensitive: false }),
-      // characterId/isEnabled 未传时不加条件，传了则按值过滤
-      ...(query.characterId === undefined ? {} : { characterId: query.characterId }),
+      // characterId/isEnabled 未传时不加条件，传了则按关联角色过滤
+      ...(query.characterId === undefined
+        ? {}
+        : { characterLinks: { some: { characterId: query.characterId } } }),
       ...(query.isEnabled === undefined ? {} : { isEnabled: query.isEnabled }),
       // search 关键字：匹配 name/description 任一包含
       ...(query.search
@@ -133,6 +141,10 @@ export class WorldBooksService {
       this.prisma.worldBook.findMany({
         where,
         include: {
+          characterLinks: {
+            select: { characterId: true },
+            orderBy: { createdAt: 'asc' }
+          },
           entries: {
             where: {
               deletedAt: null
@@ -148,7 +160,9 @@ export class WorldBooksService {
     ]);
 
     return {
-      items: items.map((worldBook) => this.toWorldBookResponse(worldBook)),
+      items: items.map((worldBook) =>
+        this.toWorldBookResponse(worldBook, currentUser, access.ownerName)
+      ),
       total,
       page,
       pageSize
@@ -158,7 +172,7 @@ export class WorldBooksService {
   /**
    * 取角色的世界书上下文（供 prompt 构建用）。
    *
-   * 查询条件：当前用户 + 未删除 + （全局 characterId=null 或 绑定该角色）。
+   * 查询条件：当前用户 + 未删除 + （无角色关联的全局世界书或关联当前角色）。
    * 即角色可用全局世界书 + 自己专属的世界书。
    *
    * @param currentUser 当前登录用户。
@@ -176,10 +190,16 @@ export class WorldBooksService {
         ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
           ? {}
           : { isSensitive: false }),
-        // 全局世界书（characterId=null）或绑定该角色的
-        OR: [{ characterId: null }, { characterId }]
+        OR: [
+          { characterLinks: { none: {} } },
+          ...(characterId ? [{ characterLinks: { some: { characterId } } }] : [])
+        ]
       },
       include: {
+        characterLinks: {
+          select: { characterId: true },
+          orderBy: { createdAt: 'asc' }
+        },
         entries: {
           where: {
             deletedAt: null
@@ -194,33 +214,40 @@ export class WorldBooksService {
   }
 
   /**
-   * 创建世界书：校验角色归属（若指定）+ 创建。
+   * 创建世界书：校验全部角色归属（若指定）+ 创建关联。
    * @param currentUser 当前登录用户。
    * @param dto 创建入参。
    * @returns 创建后的世界书响应（含条目）。
    * @throws BadRequestException 指定的角色不存在或不属于该用户。
    */
   async create(currentUser: CurrentUser, dto: CreateWorldBookDto): Promise<WorldBookResponse> {
-    // 校验角色归属（传了 characterId 才校验）
-    const characterId = await this.resolveCharacterId(currentUser, dto.characterId);
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
+    const characterIds = await this.resolveCharacterIds(currentUser, dto.characterIds ?? []);
     const worldBook = await this.prisma.worldBook.create({
       data: {
         userId: currentUser.id,
-        characterId,
         name: dto.name,
         description: dto.description ?? '',
         isEnabled: dto.isEnabled ?? true,
         isSensitive: dto.isSensitive ?? false,
+        isShared: dto.isShared ?? false,
         scanDepth: dto.scanDepth ?? 6,
         tokenBudget: dto.tokenBudget ?? 1000,
-        metadataJson: this.stringifyNullable(dto.metadata)
+        metadataJson: this.stringifyNullable(dto.metadata),
+        characterLinks: {
+          create: characterIds.map((characterId) => ({ characterId }))
+        }
       },
       include: {
+        characterLinks: {
+          select: { characterId: true },
+          orderBy: { createdAt: 'asc' }
+        },
         entries: true
       }
     });
 
-    return this.toWorldBookResponse(worldBook);
+    return this.toWorldBookResponse(worldBook, currentUser);
   }
 
   /**
@@ -269,11 +296,11 @@ export class WorldBooksService {
       const created = await tx.worldBook.create({
         data: {
           userId: currentUser.id,
-          characterId: normalized.characterId,
           name,
           description: normalized.description,
           isEnabled: normalized.isEnabled,
           isSensitive: false,
+          isShared: false,
           scanDepth: normalized.scanDepth,
           tokenBudget: normalized.tokenBudget,
           metadataJson: this.stringifyNullable(normalized.metadata)
@@ -303,6 +330,10 @@ export class WorldBooksService {
           id: created.id
         },
         include: {
+          characterLinks: {
+            select: { characterId: true },
+            orderBy: { createdAt: 'asc' }
+          },
           entries: {
             where: {
               deletedAt: null
@@ -319,7 +350,7 @@ export class WorldBooksService {
         ...preview,
         name
       },
-      worldBook: this.toWorldBookResponse(worldBook)
+      worldBook: this.toWorldBookResponse(worldBook, currentUser)
     };
   }
 
@@ -331,8 +362,8 @@ export class WorldBooksService {
         formatVersion: 'tavern-lite.world-book.v1',
         name: '示例世界书',
         description: '描述这本世界书适用的角色、场景或背景设定。',
-        characterId: null,
-        isEnabled: true,
+        characterIds: [],
+        isEnabled: false,
         scanDepth: 6,
         tokenBudget: 1000,
         metadata: {},
@@ -362,16 +393,87 @@ export class WorldBooksService {
    * @throws NotFoundException 世界书不存在或不属于该用户。
    */
   async getById(currentUser: CurrentUser, id: string): Promise<WorldBookResponse> {
-    return this.toWorldBookResponse(await this.findOwnedActiveWorldBook(currentUser, id));
+    const worldBook = await this.findVisibleActiveWorldBook(currentUser, id);
+    const owner =
+      worldBook.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
+    return this.toWorldBookResponse(worldBook, currentUser, owner?.displayName ?? null);
+  }
+
+  async fork(
+    currentUser: CurrentUser,
+    id: string,
+    targetCharacterId?: string
+  ): Promise<WorldBookResponse> {
+    const source = await this.findLibraryWorldBook(currentUser, id);
+    if (source.characterLinks.length > 0 && !targetCharacterId) {
+      throw new BadRequestException({
+        code: ERROR_CODES.CONTENT_LIBRARY_WORLD_BOOK_TARGET_REQUIRED,
+        message: 'A member-owned target character is required for this world book.'
+      });
+    }
+    const characterIds =
+      source.characterLinks.length > 0
+        ? await this.resolveCharacterIds(currentUser, [targetCharacterId!])
+        : [];
+    const names = await this.loadExistingNames(currentUser);
+    const worldBook = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.worldBook.create({
+        data: {
+          userId: currentUser.id,
+          name: createAvailableName(source.name, names),
+          description: source.description,
+          isEnabled: source.isEnabled,
+          isSensitive: source.isSensitive,
+          isShared: false,
+          scanDepth: source.scanDepth,
+          tokenBudget: source.tokenBudget,
+          metadataJson: source.metadataJson,
+          characterLinks: {
+            create: characterIds.map((characterId) => ({ characterId }))
+          }
+        }
+      });
+      if (source.entries.length > 0) {
+        await tx.worldBookEntry.createMany({
+          data: source.entries.map((entry) => ({
+            worldBookId: created.id,
+            title: entry.title,
+            content: entry.content,
+            keywordsJson: entry.keywordsJson,
+            secondaryKeywordsJson: entry.secondaryKeywordsJson,
+            isEnabled: entry.isEnabled,
+            priority: entry.priority,
+            position: entry.position,
+            tokenBudget: entry.tokenBudget,
+            caseSensitive: entry.caseSensitive,
+            metadataJson: entry.metadataJson
+          }))
+        });
+      }
+      return tx.worldBook.findFirstOrThrow({
+        where: { id: created.id },
+        include: {
+          characterLinks: {
+            select: { characterId: true },
+            orderBy: { createdAt: 'asc' }
+          },
+          entries: {
+            where: { deletedAt: null },
+            orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          }
+        }
+      });
+    });
+    return this.toWorldBookResponse(worldBook, currentUser);
   }
 
   /**
-   * 更新世界书（部分更新）；characterId 传入时校验归属。
+   * 更新世界书（部分更新）；characterIds 传入时校验全部角色归属。
    * @param currentUser 当前登录用户。
    * @param id 世界书 ID。
    * @param dto 更新入参，只有传入的字段会被更新。
    * @returns 更新后的世界书响应（含条目）。
-   * @throws BadRequestException 传入的 characterId 角色不存在或不属于该用户。
+   * @throws BadRequestException 任一角色不存在或不属于该用户。
    * @throws NotFoundException 世界书不存在或不属于该用户。
    */
   async update(
@@ -379,23 +481,31 @@ export class WorldBooksService {
     id: string,
     dto: UpdateWorldBookDto
   ): Promise<WorldBookResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     // 先校验世界书存在且属于当前用户
     await this.findOwnedActiveWorldBook(currentUser, id);
-    // characterId：未传不动，传了（含 null）校验归属
-    const characterId =
-      dto.characterId === undefined
+    const characterIds =
+      dto.characterIds === undefined
         ? undefined
-        : await this.resolveCharacterId(currentUser, dto.characterId);
+        : await this.resolveCharacterIds(currentUser, dto.characterIds);
 
     // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
     const worldBook = await this.prisma.worldBook.update({
       where: { id },
       data: {
         ...(dto.name === undefined ? {} : { name: dto.name }),
-        ...(characterId === undefined ? {} : { characterId }),
+        ...(characterIds === undefined
+          ? {}
+          : {
+              characterLinks: {
+                deleteMany: {},
+                create: characterIds.map((characterId) => ({ characterId }))
+              }
+            }),
         ...(dto.description === undefined ? {} : { description: dto.description }),
         ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled }),
         ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
+        ...(dto.isShared === undefined ? {} : { isShared: dto.isShared }),
         ...(dto.scanDepth === undefined ? {} : { scanDepth: dto.scanDepth }),
         ...(dto.tokenBudget === undefined ? {} : { tokenBudget: dto.tokenBudget }),
         ...(dto.metadata === undefined
@@ -403,6 +513,10 @@ export class WorldBooksService {
           : { metadataJson: this.stringifyNullable(dto.metadata) })
       },
       include: {
+        characterLinks: {
+          select: { characterId: true },
+          orderBy: { createdAt: 'asc' }
+        },
         entries: {
           where: {
             deletedAt: null
@@ -412,7 +526,7 @@ export class WorldBooksService {
       }
     });
 
-    return this.toWorldBookResponse(worldBook);
+    return this.toWorldBookResponse(worldBook, currentUser);
   }
 
   /**
@@ -559,15 +673,11 @@ export class WorldBooksService {
    * @returns 可写入数据库的世界书导入数据。
    */
   private async normalizeWorldBookImport(
-    currentUser: CurrentUser,
+    _currentUser: CurrentUser,
     record: JsonRecord
   ): Promise<NormalizedWorldBookImport> {
     const warnings: ModuleJsonImportWarning[] = [];
     const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
-    const characterId = await this.resolveCharacterId(
-      currentUser,
-      optionalString(record, 'characterId', 'characterId')
-    );
 
     return {
       name,
@@ -577,8 +687,8 @@ export class WorldBooksService {
         'description',
         warnings
       ),
-      characterId,
-      isEnabled: optionalBoolean(record, 'isEnabled', true, 'isEnabled'),
+      characterIds: [],
+      isEnabled: false,
       scanDepth: optionalInteger(record, 'scanDepth', 6, 'scanDepth'),
       tokenBudget: optionalInteger(record, 'tokenBudget', 1000, 'tokenBudget'),
       metadata: optionalRecord(record, 'metadata', 'metadata'),
@@ -744,6 +854,10 @@ export class WorldBooksService {
           : { isSensitive: false })
       },
       include: {
+        characterLinks: {
+          select: { characterId: true },
+          orderBy: { createdAt: 'asc' }
+        },
         entries: {
           where: {
             deletedAt: null
@@ -760,6 +874,73 @@ export class WorldBooksService {
       });
     }
 
+    return worldBook;
+  }
+
+  private async findVisibleActiveWorldBook(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<WorldBookWithEntries> {
+    const owner = await this.contentLibraryService.getOwner();
+    const worldBook = await this.prisma.worldBook.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false }),
+        OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
+      },
+      include: {
+        characterLinks: {
+          select: { characterId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        entries: {
+          where: { deletedAt: null },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+        }
+      }
+    });
+    if (!worldBook)
+      throw new NotFoundException({
+        code: ERROR_CODES.WORLD_BOOK_NOT_FOUND,
+        message: 'World book not found.'
+      });
+    return worldBook;
+  }
+
+  private async findLibraryWorldBook(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<WorldBookWithEntries> {
+    const owner = await this.contentLibraryService.getOwner();
+    const worldBook = await this.prisma.worldBook.findFirst({
+      where: {
+        id,
+        userId: owner.id,
+        isShared: true,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
+      },
+      include: {
+        characterLinks: {
+          select: { characterId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        entries: {
+          where: { deletedAt: null },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+        }
+      }
+    });
+    if (!worldBook)
+      throw new NotFoundException({
+        code: ERROR_CODES.CONTENT_LIBRARY_ITEM_NOT_FOUND,
+        message: 'Shared world book not found.'
+      });
     return worldBook;
   }
 
@@ -801,37 +982,31 @@ export class WorldBooksService {
     return entry;
   }
 
-  /**
-   * 校验角色归属并返回其 ID；传空值不校验返回 null。
-   * @param currentUser 当前登录用户。
-   * @param characterId 角色 ID，为空返回 null。
-   * @returns 校验通过的角色 ID，或 null。
-   * @throws BadRequestException 角色不存在或不属于该用户。
-   */
-  private async resolveCharacterId(
+  /** 校验角色列表全部属于当前用户，并返回去重后的 ID。 */
+  private async resolveCharacterIds(
     currentUser: CurrentUser,
-    characterId: string | null | undefined
-  ): Promise<string | null> {
-    if (!characterId) {
-      return null;
-    }
+    characterIds: string[]
+  ): Promise<string[]> {
+    const normalizedIds = [...new Set(characterIds.map((id) => id.trim()).filter(Boolean))];
+    if (normalizedIds.length === 0) return [];
 
-    const character: Character | null = await this.prisma.character.findFirst({
+    const characters = await this.prisma.character.findMany({
       where: {
-        id: characterId,
+        id: { in: normalizedIds },
         userId: currentUser.id,
         deletedAt: null
-      }
+      },
+      select: { id: true }
     });
-
-    if (!character) {
+    const foundIds = new Set(characters.map((character) => character.id));
+    if (normalizedIds.some((id) => !foundIds.has(id))) {
       throw new BadRequestException({
         code: ERROR_CODES.CHARACTER_NOT_FOUND,
         message: 'Character not found.'
       });
     }
 
-    return character.id;
+    return normalizedIds;
   }
 
   /**
@@ -839,15 +1014,24 @@ export class WorldBooksService {
    * @param worldBook 世界书记录（含条目）。
    * @returns 世界书响应。
    */
-  private toWorldBookResponse(worldBook: WorldBookWithEntries): WorldBookResponse {
+  private toWorldBookResponse(
+    worldBook: WorldBookWithEntries,
+    currentUser: CurrentUser,
+    ownerName: string | null = null
+  ): WorldBookResponse {
+    const isOwner = worldBook.userId === currentUser.id;
     return {
       id: worldBook.id,
       userId: worldBook.userId,
-      characterId: worldBook.characterId,
+      characterIds: worldBook.characterLinks.map((link) => link.characterId),
       name: worldBook.name,
       description: worldBook.description,
       isEnabled: worldBook.isEnabled,
       isSensitive: worldBook.isSensitive,
+      isShared: worldBook.isShared,
+      isOwner,
+      ownerName,
+      canFork: !isOwner && worldBook.isShared,
       scanDepth: worldBook.scanDepth,
       tokenBudget: worldBook.tokenBudget,
       metadata: this.parseRecord(worldBook.metadataJson),
@@ -866,7 +1050,7 @@ export class WorldBooksService {
     return {
       id: worldBook.id,
       userId: worldBook.userId,
-      characterId: worldBook.characterId,
+      characterIds: worldBook.characterLinks.map((link) => link.characterId),
       name: worldBook.name,
       description: worldBook.description,
       isEnabled: worldBook.isEnabled,

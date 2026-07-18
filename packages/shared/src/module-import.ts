@@ -117,8 +117,8 @@ export type WorldBookEntryImportPreview = {
 export type WorldBookImportPreview = ModuleImportPreviewBase & {
   /** 世界书说明。 */
   description: string;
-  /** 关联角色 ID；无则为 null。 */
-  characterId: string | null;
+  /** 导入后关联的角色 ID；普通世界书导入固定为空。 */
+  characterIds: string[];
   /** 是否启用。 */
   isEnabled: boolean;
   /** 扫描深度。 */

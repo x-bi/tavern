@@ -6,7 +6,11 @@ import {
   NotFoundException
 } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { createAvailableName } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AssetsService } from '../assets/assets.service';
+import { ContentLibraryService } from '../content-library/content-library.service';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import { CreateCompanionDto } from './dto/create-companion.dto';
 import { UpdateCompanionDto } from './dto/update-companion.dto';
@@ -22,14 +26,23 @@ import type { ImportCompanionDto } from './dto/import-companion.dto';
 /** 独立 AI 角色 CRUD；所有资源均按当前用户隔离。 */
 @Injectable()
 export class CompanionsService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(AssetsService) private readonly assetsService: AssetsService,
+    @Inject(ContentLibraryService) private readonly contentLibraryService: ContentLibraryService,
+    @Inject(SettingsService) private readonly settingsService: SettingsService
+  ) {}
 
   async list(currentUser: CurrentUser, query: QueryCompanionsDto) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const access = await this.contentLibraryService.resolveAccess(currentUser, query.scope);
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const where = {
-      userId: currentUser.id,
+      userId: access.owner.id,
       deletedAt: null,
+      ...(query.scope === 'library' ? { isShared: true } : {}),
+      ...(showSensitiveContent ? {} : { isSensitive: false }),
       ...(query.search?.trim() ? { name: { contains: query.search.trim() } } : {})
     };
     const [items, total] = await this.prisma.$transaction([
@@ -42,14 +55,23 @@ export class CompanionsService {
       }),
       this.prisma.companion.count({ where })
     ]);
-    return { items: items.map((item) => this.toResponse(item)), total, page, pageSize };
+    return {
+      items: items.map((item) => this.toResponse(item, currentUser, access.ownerName)),
+      total,
+      page,
+      pageSize
+    };
   }
 
   async getById(currentUser: CurrentUser, id: string): Promise<CompanionResponse> {
-    return this.toResponse(await this.findOwned(currentUser, id));
+    const item = await this.findVisible(currentUser, id);
+    const owner =
+      item.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
+    return this.toResponse(item, currentUser, owner?.displayName ?? null);
   }
 
   async create(currentUser: CurrentUser, dto: CreateCompanionDto): Promise<CompanionResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     await this.assertReferences(currentUser, dto);
     const item = await this.prisma.companion.create({
       data: {
@@ -60,11 +82,13 @@ export class CompanionsService {
         modelFallbackGroupId: dto.modelFallbackGroupId ?? null,
         promptPresetId: dto.promptPresetId ?? null,
         personaId: dto.personaId ?? null,
+        isSensitive: dto.isSensitive ?? false,
+        isShared: dto.isShared ?? false,
         memory: { create: {} }
       },
       include: { avatarAsset: true, memory: true }
     });
-    return this.toResponse(item);
+    return this.toResponse(item, currentUser);
   }
 
   /** 导入 Companion JSON 或通用 chara_card_v2；用户专属配置不会从文件恢复。 */
@@ -90,6 +114,8 @@ export class CompanionsService {
         userId: currentUser.id,
         name: preview.nameConflict ? preview.suggestedName! : preview.name,
         identityPrompt: preview.identityPrompt,
+        isSensitive: false,
+        isShared: false,
         memory: { create: {} }
       },
       include: { avatarAsset: true, memory: true }
@@ -98,7 +124,7 @@ export class CompanionsService {
     return {
       imported: true,
       preview: { ...preview, name: item.name, nameConflict: false, suggestedName: null },
-      companion: this.toResponse(item)
+      companion: this.toResponse(item, currentUser)
     };
   }
 
@@ -128,11 +154,98 @@ export class CompanionsService {
     };
   }
 
+  /** 深复制 Companion 本身、头像、Persona、PromptPreset；不复制消息或记忆内容。 */
+  async fork(currentUser: CurrentUser, id: string): Promise<CompanionResponse> {
+    const source = await this.findLibrary(currentUser, id);
+    const preparedAvatar = await this.assetsService.prepareCharacterAvatarCopy(
+      source.userId,
+      currentUser.id,
+      source.avatarAssetId
+    );
+    const [presetNames, personaNames] = await Promise.all([
+      this.prisma.promptPreset.findMany({
+        where: { userId: currentUser.id, deletedAt: null },
+        select: { name: true }
+      }),
+      this.prisma.userPersona.findMany({
+        where: { userId: currentUser.id, deletedAt: null },
+        select: { name: true }
+      })
+    ]);
+
+    try {
+      const item = await this.prisma.$transaction(async (tx) => {
+        const avatarAssetId = preparedAvatar
+          ? (await tx.asset.create({ data: preparedAvatar.data })).id
+          : null;
+        const promptPresetId = source.promptPreset
+          ? (
+              await tx.promptPreset.create({
+                data: {
+                  userId: currentUser.id,
+                  name: createAvailableName(
+                    source.promptPreset.name,
+                    new Set(presetNames.map((v) => v.name))
+                  ),
+                  description: source.promptPreset.description,
+                  systemPrompt: source.promptPreset.systemPrompt,
+                  outputRules: source.promptPreset.outputRules,
+                  parametersJson: source.promptPreset.parametersJson,
+                  metadataJson: source.promptPreset.metadataJson,
+                  isSensitive: source.promptPreset.isSensitive,
+                  isShared: false,
+                  isDefault: false
+                }
+              })
+            ).id
+          : null;
+        const personaId = source.persona
+          ? (
+              await tx.userPersona.create({
+                data: {
+                  userId: currentUser.id,
+                  name: createAvailableName(
+                    source.persona.name,
+                    new Set(personaNames.map((v) => v.name))
+                  ),
+                  content: source.persona.content,
+                  metadataJson: source.persona.metadataJson,
+                  isSensitive: source.persona.isSensitive,
+                  isShared: false,
+                  isDefault: false
+                }
+              })
+            ).id
+          : null;
+        return tx.companion.create({
+          data: {
+            userId: currentUser.id,
+            name: source.name,
+            identityPrompt: source.identityPrompt,
+            avatarAssetId,
+            modelFallbackGroupId: source.modelFallbackGroupId,
+            promptPresetId,
+            personaId,
+            isSensitive: source.isSensitive,
+            isShared: false,
+            memory: { create: {} }
+          },
+          include: { avatarAsset: true, memory: true }
+        });
+      });
+      return this.toResponse(item, currentUser);
+    } catch (error) {
+      await this.assetsService.discardPreparedAvatarCopy(preparedAvatar);
+      throw error;
+    }
+  }
+
   async update(
     currentUser: CurrentUser,
     id: string,
     dto: UpdateCompanionDto
   ): Promise<CompanionResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     await this.findOwned(currentUser, id);
     await this.assertReferences(currentUser, dto);
     const item = await this.prisma.companion.update({
@@ -145,11 +258,13 @@ export class CompanionsService {
           ? {}
           : { modelFallbackGroupId: dto.modelFallbackGroupId }),
         ...(dto.promptPresetId === undefined ? {} : { promptPresetId: dto.promptPresetId }),
-        ...(dto.personaId === undefined ? {} : { personaId: dto.personaId })
+        ...(dto.personaId === undefined ? {} : { personaId: dto.personaId }),
+        ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
+        ...(dto.isShared === undefined ? {} : { isShared: dto.isShared })
       },
       include: { avatarAsset: true, memory: true }
     });
-    return this.toResponse(item);
+    return this.toResponse(item, currentUser);
   }
 
   async remove(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
@@ -159,12 +274,56 @@ export class CompanionsService {
   }
 
   private async findOwned(currentUser: CurrentUser, id: string) {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     const item = await this.prisma.companion.findFirst({
-      where: { id, userId: currentUser.id, deletedAt: null },
+      where: {
+        id,
+        userId: currentUser.id,
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false })
+      },
       include: { avatarAsset: true, memory: true }
     });
     if (!item)
       throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
+    return item;
+  }
+
+  private async findVisible(currentUser: CurrentUser, id: string) {
+    const owner = await this.contentLibraryService.getOwner();
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
+    const item = await this.prisma.companion.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false }),
+        OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
+      },
+      include: { avatarAsset: true, memory: true }
+    });
+    if (!item)
+      throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
+    return item;
+  }
+
+  private async findLibrary(currentUser: CurrentUser, id: string) {
+    const owner = await this.contentLibraryService.getOwner();
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
+    const item = await this.prisma.companion.findFirst({
+      where: {
+        id,
+        userId: owner.id,
+        isShared: true,
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false })
+      },
+      include: { avatarAsset: true, memory: true, promptPreset: true, persona: true }
+    });
+    if (!item)
+      throw new NotFoundException({
+        code: 'CONTENT_LIBRARY_ITEM_NOT_FOUND',
+        message: 'Shared companion not found.'
+      });
     return item;
   }
 
@@ -305,8 +464,11 @@ export class CompanionsService {
   }
 
   private toResponse(
-    item: Prisma.CompanionGetPayload<{ include: { avatarAsset: true; memory: true } }>
+    item: Prisma.CompanionGetPayload<{ include: { avatarAsset: true; memory: true } }>,
+    currentUser: CurrentUser,
+    ownerName: string | null = null
   ): CompanionResponse {
+    const isOwner = item.userId === currentUser.id;
     return {
       id: item.id,
       userId: item.userId,
@@ -319,6 +481,11 @@ export class CompanionsService {
       personaId: item.personaId,
       memoryEnabled: item.memory?.isEnabled ?? false,
       memoryPaused: item.memory?.isPaused ?? false,
+      isSensitive: item.isSensitive,
+      isShared: item.isShared,
+      isOwner,
+      ownerName,
+      canFork: !isOwner && item.isShared,
       createdAt: item.createdAt.toISOString(),
       updatedAt: item.updatedAt.toISOString()
     };

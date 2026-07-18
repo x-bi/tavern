@@ -4,6 +4,7 @@ import {
   createPersona,
   deletePersona,
   fetchPersonas,
+  forkPersona,
   setDefaultPersona,
   updatePersona,
   type Persona,
@@ -14,11 +15,13 @@ import type { PersonaPayload } from '@tavern/shared';
 
 type PersonaState = {
   items: Persona[];
+  libraryItems: Persona[];
   total: number;
   page: number;
   pageSize: number;
   search: string;
   loading: boolean;
+  libraryLoading: boolean;
   saving: boolean;
   error: string | null;
   saveError: string | null;
@@ -27,11 +30,13 @@ type PersonaState = {
 export const usePersonaStore = defineStore('persona', {
   state: (): PersonaState => ({
     items: [],
+    libraryItems: [],
     total: 0,
     page: 1,
     pageSize: 20,
     search: '',
     loading: false,
+    libraryLoading: false,
     saving: false,
     error: null,
     saveError: null
@@ -83,6 +88,37 @@ export const usePersonaStore = defineStore('persona', {
       } catch (error) {
         this.saveError = error instanceof Error ? error.message : 'Persona 创建失败。';
 
+        return null;
+      } finally {
+        this.saving = false;
+      }
+    },
+    async loadLibrary(search = '') {
+      this.libraryLoading = true;
+      this.error = null;
+      try {
+        const result = await fetchPersonas({
+          page: 1,
+          pageSize: 100,
+          search: search.trim() || undefined,
+          scope: 'library'
+        });
+        this.libraryItems = result.items;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : 'Persona 内容库加载失败。';
+      } finally {
+        this.libraryLoading = false;
+      }
+    },
+    async forkLibraryPersona(id: string): Promise<Persona | null> {
+      this.saving = true;
+      this.saveError = null;
+      try {
+        const persona = await forkPersona(id);
+        await this.loadPersonas({ page: 1 });
+        return persona;
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : 'Persona 复制失败。';
         return null;
       } finally {
         this.saving = false;

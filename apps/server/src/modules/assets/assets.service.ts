@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { copyFile, mkdir, unlink, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import type { Asset } from '@prisma/client';
@@ -12,9 +12,25 @@ import {
   CHARACTER_AVATAR_KIND,
   CHARACTER_AVATAR_MIME_EXTENSIONS,
   CHARACTER_AVATAR_UPLOAD_PATH,
-  CHARACTER_AVATAR_UPLOAD_ROOT
+  CHARACTER_AVATAR_UPLOAD_ROOT,
+  UPLOADS_ROOT
 } from './assets.constants';
 import type { AssetResponse, UploadedAvatarFile } from './asset.types';
+
+export type PreparedCharacterAvatarCopy = {
+  data: {
+    userId: string;
+    kind: string;
+    fileName: string;
+    originalName: string | null;
+    mimeType: string;
+    extension: string;
+    sizeBytes: number;
+    storagePath: string;
+    publicPath: string;
+  };
+  absolutePath: string;
+};
 
 /**
  * 素材服务：处理头像等文件上传与落库。
@@ -87,6 +103,67 @@ export class AssetsService {
     return this.toResponse(asset);
   }
 
+  /** 为成员复制一份独立头像文件和 Asset 记录，禁止跨账号复用原素材 ID。 */
+  async prepareCharacterAvatarCopy(
+    sourceUserId: string,
+    targetUserId: string,
+    assetId: string | null
+  ): Promise<PreparedCharacterAvatarCopy | null> {
+    if (!assetId) return null;
+
+    const source = await this.prisma.asset.findFirst({
+      where: { id: assetId, userId: sourceUserId, kind: CHARACTER_AVATAR_KIND, deletedAt: null }
+    });
+    if (!source) {
+      throw new BadRequestException({
+        code: ERROR_CODES.ASSET_NOT_FOUND,
+        message: 'Source avatar asset not found.'
+      });
+    }
+
+    const sourcePath = this.resolveStoragePath(source.storagePath);
+    const extension = source.extension ?? 'bin';
+    const fileName = `${randomUUID()}.${extension}`;
+    const storagePath = join(CHARACTER_AVATAR_UPLOAD_PATH, fileName).replaceAll('\\', '/');
+    const targetPath = this.resolveStoragePath(storagePath);
+    await mkdir(dirname(targetPath), { recursive: true });
+    await copyFile(sourcePath, targetPath);
+
+    return {
+      data: {
+        userId: targetUserId,
+        kind: source.kind,
+        fileName,
+        originalName: source.originalName,
+        mimeType: source.mimeType,
+        extension,
+        sizeBytes: source.sizeBytes,
+        storagePath,
+        publicPath: `/uploads/${storagePath}`
+      },
+      absolutePath: targetPath
+    };
+  }
+
+  /** 数据库事务失败时回收已准备但尚未提交的成员头像文件。 */
+  async discardPreparedAvatarCopy(copy: PreparedCharacterAvatarCopy | null): Promise<void> {
+    if (!copy) return;
+    await unlink(copy.absolutePath).catch(() => undefined);
+  }
+
+  private resolveStoragePath(storagePath: string): string {
+    const root = resolve(UPLOADS_ROOT);
+    const candidate = resolve(root, storagePath);
+    const pathFromRoot = relative(root, candidate);
+    if (isAbsolute(pathFromRoot) || pathFromRoot.startsWith('..')) {
+      throw new BadRequestException({
+        code: ERROR_CODES.ASSET_NOT_FOUND,
+        message: 'Invalid avatar storage path.'
+      });
+    }
+    return candidate;
+  }
+
   /** 数据库记录 → 对外响应（格式化时间）。 */
   private toResponse(asset: Asset): AssetResponse {
     return {
@@ -108,5 +185,7 @@ export class AssetsService {
  * 清理原始文件名：取 basename 去路径、替换非法字符为 _（保留中文字符）、截断 160 字符。
  */
 function sanitizeOriginalName(value: string): string {
-  return basename(value).replace(/[^\w.\-\u4e00-\u9fa5]/g, '_').slice(0, 160);
+  return basename(value)
+    .replace(/[^\w.\-\u4e00-\u9fa5]/g, '_')
+    .slice(0, 160);
 }

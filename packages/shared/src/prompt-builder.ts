@@ -272,8 +272,8 @@ export type WorldBookContext = {
   id: string;
   /** 所属用户 ID。 */
   userId: string;
-  /** 关联角色 ID；共享世界书为 null。 */
-  characterId?: string | null;
+  /** 关联角色 ID 列表；为空时为全局世界书。 */
+  characterIds?: string[];
   /** 世界书名称。 */
   name: string;
   /** 世界书描述。 */

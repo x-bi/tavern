@@ -1,8 +1,9 @@
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { QueryContentLibraryDto } from '../../content-library/dto/query-content-library.dto';
 
 /** 人设列表查询入参（query string）。 */
-export class QueryPersonasDto {
+export class QueryPersonasDto extends QueryContentLibraryDto {
   /** 页码，从 1 开始，默认 1。 */
   @IsOptional()
   @Type(() => Number)

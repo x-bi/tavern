@@ -28,10 +28,7 @@
         </n-form-item>
 
         <n-form-item label="标签">
-          <n-input
-            v-model:value="form.tagsText"
-            placeholder="fantasy, mystery, cozy"
-          />
+          <n-input v-model:value="form.tagsText" placeholder="fantasy, mystery, cozy" />
         </n-form-item>
       </div>
 
@@ -92,6 +89,7 @@
 
       <div class="character-editor__switches">
         <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
+        <n-checkbox v-if="isAdmin" v-model:checked="form.isShared">发布到成员内容库</n-checkbox>
       </div>
 
       <n-form-item label="示例对话">
@@ -128,6 +126,7 @@ import { reactive, ref, watch } from 'vue';
 
 import type { Asset } from '../api/assets';
 import type { Character } from '../api/characters';
+import { getStoredCurrentUser } from '../api/auth';
 import AvatarUploader from './AvatarUploader.vue';
 import type {
   CharacterEditorForm,
@@ -159,6 +158,7 @@ const emit = defineEmits<{
 const formRef = ref<FormInst | null>(null);
 const exampleMessagesError = ref<string | null>(null);
 const form = reactive<CharacterEditorForm>(createEmptyForm());
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 
 const rules: FormRules = {
   name: [
@@ -234,7 +234,8 @@ async function handleSubmit() {
     firstMessage: form.firstMessage.trim(),
     exampleMessages: parsedExamples,
     metadata: createMetadata(form),
-    isSensitive: form.isSensitive
+    isSensitive: form.isSensitive,
+    ...(isAdmin ? { isShared: form.isShared } : {})
   });
 }
 
@@ -250,7 +251,8 @@ function createEmptyForm(): CharacterEditorForm {
     firstMessage: '',
     systemPrompt: '',
     exampleMessagesText: '',
-    isSensitive: false
+    isSensitive: false,
+    isShared: false
   };
 }
 
@@ -259,21 +261,18 @@ function toForm(character: Character): CharacterEditorForm {
     avatarAssetId: character.avatarAssetId,
     avatarUrl: character.avatarUrl ?? '',
     name: character.name,
-    tagsText: Array.isArray(character.metadata?.tags)
-      ? character.metadata.tags.join(', ')
-      : '',
+    tagsText: Array.isArray(character.metadata?.tags) ? character.metadata.tags.join(', ') : '',
     description: character.description,
     personality: character.personality,
     scenario: character.scenario,
     firstMessage: character.firstMessage,
     systemPrompt:
-      typeof character.metadata?.systemPrompt === 'string'
-        ? character.metadata.systemPrompt
-        : '',
+      typeof character.metadata?.systemPrompt === 'string' ? character.metadata.systemPrompt : '',
     exampleMessagesText: character.exampleMessages
       .map((message) => `${message.role}: ${message.content}`)
       .join('\n'),
-    isSensitive: character.isSensitive
+    isSensitive: character.isSensitive,
+    isShared: character.isShared
   };
 }
 

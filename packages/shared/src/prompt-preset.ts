@@ -10,6 +10,8 @@ export type PromptPresetResponse = {
   name: string;
   /** 预设描述。 */
   description: string;
+  /** 预设的系统提示词。 */
+  systemPrompt: string;
   /** 输出约束规则文本（注入到 output_rules 段）。 */
   outputRules: string;
   /** 采样温度；未设置时为 null，表示沿用模型默认。 */
@@ -22,6 +24,10 @@ export type PromptPresetResponse = {
   isDefault: boolean;
   /** 是否标记为敏感内容。 */
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */
@@ -49,4 +55,6 @@ export type PromptPresetPayload = {
   isDefault?: boolean;
   /** 是否标记为敏感内容；未传时默认 false。 */
   isSensitive?: boolean;
+  /** 是否发布到固定管理员内容库。 */
+  isShared?: boolean;
 };

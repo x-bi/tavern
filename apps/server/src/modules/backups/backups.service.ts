@@ -28,6 +28,7 @@ type BackupImportPlan = {
   conversations: Prisma.ConversationCreateManyInput[];
   messages: Prisma.MessageCreateManyInput[];
   worldBooks: Prisma.WorldBookCreateManyInput[];
+  worldBookCharacters: Prisma.WorldBookCharacterCreateManyInput[];
   worldBookEntries: Prisma.WorldBookEntryCreateManyInput[];
   appSettings: Prisma.AppSettingCreateManyInput[];
   summary: BackupImportSummary;
@@ -99,6 +100,10 @@ export class BackupsService {
           deletedAt: null
         },
         include: {
+          characterLinks: {
+            select: { characterId: true },
+            orderBy: { createdAt: 'asc' }
+          },
           entries: {
             where: {
               deletedAt: null
@@ -139,7 +144,12 @@ export class BackupsService {
     ]);
 
     // 特殊处理：世界书（含条目）、应用设置（脱敏敏感值）
-    const worldBookRecords = this.toBackupRecords(worldBooks);
+    const worldBookRecords = worldBooks.map(({ characterLinks, ...worldBook }) =>
+      this.toBackupRecord({
+        ...worldBook,
+        characterIds: characterLinks.map((link) => link.characterId)
+      })
+    );
     const appSettingRecords = appSettings.map((appSetting) =>
       this.toAppSettingBackupRecord(appSetting)
     );
@@ -443,8 +453,10 @@ export class BackupsService {
       this.toMessageImportInput(record, `data.messages[${index}]`, conversationIds)
     );
     const worldBooks = worldBookRecords.map((record, index) =>
-      this.toWorldBookImportInput(
-        currentUser,
+      this.toWorldBookImportInput(currentUser, record, `data.worldBooks[${index}]`)
+    );
+    const worldBookCharacters = worldBookRecords.flatMap((record, index) =>
+      this.toWorldBookCharacterImportInputs(
         record,
         `data.worldBooks[${index}]`,
         characterIds,
@@ -472,6 +484,7 @@ export class BackupsService {
       conversations,
       messages,
       worldBooks,
+      worldBookCharacters,
       worldBookEntries,
       appSettings,
       summary: {
@@ -564,6 +577,10 @@ export class BackupsService {
 
     if (plan.worldBooks.length > 0) {
       await tx.worldBook.createMany({ data: plan.worldBooks });
+    }
+
+    if (plan.worldBookCharacters.length > 0) {
+      await tx.worldBookCharacter.createMany({ data: plan.worldBookCharacters });
     }
 
     if (plan.worldBookEntries.length > 0) {
@@ -856,32 +873,20 @@ export class BackupsService {
   }
 
   /**
-   * 世界书备份记录 → Prisma 创建输入（characterId 可选关联，缺失置 null 并告警）。
+   * 世界书备份记录 → Prisma 创建输入；角色关联由 WorldBookCharacter 单独恢复。
    * @param currentUser 当前登录用户。
    * @param record 世界书备份记录。
    * @param path 字段路径。
-   * @param characterIds 角色 id 集合。
-   * @param warnings 警告收集数组。
    * @returns Prisma 世界书创建输入。
    */
   private toWorldBookImportInput(
     currentUser: CurrentUser,
     record: BackupJsonRecord,
-    path: string,
-    characterIds: Set<string>,
-    warnings: string[]
+    path: string
   ): Prisma.WorldBookCreateManyInput {
-    const characterId = this.resolveOptionalReference(
-      this.optionalString(record, 'characterId', `${path}.characterId`),
-      characterIds,
-      `${path}.characterId`,
-      warnings
-    );
-
     return {
       id: this.requiredString(record, 'id', `${path}.id`),
       userId: currentUser.id,
-      characterId,
       name: this.requiredString(record, 'name', `${path}.name`),
       description: this.requiredString(record, 'description', `${path}.description`),
       isEnabled: this.requiredBoolean(record, 'isEnabled', `${path}.isEnabled`),
@@ -893,6 +898,43 @@ export class BackupsService {
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
       deletedAt: null
     };
+  }
+
+  /** 把新版 characterIds 或旧版 characterId 恢复为显式多角色关联。 */
+  private toWorldBookCharacterImportInputs(
+    record: BackupJsonRecord,
+    path: string,
+    characterIds: Set<string>,
+    warnings: string[]
+  ): Prisma.WorldBookCharacterCreateManyInput[] {
+    const worldBookId = this.requiredString(record, 'id', `${path}.id`);
+    const rawCharacterIds = record.characterIds;
+    let ids: string[];
+
+    if (rawCharacterIds === undefined || rawCharacterIds === null) {
+      const legacyCharacterId = this.optionalString(record, 'characterId', `${path}.characterId`);
+      ids = legacyCharacterId ? [legacyCharacterId] : [];
+    } else {
+      if (!Array.isArray(rawCharacterIds)) {
+        throw this.invalidFormat(`${path}.characterIds must be an array.`);
+      }
+      ids = rawCharacterIds.map((value, index) => {
+        if (typeof value !== 'string' || !value.trim()) {
+          throw this.invalidFormat(`${path}.characterIds[${index}] must be a non-empty string.`);
+        }
+        return value.trim();
+      });
+    }
+
+    return [...new Set(ids)].flatMap((characterId) => {
+      const resolved = this.resolveOptionalReference(
+        characterId,
+        characterIds,
+        `${path}.characterIds`,
+        warnings
+      );
+      return resolved ? [{ worldBookId, characterId: resolved }] : [];
+    });
   }
 
   /**

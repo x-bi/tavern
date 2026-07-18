@@ -10,7 +10,8 @@ import type {
   PersonaImportResponse,
   PersonaListResponse,
   PersonaPayload,
-  PersonaResponse
+  PersonaResponse,
+  ContentLibraryScope
 } from '@tavern/shared';
 
 /** Persona 数据（shared 类型别名）。 */
@@ -30,6 +31,7 @@ export type PersonaListParams = {
   search?: string;
   /** 按是否默认过滤。 */
   isDefault?: boolean;
+  scope?: ContentLibraryScope;
 };
 
 /** 删除 Persona 的结果。 */
@@ -67,6 +69,20 @@ export async function fetchPersonas(params: PersonaListParams = {}): Promise<Per
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
+  return response.data;
+}
+
+export async function fetchPersona(id: string): Promise<PersonaResponse> {
+  const response = await requestJson<PersonaResponse>(`/personas/${id}`);
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  return response.data;
+}
+
+export async function forkPersona(id: string): Promise<PersonaResponse> {
+  const response = await requestJson<PersonaResponse>(`/personas/${id}/fork`, { method: 'POST' });
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   return response.data;
 }
 
@@ -215,6 +231,7 @@ function toQueryString(params: PersonaListParams): string {
   if (params.isDefault !== undefined) {
     query.set('isDefault', String(params.isDefault));
   }
+  if (params.scope) query.set('scope', params.scope);
 
   const value = query.toString();
 

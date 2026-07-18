@@ -5,7 +5,7 @@
         <h2>世界书</h2>
         <p>维护世界书与条目数据，后续阶段会基于这些字段接入命中和注入流程。</p>
       </div>
-      <n-space justify="end">
+      <n-space v-if="activeScope === 'owned'" justify="end">
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
           导入模板
         </n-button>
@@ -13,6 +13,11 @@
         <n-button type="primary" @click="openCreate">新建世界书</n-button>
       </n-space>
     </header>
+
+    <n-tabs v-model:value="activeScope" type="segment">
+      <n-tab name="owned">我的世界书</n-tab>
+      <n-tab name="library">内容库</n-tab>
+    </n-tabs>
 
     <section class="world-book-view__toolbar">
       <n-input
@@ -25,7 +30,10 @@
       <n-button secondary @click="applySearch">搜索</n-button>
     </section>
 
-    <LoadingState v-if="worldBookStore.loading" text="正在加载世界书" />
+    <LoadingState
+      v-if="activeScope === 'owned' ? worldBookStore.loading : worldBookStore.libraryLoading"
+      text="正在加载世界书"
+    />
 
     <ErrorState
       v-else-if="worldBookStore.error"
@@ -33,7 +41,7 @@
       :description="worldBookStore.error"
     />
 
-    <section v-else class="world-book-workspace">
+    <section v-else-if="activeScope === 'owned'" class="world-book-workspace">
       <aside class="world-book-list" aria-label="世界书列表">
         <template v-if="!worldBookStore.hasWorldBooks">
           <EmptyState
@@ -66,6 +74,11 @@
             </span>
             <span class="world-book-list__meta">
               <span>{{ worldBook.entries.length }} 条目</span>
+              <span>{{
+                worldBook.characterIds.length
+                  ? `关联 ${worldBook.characterIds.length} 个角色`
+                  : '全局'
+              }}</span>
               <span>scan {{ worldBook.scanDepth }}</span>
               <span>budget {{ worldBook.tokenBudget }}</span>
             </span>
@@ -95,6 +108,8 @@
           :deleting-entry-id="deletingEntryId"
           :save-error="worldBookStore.saveError"
           :entry-error="worldBookStore.entryError"
+          :character-options="targetCharacterOptions"
+          :characters-loading="characterStore.loading"
           @submit-book="saveWorldBook"
           @create-entry="createEntry"
           @update-entry="updateEntry"
@@ -102,6 +117,68 @@
         />
       </section>
     </section>
+
+    <EmptyState
+      v-else-if="!worldBookStore.libraryItems.length"
+      title="内容库还没有世界书"
+      description="管理员尚未发布共享世界书。"
+    />
+
+    <section v-else class="world-book-library">
+      <n-card
+        v-for="worldBook in worldBookStore.libraryItems"
+        :key="worldBook.id"
+        :title="worldBook.name"
+      >
+        <p>{{ worldBook.description || '未填写描述' }}</p>
+        <n-space>
+          <n-tag :bordered="false">{{ worldBook.entries.length }} 个条目</n-tag>
+          <n-tag v-if="worldBook.characterIds.length" type="warning" :bordered="false"
+            >需选择目标角色</n-tag
+          >
+        </n-space>
+        <template #footer>
+          <n-space justify="space-between">
+            <span>{{ worldBook.ownerName ?? '内容库' }}</span>
+            <n-button
+              v-if="worldBook.canFork"
+              type="primary"
+              :loading="worldBookStore.saving"
+              @click="prepareLibraryFork(worldBook)"
+            >
+              复制到我的世界书
+            </n-button>
+            <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+          </n-space>
+        </template>
+      </n-card>
+    </section>
+
+    <n-modal
+      v-model:show="targetModalVisible"
+      preset="card"
+      title="选择成员角色"
+      style="width: min(520px, 92vw)"
+    >
+      <n-space vertical>
+        <p>这本世界书在内容库中绑定了角色。复制时必须绑定到你自己的角色，之后不再与主数据同步。</p>
+        <n-select
+          v-model:value="targetCharacterId"
+          :options="targetCharacterOptions"
+          placeholder="选择我的角色"
+        />
+        <n-space justify="end">
+          <n-button @click="targetModalVisible = false">取消</n-button>
+          <n-button
+            type="primary"
+            :disabled="!targetCharacterId"
+            :loading="worldBookStore.saving"
+            @click="confirmLibraryFork"
+            >复制</n-button
+          >
+        </n-space>
+      </n-space>
+    </n-modal>
 
     <n-drawer v-model:show="drawerVisible" :width="drawerWidth" placement="right">
       <n-drawer-content title="新建世界书">
@@ -130,11 +207,16 @@
             />
           </n-form-item>
 
-          <n-form-item label="关联角色 ID">
-            <n-input
-              v-model:value="createForm.characterId"
+          <n-form-item label="关联角色">
+            <n-select
+              v-model:value="createForm.characterIds"
+              multiple
+              filterable
               clearable
-              placeholder="可选，留空表示不绑定角色"
+              :loading="characterStore.loading"
+              :options="targetCharacterOptions"
+              max-tag-count="responsive"
+              placeholder="可多选；留空且启用时为全局世界书"
             />
           </n-form-item>
 
@@ -173,6 +255,9 @@
 
           <div class="world-book-view__switches">
             <n-checkbox v-model:checked="createForm.isEnabled">启用世界书</n-checkbox>
+            <n-checkbox v-if="isAdmin" v-model:checked="createForm.isShared"
+              >发布到成员内容库</n-checkbox
+            >
           </div>
 
           <n-space justify="end">
@@ -201,7 +286,7 @@
 
 <script setup lang="ts">
 import type { FormInst, FormRules } from 'naive-ui';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
 import type {
@@ -217,8 +302,11 @@ import LoadingState from '../../components/LoadingState.vue';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 import WorldBookEditor from '../../components/WorldBookEditor.vue';
 import { useWorldBookStore } from '../../stores/worldBook';
+import { useCharacterStore } from '../../stores/character';
 import { downloadJson } from '../../utils/downloadJson';
+import { getStoredCurrentUser } from '../../api/auth';
 import type {
+  ContentLibraryScope,
   ModuleImportDuplicateNameStrategy,
   WorldBookEntryPayload,
   WorldBookImportPreview,
@@ -227,14 +315,17 @@ import type {
 
 type CreateWorldBookFormState = {
   name: string;
-  characterId: string;
+  characterIds: string[];
   description: string;
   scanDepth: number;
   tokenBudget: number;
   isEnabled: boolean;
+  isShared: boolean;
 };
 
 const worldBookStore = useWorldBookStore();
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
+const characterStore = useCharacterStore();
 const dialog = useDialog();
 const message = useMessage();
 const searchText = ref(worldBookStore.search);
@@ -251,6 +342,13 @@ const createFormRef = ref<FormInst | null>(null);
 const editorRef = ref<InstanceType<typeof WorldBookEditor> | null>(null);
 const drawerWidth = computed(() => Math.min(620, window.innerWidth));
 const createForm = reactive<CreateWorldBookFormState>(createEmptyWorldBookForm());
+const activeScope = ref<ContentLibraryScope>('owned');
+const targetModalVisible = ref(false);
+const targetCharacterId = ref<string | null>(null);
+const pendingLibraryWorldBook = ref<WorldBook | null>(null);
+const targetCharacterOptions = computed(() =>
+  characterStore.items.map((item) => ({ label: item.name, value: item.id }))
+);
 
 const createRules: FormRules = {
   name: [
@@ -283,14 +381,52 @@ const createRules: FormRules = {
 
 onMounted(() => {
   void worldBookStore.loadWorldBooks();
+  void characterStore.loadCharacters({ page: 1, pageSize: 100, isArchived: false });
+});
+
+watch(activeScope, (scope) => {
+  if (scope === 'library') {
+    void worldBookStore.loadLibrary(searchText.value);
+    void characterStore.loadCharacters({ page: 1, pageSize: 100, isArchived: false });
+  }
 });
 
 function applySearch() {
   worldBookStore.setSearch(searchText.value);
+  if (activeScope.value === 'library') {
+    void worldBookStore.loadLibrary(searchText.value);
+    return;
+  }
   void worldBookStore.loadWorldBooks({
     page: 1,
     search: searchText.value
   });
+}
+
+async function prepareLibraryFork(worldBook: WorldBook) {
+  if (worldBook.characterIds.length > 0) {
+    pendingLibraryWorldBook.value = worldBook;
+    targetCharacterId.value = null;
+    targetModalVisible.value = true;
+    return;
+  }
+  await copyLibraryWorldBook(worldBook.id);
+}
+
+async function confirmLibraryFork() {
+  if (!pendingLibraryWorldBook.value || !targetCharacterId.value) return;
+  const copied = await copyLibraryWorldBook(
+    pendingLibraryWorldBook.value.id,
+    targetCharacterId.value
+  );
+  if (copied) targetModalVisible.value = false;
+}
+
+async function copyLibraryWorldBook(id: string, targetId?: string) {
+  const copied = await worldBookStore.forkLibraryWorldBook(id, targetId);
+  if (copied) message.success(`已复制“${copied.name}”，后续修改不会与内容库同步。`);
+  else if (worldBookStore.saveError) message.error(worldBookStore.saveError);
+  return copied;
 }
 
 function openCreate() {
@@ -330,11 +466,12 @@ async function submitCreateWorldBook() {
 
   const result = await worldBookStore.createWorldBook({
     name: createForm.name.trim(),
-    characterId: createForm.characterId.trim() || null,
+    characterIds: [...createForm.characterIds],
     description: createForm.description.trim(),
     scanDepth: createForm.scanDepth,
     tokenBudget: createForm.tokenBudget,
-    isEnabled: createForm.isEnabled
+    isEnabled: createForm.isEnabled,
+    ...(isAdmin ? { isShared: createForm.isShared } : {})
   });
 
   if (!result) {
@@ -494,11 +631,12 @@ async function deleteEntry(entry: WorldBookEntry) {
 function createEmptyWorldBookForm(): CreateWorldBookFormState {
   return {
     name: '',
-    characterId: '',
+    characterIds: [],
     description: '',
     scanDepth: 6,
     tokenBudget: 1000,
-    isEnabled: true
+    isEnabled: true,
+    isShared: false
   };
 }
 </script>
@@ -525,6 +663,12 @@ function createEmptyWorldBookForm(): CreateWorldBookFormState {
   grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   gap: 16px;
   align-items: start;
+}
+
+.world-book-library {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
 }
 
 .world-book-list {

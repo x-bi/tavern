@@ -20,6 +20,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { CurrentUser as CurrentUserType } from '../users/user.types';
 import { CreateWorldBookEntryDto } from './dto/create-world-book-entry.dto';
 import { CreateWorldBookDto } from './dto/create-world-book.dto';
+import { ForkWorldBookDto } from './dto/fork-world-book.dto';
 import { QueryWorldBooksDto } from './dto/query-world-books.dto';
 import { UpdateWorldBookEntryDto } from './dto/update-world-book-entry.dto';
 import { UpdateWorldBookDto } from './dto/update-world-book.dto';
@@ -68,6 +69,15 @@ export class WorldBooksController {
   @Get('world-books/import-template')
   importTemplate() {
     return this.worldBooksService.getImportTemplate();
+  }
+
+  @Post('world-books/:id/fork')
+  fork(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Param('id') id: string,
+    @Body(new DtoValidationPipe(ForkWorldBookDto)) dto: ForkWorldBookDto
+  ) {
+    return this.worldBooksService.fork(currentUser, id, dto.targetCharacterId);
   }
 
   /** 获取单个世界书。GET /world-books/:id */

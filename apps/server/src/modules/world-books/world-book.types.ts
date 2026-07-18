@@ -31,12 +31,16 @@ export type WorldBookEntryResponse = {
 export type WorldBookResponse = {
   id: string;
   userId: string;
-  /** 关联角色 ID；为 null 表示全局世界书（所有角色共享）。 */
-  characterId: string | null;
+  /** 关联角色 ID 列表；为空表示全局世界书（所有角色共享）。 */
+  characterIds: string[];
   name: string;
   description: string;
   isEnabled: boolean;
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   /** 扫描深度（扫描最近 N 条消息触发关键词）。 */
   scanDepth: number;
   /** token 预算（世界书最多占用多少 token）。 */

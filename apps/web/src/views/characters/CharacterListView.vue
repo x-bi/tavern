@@ -5,7 +5,7 @@
         <h2>角色</h2>
         <p>管理本地角色卡，进入详情或编辑后续信息。</p>
       </div>
-      <n-space class="character-list__actions" justify="end">
+      <n-space v-if="activeScope === 'owned'" class="character-list__actions" justify="end">
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
           导入模板
         </n-button>
@@ -13,6 +13,11 @@
         <n-button type="primary" @click="goCreate">新建角色</n-button>
       </n-space>
     </header>
+
+    <n-tabs v-model:value="activeScope" type="segment">
+      <n-tab name="owned">我的角色</n-tab>
+      <n-tab name="library">内容库</n-tab>
+    </n-tabs>
 
     <section class="character-list__toolbar">
       <n-input
@@ -25,7 +30,10 @@
       <n-button secondary @click="applySearch">搜索</n-button>
     </section>
 
-    <LoadingState v-if="characterStore.loading" text="正在加载角色" />
+    <LoadingState
+      v-if="activeScope === 'owned' ? characterStore.loading : characterStore.libraryLoading"
+      text="正在加载角色"
+    />
 
     <ErrorState
       v-else-if="characterStore.error"
@@ -34,12 +42,18 @@
     />
 
     <EmptyState
-      v-else-if="!characterStore.hasCharacters"
+      v-else-if="
+        activeScope === 'owned'
+          ? !characterStore.hasCharacters
+          : !characterStore.libraryItems.length
+      "
       title="还没有角色"
-      description="创建第一个角色后，它会出现在这里。"
+      :description="
+        activeScope === 'owned' ? '创建第一个角色后，它会出现在这里。' : '管理员尚未发布共享角色。'
+      "
     />
 
-    <section v-else class="character-list__grid" aria-label="角色列表">
+    <section v-else-if="activeScope === 'owned'" class="character-list__grid" aria-label="角色列表">
       <CharacterCard
         v-for="character in characterStore.items"
         :key="character.id"
@@ -47,6 +61,30 @@
         @view="goDetail"
         @edit="goEdit"
       />
+    </section>
+
+    <section v-else class="character-list__grid" aria-label="角色内容库">
+      <n-card
+        v-for="character in characterStore.libraryItems"
+        :key="character.id"
+        :title="character.name"
+      >
+        <p>{{ fallback(character.description) }}</p>
+        <template #footer>
+          <n-space justify="space-between">
+            <n-tag :bordered="false">{{ character.ownerName ?? '内容库' }}</n-tag>
+            <n-button
+              v-if="character.canFork"
+              type="primary"
+              :loading="characterStore.saving"
+              @click="copyFromLibrary(character.id)"
+            >
+              复制到我的角色
+            </n-button>
+            <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+          </n-space>
+        </template>
+      </n-card>
     </section>
 
     <ModuleJsonImportDrawer
@@ -92,9 +130,13 @@
 </template>
 
 <script setup lang="ts">
-import type { CharacterImportPreview, ModuleImportDuplicateNameStrategy } from '@tavern/shared';
+import type {
+  CharacterImportPreview,
+  ContentLibraryScope,
+  ModuleImportDuplicateNameStrategy
+} from '@tavern/shared';
 import { useMessage } from 'naive-ui';
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 import CharacterCard from '../../components/CharacterCard.vue';
@@ -116,17 +158,32 @@ const importPreviewing = ref(false);
 const importing = ref(false);
 const importError = ref<string | null>(null);
 const templateLoading = ref(false);
+const activeScope = ref<ContentLibraryScope>('owned');
 
 onMounted(() => {
   void characterStore.loadCharacters();
 });
 
+watch(activeScope, (scope) => {
+  if (scope === 'library') void characterStore.loadLibrary(searchText.value);
+});
+
 function applySearch() {
   characterStore.setSearch(searchText.value);
+  if (activeScope.value === 'library') {
+    void characterStore.loadLibrary(searchText.value);
+    return;
+  }
   void characterStore.loadCharacters({
     page: 1,
     search: searchText.value
   });
+}
+
+async function copyFromLibrary(id: string) {
+  const copied = await characterStore.forkLibraryCharacter(id);
+  if (copied) message.success(`已复制「${copied.name}」，后续修改不会与内容库同步。`);
+  else if (characterStore.saveError) message.error(characterStore.saveError);
 }
 
 function goCreate() {

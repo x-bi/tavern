@@ -73,6 +73,7 @@
       <div class="prompt-preset-form__switches">
         <n-checkbox v-model:checked="form.isDefault">设为默认预设</n-checkbox>
         <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
+        <n-checkbox v-if="isAdmin" v-model:checked="form.isShared">发布到成员内容库</n-checkbox>
       </div>
 
       <n-space justify="end">
@@ -91,6 +92,7 @@ import { reactive, ref, watch } from 'vue';
 
 import type { PromptPreset, PromptPresetMutationPayload } from '../api/presets';
 import type { PromptPresetPayload } from '@tavern/shared';
+import { getStoredCurrentUser } from '../api/auth';
 
 type PromptPresetFormState = {
   name: string;
@@ -101,6 +103,7 @@ type PromptPresetFormState = {
   maxTokens: number | null;
   isDefault: boolean;
   isSensitive: boolean;
+  isShared: boolean;
 };
 
 const props = withDefaults(
@@ -125,6 +128,7 @@ const emit = defineEmits<{
 
 const formRef = ref<FormInst | null>(null);
 const form = reactive<PromptPresetFormState>(createEmptyForm());
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 
 const rules: FormRules = {
   name: [
@@ -185,7 +189,8 @@ async function handleSubmit() {
     topP: form.topP ?? undefined,
     maxTokens: form.maxTokens ?? undefined,
     isDefault: form.isDefault,
-    isSensitive: form.isSensitive
+    isSensitive: form.isSensitive,
+    ...(isAdmin ? { isShared: form.isShared } : {})
   });
 }
 
@@ -198,7 +203,8 @@ function createEmptyForm(): PromptPresetFormState {
     topP: null,
     maxTokens: null,
     isDefault: false,
-    isSensitive: false
+    isSensitive: false,
+    isShared: false
   };
 }
 
@@ -211,7 +217,8 @@ function toForm(preset: PromptPreset): PromptPresetFormState {
     topP: preset.topP,
     maxTokens: preset.maxTokens,
     isDefault: preset.isDefault,
-    isSensitive: preset.isSensitive
+    isSensitive: preset.isSensitive,
+    isShared: preset.isShared
   };
 }
 </script>

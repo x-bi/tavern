@@ -49,8 +49,8 @@ Tavern Lite 支持按模块单独导入 JSON 内容。它和备份恢复不同�
 
 - `name`：必填，世界书名称。
 - `description`：可选，世界书说明。
-- `characterId`：可选，绑定角色 ID；为空表示全局世界书。
-- `isEnabled`：可选，是否启用。
+- 普通世界书导入不解析外部角色 ID；导入后角色关联固定为空。
+- 导入后的世界书固定停用，需在世界书页面选择本地角色并手动启用。
 - `scanDepth`：可选，整数。
 - `tokenBudget`：可选，整数。
 - `metadata`：可选，对象或 `null`。

@@ -7,6 +7,8 @@ export type CompanionPayload = {
   modelFallbackGroupId?: string | null;
   promptPresetId?: string | null;
   personaId?: string | null;
+  isSensitive?: boolean;
+  isShared?: boolean;
 };
 
 export type CompanionResponse = {
@@ -21,6 +23,11 @@ export type CompanionResponse = {
   personaId: string | null;
   memoryEnabled: boolean;
   memoryPaused: boolean;
+  isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   createdAt: string;
   updatedAt: string;
 };

@@ -16,6 +16,7 @@ import {
 } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
+import { ContentLibraryService } from '../content-library/content-library.service';
 import type { CurrentUser } from '../users/user.types';
 import type { CreatePersonaDto } from './dto/create-persona.dto';
 import type { QueryPersonasDto } from './dto/query-personas.dto';
@@ -57,6 +58,8 @@ export class PersonasService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
+    @Inject(ContentLibraryService)
+    private readonly contentLibraryService: ContentLibraryService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService
   ) {}
@@ -70,10 +73,12 @@ export class PersonasService {
   async list(currentUser: CurrentUser, query: QueryPersonasDto): Promise<PersonaListResponse> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const access = await this.contentLibraryService.resolveAccess(currentUser, query.scope);
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: currentUser.id,
+      userId: access.owner.id,
+      ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
       ...(showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
@@ -98,7 +103,7 @@ export class PersonasService {
     ]);
 
     return {
-      items: items.map((persona) => this.toResponse(persona)),
+      items: items.map((persona) => this.toResponse(persona, currentUser, access.ownerName)),
       total,
       page,
       pageSize
@@ -113,6 +118,7 @@ export class PersonasService {
    * @throws ConflictException 人设名重复。
    */
   async create(currentUser: CurrentUser, dto: CreatePersonaDto): Promise<PersonaResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     const data = {
       userId: currentUser.id,
       name: dto.name,
@@ -120,7 +126,8 @@ export class PersonasService {
       content: dto.content ?? '',
       metadataJson: this.stringifyNullable(dto.metadata),
       isDefault: dto.isDefault ?? false,
-      isSensitive: dto.isSensitive ?? false
+      isSensitive: dto.isSensitive ?? false,
+      isShared: dto.isShared ?? false
     };
 
     try {
@@ -142,7 +149,7 @@ export class PersonasService {
           })
         : await this.prisma.userPersona.create({ data });
 
-      return this.toResponse(persona);
+      return this.toResponse(persona, currentUser);
     } catch (error) {
       // 捕获唯一名冲突（P2002）转成 409
       this.throwIfUniqueNameConflict(error);
@@ -214,7 +221,8 @@ export class PersonasService {
                 content: normalized.content,
                 metadataJson: this.stringifyNullable(normalized.metadata),
                 isDefault: normalized.isDefault,
-                isSensitive: false
+                isSensitive: false,
+                isShared: false
               }
             });
           })
@@ -225,7 +233,8 @@ export class PersonasService {
               content: normalized.content,
               metadataJson: this.stringifyNullable(normalized.metadata),
               isDefault: normalized.isDefault,
-              isSensitive: false
+              isSensitive: false,
+              isShared: false
             }
           });
 
@@ -235,12 +244,36 @@ export class PersonasService {
           ...preview,
           name
         },
-        persona: this.toResponse(persona)
+        persona: this.toResponse(persona, currentUser)
       };
     } catch (error) {
       this.throwIfUniqueNameConflict(error);
       throw error;
     }
+  }
+
+  async getById(currentUser: CurrentUser, id: string): Promise<PersonaResponse> {
+    const persona = await this.findVisibleActivePersona(currentUser, id);
+    const owner =
+      persona.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
+    return this.toResponse(persona, currentUser, owner?.displayName ?? null);
+  }
+
+  async fork(currentUser: CurrentUser, id: string): Promise<PersonaResponse> {
+    const source = await this.findLibraryPersona(currentUser, id);
+    const names = await this.loadExistingNames(currentUser);
+    const persona = await this.prisma.userPersona.create({
+      data: {
+        userId: currentUser.id,
+        name: createAvailableName(source.name, names),
+        content: source.content,
+        metadataJson: source.metadataJson,
+        isSensitive: source.isSensitive,
+        isShared: false,
+        isDefault: false
+      }
+    });
+    return this.toResponse(persona, currentUser);
   }
 
   /** 返回可直接用于 Persona 导入的模板。 */
@@ -271,6 +304,7 @@ export class PersonasService {
     id: string,
     dto: UpdatePersonaDto
   ): Promise<PersonaResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     // 先校验人设存在且属于当前用户
     await this.findOwnedActivePersona(currentUser, id);
     // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
@@ -280,6 +314,7 @@ export class PersonasService {
       ...(dto.content === undefined ? {} : { content: dto.content }),
       ...(dto.metadata === undefined ? {} : { metadataJson: this.stringifyNullable(dto.metadata) }),
       ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
+      ...(dto.isShared === undefined ? {} : { isShared: dto.isShared }),
       ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault })
     };
 
@@ -315,7 +350,7 @@ export class PersonasService {
         await this.refreshConversationSensitivityForPersona(currentUser, id, dto.isSensitive);
       }
 
-      return this.toResponse(persona);
+      return this.toResponse(persona, currentUser);
     } catch (error) {
       this.throwIfUniqueNameConflict(error);
       throw error;
@@ -382,7 +417,7 @@ export class PersonasService {
       });
     });
 
-    return this.toResponse(persona);
+    return this.toResponse(persona, currentUser);
   }
 
   /**
@@ -457,12 +492,61 @@ export class PersonasService {
     return persona;
   }
 
+  private async findVisibleActivePersona(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<UserPersona> {
+    const owner = await this.contentLibraryService.getOwner();
+    const persona = await this.prisma.userPersona.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false }),
+        OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
+      }
+    });
+    if (!persona)
+      throw new NotFoundException({
+        code: ERROR_CODES.PERSONA_NOT_FOUND,
+        message: 'Persona not found.'
+      });
+    return persona;
+  }
+
+  private async findLibraryPersona(currentUser: CurrentUser, id: string): Promise<UserPersona> {
+    const owner = await this.contentLibraryService.getOwner();
+    const persona = await this.prisma.userPersona.findFirst({
+      where: {
+        id,
+        userId: owner.id,
+        isShared: true,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
+      }
+    });
+    if (!persona)
+      throw new NotFoundException({
+        code: ERROR_CODES.CONTENT_LIBRARY_ITEM_NOT_FOUND,
+        message: 'Shared persona not found.'
+      });
+    return persona;
+  }
+
   /**
    * 数据库记录 → 对外响应（解析 metadata JSON、格式化时间）。
    * @param persona 人设数据库记录。
    * @returns 人设响应。
    */
-  private toResponse(persona: UserPersona): PersonaResponse {
+  private toResponse(
+    persona: UserPersona,
+    currentUser: CurrentUser,
+    ownerName: string | null = null
+  ): PersonaResponse {
+    const isOwner = persona.userId === currentUser.id;
     return {
       id: persona.id,
       userId: persona.userId,
@@ -471,6 +555,10 @@ export class PersonasService {
       metadata: this.parseRecord(persona.metadataJson),
       isDefault: persona.isDefault,
       isSensitive: persona.isSensitive,
+      isShared: persona.isShared,
+      isOwner,
+      ownerName,
+      canFork: !isOwner && persona.isShared,
       createdAt: persona.createdAt.toISOString(),
       updatedAt: persona.updatedAt.toISOString()
     };

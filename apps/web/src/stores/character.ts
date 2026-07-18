@@ -5,6 +5,7 @@ import {
   deleteCharacter,
   fetchCharacters,
   fetchCharacter,
+  forkCharacter,
   updateCharacter,
   type Character,
   type CharacterListParams
@@ -13,12 +14,14 @@ import type { CharacterMutationPayload } from '../types/character';
 
 type CharacterState = {
   items: Character[];
+  libraryItems: Character[];
   total: number;
   page: number;
   pageSize: number;
   search: string;
   current: Character | null;
   loading: boolean;
+  libraryLoading: boolean;
   detailLoading: boolean;
   saving: boolean;
   error: string | null;
@@ -29,12 +32,14 @@ type CharacterState = {
 export const useCharacterStore = defineStore('character', {
   state: (): CharacterState => ({
     items: [],
+    libraryItems: [],
     total: 0,
     page: 1,
     pageSize: 20,
     search: '',
     current: null,
     loading: false,
+    libraryLoading: false,
     detailLoading: false,
     saving: false,
     error: null,
@@ -93,6 +98,37 @@ export const useCharacterStore = defineStore('character', {
         return null;
       } finally {
         this.detailLoading = false;
+      }
+    },
+    async loadLibrary(search = '') {
+      this.libraryLoading = true;
+      this.error = null;
+      try {
+        const result = await fetchCharacters({
+          page: 1,
+          pageSize: 100,
+          search: search.trim() || undefined,
+          scope: 'library'
+        });
+        this.libraryItems = result.items;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '角色内容库加载失败。';
+      } finally {
+        this.libraryLoading = false;
+      }
+    },
+    async forkLibraryCharacter(id: string): Promise<Character | null> {
+      this.saving = true;
+      this.saveError = null;
+      try {
+        const character = await forkCharacter(id);
+        await this.loadCharacters({ page: 1 });
+        return character;
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '角色复制失败。';
+        return null;
+      } finally {
+        this.saving = false;
       }
     },
     async createCharacter(payload: CharacterMutationPayload): Promise<Character | null> {

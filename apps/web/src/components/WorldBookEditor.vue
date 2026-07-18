@@ -36,11 +36,16 @@
               />
             </n-form-item>
 
-            <n-form-item label="关联角色 ID">
-              <n-input
-                v-model:value="bookForm.characterId"
+            <n-form-item label="关联角色">
+              <n-select
+                v-model:value="bookForm.characterIds"
+                multiple
+                filterable
                 clearable
-                placeholder="可选，留空表示不绑定角色"
+                :loading="charactersLoading"
+                :options="characterOptions"
+                max-tag-count="responsive"
+                placeholder="可多选；留空且启用时为全局世界书"
               />
             </n-form-item>
           </div>
@@ -81,6 +86,9 @@
           <div class="world-book-editor__switches">
             <n-checkbox v-model:checked="bookForm.isEnabled">启用世界书</n-checkbox>
             <n-checkbox v-model:checked="bookForm.isSensitive">标记为敏感内容</n-checkbox>
+            <n-checkbox v-if="isAdmin" v-model:checked="bookForm.isShared"
+              >发布到成员内容库</n-checkbox
+            >
           </div>
 
           <n-space justify="end">
@@ -270,6 +278,7 @@ import type { FormInst, FormRules } from 'naive-ui';
 import { reactive, ref, watch } from 'vue';
 
 import type { WorldBook, WorldBookEntry } from '../api/worldBooks';
+import { getStoredCurrentUser } from '../api/auth';
 import EmptyState from './EmptyState.vue';
 import type {
   WorldBookEntryInsertionOrder,
@@ -281,12 +290,13 @@ import type {
 
 type WorldBookFormState = {
   name: string;
-  characterId: string;
+  characterIds: string[];
   description: string;
   scanDepth: number;
   tokenBudget: number;
   isEnabled: boolean;
   isSensitive: boolean;
+  isShared: boolean;
 };
 
 type EntryFormState = {
@@ -309,6 +319,8 @@ const props = withDefaults(
     deletingEntryId?: string | null;
     saveError?: string | null;
     entryError?: string | null;
+    characterOptions?: Array<{ label: string; value: string }>;
+    charactersLoading?: boolean;
   }>(),
   {
     worldBook: null,
@@ -316,7 +328,9 @@ const props = withDefaults(
     entrySubmitting: false,
     deletingEntryId: null,
     saveError: null,
-    entryError: null
+    entryError: null,
+    characterOptions: () => [],
+    charactersLoading: false
   }
 );
 
@@ -339,6 +353,7 @@ const entryFormRef = ref<FormInst | null>(null);
 const entryFormVisible = ref(false);
 const editingEntryId = ref<string | null>(null);
 const bookForm = reactive<WorldBookFormState>(createEmptyBookForm());
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const entryForm = reactive<EntryFormState>(createEmptyEntryForm());
 
 const bookRules: FormRules = {
@@ -420,12 +435,13 @@ async function submitBook() {
 
   emit('submitBook', {
     name: bookForm.name.trim(),
-    characterId: bookForm.characterId.trim() || null,
+    characterIds: [...bookForm.characterIds],
     description: bookForm.description.trim(),
     scanDepth: bookForm.scanDepth,
     tokenBudget: bookForm.tokenBudget,
     isEnabled: bookForm.isEnabled,
-    isSensitive: bookForm.isSensitive
+    isSensitive: bookForm.isSensitive,
+    ...(isAdmin ? { isShared: bookForm.isShared } : {})
   });
 }
 
@@ -466,24 +482,26 @@ async function submitEntry() {
 function createEmptyBookForm(): WorldBookFormState {
   return {
     name: '',
-    characterId: '',
+    characterIds: [],
     description: '',
     scanDepth: 6,
     tokenBudget: 1000,
     isEnabled: true,
-    isSensitive: false
+    isSensitive: false,
+    isShared: false
   };
 }
 
 function toBookForm(worldBook: WorldBook): WorldBookFormState {
   return {
     name: worldBook.name,
-    characterId: worldBook.characterId ?? '',
+    characterIds: [...worldBook.characterIds],
     description: worldBook.description,
     scanDepth: worldBook.scanDepth,
     tokenBudget: worldBook.tokenBudget,
     isEnabled: worldBook.isEnabled,
-    isSensitive: worldBook.isSensitive
+    isSensitive: worldBook.isSensitive,
+    isShared: worldBook.isShared
   };
 }
 

@@ -29,6 +29,7 @@
       <div class="persona-editor__switches">
         <n-checkbox v-model:checked="form.isDefault">设为默认 Persona</n-checkbox>
         <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
+        <n-checkbox v-if="isAdmin" v-model:checked="form.isShared">发布到成员内容库</n-checkbox>
       </div>
 
       <n-space justify="end">
@@ -47,12 +48,14 @@ import { reactive, ref, watch } from 'vue';
 
 import type { Persona, PersonaMutationPayload } from '../api/personas';
 import type { PersonaPayload } from '@tavern/shared';
+import { getStoredCurrentUser } from '../api/auth';
 
 type PersonaFormState = {
   name: string;
   content: string;
   isDefault: boolean;
   isSensitive: boolean;
+  isShared: boolean;
 };
 
 const props = withDefaults(
@@ -77,6 +80,7 @@ const emit = defineEmits<{
 
 const formRef = ref<FormInst | null>(null);
 const form = reactive<PersonaFormState>(createEmptyForm());
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 
 const rules: FormRules = {
   name: [
@@ -117,7 +121,8 @@ async function handleSubmit() {
     name: form.name.trim(),
     content: form.content.trim(),
     isDefault: form.isDefault,
-    isSensitive: form.isSensitive
+    isSensitive: form.isSensitive,
+    ...(isAdmin ? { isShared: form.isShared } : {})
   });
 }
 
@@ -126,7 +131,8 @@ function createEmptyForm(): PersonaFormState {
     name: '',
     content: '',
     isDefault: false,
-    isSensitive: false
+    isSensitive: false,
+    isShared: false
   };
 }
 
@@ -135,7 +141,8 @@ function toForm(persona: Persona): PersonaFormState {
     name: persona.name,
     content: persona.content,
     isDefault: persona.isDefault,
-    isSensitive: persona.isSensitive
+    isSensitive: persona.isSensitive,
+    isShared: persona.isShared
   };
 }
 </script>

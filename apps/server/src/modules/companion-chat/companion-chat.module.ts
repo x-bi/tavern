@@ -4,6 +4,7 @@ import { ModelGatewayModule } from '../../services/model-gateway';
 import { AuthModule } from '../auth/auth.module';
 import { CompanionMemoryModule } from '../companion-memory/companion-memory.module';
 import { ModelsModule } from '../models/models.module';
+import { SettingsModule } from '../settings/settings.module';
 import { CompanionChatController } from './companion-chat.controller';
 import { CompanionChatService } from './companion-chat.service';
 
@@ -13,7 +14,8 @@ import { CompanionChatService } from './companion-chat.service';
     ModelsModule,
     ModelGatewayModule,
     CompanionPromptBuilderModule,
-    CompanionMemoryModule
+    CompanionMemoryModule,
+    SettingsModule
   ],
   controllers: [CompanionChatController],
   providers: [CompanionChatService],

@@ -16,6 +16,7 @@ import { estimatePromptTextTokens } from '../../services/prompt-builder/token-es
 import { TargetEventsService } from '../../services/target-events/target-events.service';
 import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
 import { ModelsService } from '../models/models.service';
+import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import type { ChatResponseLike } from '../chat/chat.types';
 import { StreamCompanionChatDto } from './dto/stream-companion-chat.dto';
@@ -33,6 +34,7 @@ export class CompanionChatService {
     @Inject(ModelsService) private readonly models: ModelsService,
     @Inject(ModelGatewayService) private readonly gateway: ModelGatewayService,
     @Inject(CompanionMemoryService) private readonly memoryService: CompanionMemoryService,
+    @Inject(SettingsService) private readonly settingsService: SettingsService,
     @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
   ) {}
 
@@ -85,11 +87,6 @@ export class CompanionChatService {
     dto: StreamCompanionChatDto,
     response: ChatResponseLike
   ): Promise<void> {
-    if (this.tasks.has(companionId))
-      throw new ConflictException({
-        code: 'COMPANION_CHAT_BUSY',
-        message: 'Companion is already generating.'
-      });
     const hasInput = Boolean(dto.userMessage?.trim());
     const hasRegenerate = Boolean(dto.regenerateMessageId);
     if (hasInput === hasRegenerate)
@@ -97,17 +94,21 @@ export class CompanionChatService {
         code: 'BAD_REQUEST',
         message: 'Provide userMessage or regenerateMessageId.'
       });
-    await this.findOwned(user, companionId);
-    this.prepareSse(response);
-
+    const companion = await this.findOwned(user, companionId);
+    if (this.tasks.has(companionId))
+      throw new ConflictException({
+        code: 'COMPANION_CHAT_BUSY',
+        message: 'Companion is already generating.'
+      });
     const abort = new AbortController();
+    this.prepareSse(response);
     this.tasks.set(companionId, abort);
+
     const close = () => abort.abort();
     response.on('close', close);
     let assistant: CompanionMessage | null = null;
     let content = '';
     try {
-      const companion = await this.findOwned(user, companionId);
       const prepared = dto.regenerateMessageId
         ? await this.prepareRegenerate(companionId, dto.regenerateMessageId)
         : await this.prepareNew(companionId, dto.userMessage!);
@@ -261,9 +262,9 @@ export class CompanionChatService {
           metadataJson: JSON.stringify({ regeneratedByMessageId: replacement.id })
         }
       });
+      await this.memoryService.markStaleIfAffected(companionId, target, tx);
       return replacement;
     });
-    await this.memoryService.markStaleIfAffected(companionId, target);
     return {
       user,
       assistant,
@@ -288,8 +289,14 @@ export class CompanionChatService {
   }
 
   private async findOwned(user: CurrentUser, id: string) {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(user);
     const companion = await this.prisma.companion.findFirst({
-      where: { id, userId: user.id, deletedAt: null },
+      where: {
+        id,
+        userId: user.id,
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false })
+      },
       include: { persona: true, promptPreset: true, memory: true }
     });
     if (!companion)

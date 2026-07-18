@@ -5,7 +5,7 @@
         <h2>AI 角色</h2>
         <p>每个角色只有一条持续的关系线程。</p>
       </div>
-      <n-space justify="end">
+      <n-space v-if="activeScope === 'owned'" justify="end">
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate"
           >导入模板</n-button
         >
@@ -13,7 +13,11 @@
         <n-button type="primary" @click="showCreate = !showCreate">新建 AI 角色</n-button>
       </n-space>
     </header>
-    <n-card v-if="showCreate" title="新建 AI 角色"
+    <n-tabs v-model:value="activeScope" type="segment">
+      <n-tab name="owned">我的 AI 角色</n-tab>
+      <n-tab name="library">内容库</n-tab>
+    </n-tabs>
+    <n-card v-if="activeScope === 'owned' && showCreate" title="新建 AI 角色"
       ><n-form
         ><n-form-item label="名字"
           ><n-input v-model:value="draft.name" maxlength="80" /></n-form-item
@@ -41,6 +45,10 @@
             accept="image/png,image/jpeg,image/webp,image/gif"
             @change="pickAvatar"
           /><span v-if="avatarName" class="avatar-name">{{ avatarName }}</span></n-form-item
+        ><n-form-item
+          ><n-checkbox v-model:checked="draft.isSensitive">敏感内容</n-checkbox></n-form-item
+        ><n-form-item v-if="isAdmin"
+          ><n-checkbox v-model:checked="draft.isShared">发布到成员内容库</n-checkbox></n-form-item
         ><n-space justify="end"
           ><n-button @click="showCreate = false">取消</n-button
           ><n-button type="primary" :loading="saving" @click="save"
@@ -53,11 +61,11 @@
     <n-spin v-if="loading" />
     <section v-else class="companion-grid">
       <n-card
-        v-for="item in items"
+        v-for="item in visibleItems"
         :key="item.id"
         hoverable
         class="companion-card"
-        @click="open(item.id)"
+        @click="activeScope === 'owned' ? open(item.id) : undefined"
         ><div class="companion-card__body">
           <n-avatar round :size="52" :src="item.avatarUrl || undefined">{{
             item.name.slice(0, 1)
@@ -65,14 +73,34 @@
           <div>
             <h3>{{ item.name }}</h3>
             <p>{{ item.identityPrompt || '还没有身份设定' }}</p>
-            <n-tag size="small" :type="item.memoryEnabled ? 'success' : 'default'"
+            <n-tag
+              size="small"
+              :type="item.memoryEnabled ? 'success' : 'default'"
+              v-if="activeScope === 'owned'"
               >记忆{{
                 item.memoryEnabled ? (item.memoryPaused ? '已暂停' : '已开启') : '未开启'
               }}</n-tag
             >
-            <n-button size="tiny" quaternary @click.stop="downloadCompanion(item.id)"
+            <n-button
+              size="tiny"
+              quaternary
+              @click.stop="downloadCompanion(item.id)"
+              v-if="activeScope === 'owned'"
               >导出</n-button
             >
+            <n-space v-else align="center">
+              <n-tag size="small" :bordered="false">{{ item.ownerName ?? '内容库' }}</n-tag>
+              <n-button
+                v-if="item.canFork"
+                size="small"
+                type="primary"
+                :loading="saving"
+                @click.stop="copyFromLibrary(item.id)"
+              >
+                复制到我的 AI 角色
+              </n-button>
+              <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+            </n-space>
           </div>
         </div></n-card
       >
@@ -98,16 +126,22 @@
   </main>
 </template>
 <script setup lang="ts">
-import type { CompanionImportPreview, CompanionResponse } from '@tavern/shared';
+import type {
+  CompanionImportPreview,
+  CompanionResponse,
+  ContentLibraryScope
+} from '@tavern/shared';
 import { NSelect, type SelectOption } from 'naive-ui';
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { uploadAsset } from '../../api/assets';
+import { getStoredCurrentUser } from '../../api/auth';
 import {
   createCompanion,
   exportCompanionJson,
   fetchCompanionImportTemplate,
   fetchCompanions,
+  forkCompanion,
   importCompanionJson
 } from '../../api/companions';
 import { fetchModelFallbackGroups } from '../../api/models';
@@ -115,7 +149,13 @@ import { fetchPersonas } from '../../api/personas';
 import { fetchPromptPresets } from '../../api/presets';
 import ModuleJsonImportDrawer from '../../components/ModuleJsonImportDrawer.vue';
 const router = useRouter();
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const items = ref<CompanionResponse[]>([]);
+const libraryItems = ref<CompanionResponse[]>([]);
+const activeScope = ref<ContentLibraryScope>('owned');
+const visibleItems = computed(() =>
+  activeScope.value === 'owned' ? items.value : libraryItems.value
+);
 const loading = ref(false);
 const saving = ref(false);
 const error = ref('');
@@ -125,7 +165,9 @@ const draft = reactive({
   identityPrompt: '',
   modelFallbackGroupId: null as string | null,
   promptPresetId: null as string | null,
-  personaId: null as string | null
+  personaId: null as string | null,
+  isSensitive: false,
+  isShared: false
 });
 const avatarFile = ref<File | null>(null);
 const avatarName = ref('');
@@ -139,6 +181,9 @@ const importError = ref('');
 const templateLoading = ref(false);
 const importPreview = ref<CompanionImportPreview | null>(null);
 onMounted(load);
+watch(activeScope, (scope) => {
+  if (scope === 'library') void loadLibrary();
+});
 async function load() {
   loading.value = true;
   error.value = '';
@@ -159,6 +204,17 @@ async function load() {
     loading.value = false;
   }
 }
+async function loadLibrary() {
+  loading.value = true;
+  error.value = '';
+  try {
+    libraryItems.value = (await fetchCompanions('', 'library')).items;
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '内容库加载失败';
+  } finally {
+    loading.value = false;
+  }
+}
 function pickAvatar(event: Event) {
   const file = (event.target as HTMLInputElement).files?.[0] ?? null;
   avatarFile.value = file;
@@ -175,11 +231,25 @@ async function save() {
       avatarAssetId: asset?.id ?? null,
       modelFallbackGroupId: draft.modelFallbackGroupId,
       promptPresetId: draft.promptPresetId,
-      personaId: draft.personaId
+      personaId: draft.personaId,
+      isSensitive: draft.isSensitive,
+      ...(isAdmin ? { isShared: draft.isShared } : {})
     });
     await router.push(`/companion/${item.id}`);
   } catch (e) {
     error.value = e instanceof Error ? e.message : '创建失败';
+  } finally {
+    saving.value = false;
+  }
+}
+async function copyFromLibrary(id: string) {
+  saving.value = true;
+  error.value = '';
+  try {
+    await forkCompanion(id);
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : 'AI 角色复制失败';
   } finally {
     saving.value = false;
   }

@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsInt,
   IsObject,
@@ -18,10 +20,12 @@ export class UpdateWorldBookDto {
   @MaxLength(120)
   name?: string;
 
-  /** 关联角色 ID；传 null 表示全局。 */
+  /** 关联角色 ID 列表；传空数组表示全局。 */
   @IsOptional()
-  @IsString()
-  characterId?: string | null;
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  characterIds?: string[];
 
   /** 描述。 */
   @IsOptional()
@@ -38,6 +42,10 @@ export class UpdateWorldBookDto {
   @IsOptional()
   @IsBoolean()
   isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 
   /** 扫描深度 1~200。 */
   @IsOptional()

@@ -15,7 +15,8 @@ import type {
   WorldBookListResponse,
   WorldBookPayload,
   WorldBookResponse,
-  WorldBookUpdatePayload
+  WorldBookUpdatePayload,
+  ContentLibraryScope
 } from '@tavern/shared';
 
 /** 世界书数据（shared 类型别名）。 */
@@ -41,6 +42,7 @@ export type WorldBookListParams = {
   characterId?: string;
   /** 按启用状态过滤。 */
   isEnabled?: boolean;
+  scope?: ContentLibraryScope;
 };
 
 /** 删除世界书或条目的结果。 */
@@ -96,6 +98,19 @@ export async function fetchWorldBook(id: string): Promise<WorldBookResponse> {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
+  return response.data;
+}
+
+export async function forkWorldBook(
+  id: string,
+  targetCharacterId?: string
+): Promise<WorldBookResponse> {
+  const response = await requestJson<WorldBookResponse>(`/world-books/${id}/fork`, {
+    method: 'POST',
+    body: targetCharacterId ? { targetCharacterId } : {}
+  });
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   return response.data;
 }
 
@@ -300,6 +315,7 @@ function toQueryString(params: WorldBookListParams): string {
   if (params.isEnabled !== undefined) {
     query.set('isEnabled', String(params.isEnabled));
   }
+  if (params.scope) query.set('scope', params.scope);
 
   const value = query.toString();
 

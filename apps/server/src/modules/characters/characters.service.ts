@@ -11,6 +11,8 @@ import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../settings/settings.service';
 import { CHARACTER_AVATAR_KIND } from '../assets/assets.constants';
+import { AssetsService } from '../assets/assets.service';
+import { ContentLibraryService } from '../content-library/content-library.service';
 import type { CurrentUser } from '../users/user.types';
 import type {
   CharacterExportResponse,
@@ -48,6 +50,10 @@ export class CharactersService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
+    @Inject(AssetsService)
+    private readonly assetsService: AssetsService,
+    @Inject(ContentLibraryService)
+    private readonly contentLibraryService: ContentLibraryService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService
   ) {}
@@ -62,10 +68,12 @@ export class CharactersService {
     // 分页参数兜底
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const access = await this.contentLibraryService.resolveAccess(currentUser, query.scope);
     const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
     // 构建查询条件：限定当前用户 + 未软删除
     const where = {
-      userId: currentUser.id,
+      userId: access.owner.id,
+      ...(query.scope === 'library' ? { isShared: true } : {}),
       deletedAt: null,
       ...(showSensitiveContent ? {} : { isSensitive: false }),
       // isArchived 未传时不加条件（查全部），传了则按值过滤归档/未归档
@@ -98,7 +106,7 @@ export class CharactersService {
     ]);
 
     return {
-      items: items.map((character) => this.toResponse(character)),
+      items: items.map((character) => this.toResponse(character, currentUser, access.ownerName)),
       total,
       page,
       pageSize
@@ -113,6 +121,7 @@ export class CharactersService {
    * @throws BadRequestException 传了 avatarAssetId 但素材不存在/不属于该用户/非头像类型。
    */
   async create(currentUser: CurrentUser, dto: CreateCharacterDto): Promise<CharacterResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     // 校验头像素材归属（传了才校验，返回校验通过的 assetId）
     const avatarAssetId = await this.resolveAvatarAssetId(currentUser, dto.avatarAssetId);
     const character = await this.prisma.character.create({
@@ -129,6 +138,7 @@ export class CharactersService {
         exampleMessagesJson: this.stringifyNullable(dto.exampleMessages),
         metadataJson: this.stringifyNullable(dto.metadata),
         isSensitive: dto.isSensitive ?? false,
+        isShared: dto.isShared ?? false,
         isArchived: dto.isArchived ?? false
       },
       include: {
@@ -136,7 +146,7 @@ export class CharactersService {
       }
     });
 
-    return this.toResponse(character);
+    return this.toResponse(character, currentUser);
   }
 
   /**
@@ -208,6 +218,7 @@ export class CharactersService {
         exampleMessagesJson: this.stringifyNullable(preview.exampleMessages),
         metadataJson: this.stringifyNullable(preview.metadata),
         isSensitive: false,
+        isShared: false,
         isArchived: false
       },
       include: {
@@ -223,7 +234,7 @@ export class CharactersService {
         nameConflict: false,
         suggestedName: null
       },
-      character: this.toResponse(character)
+      character: this.toResponse(character, currentUser)
     };
   }
 
@@ -254,7 +265,48 @@ export class CharactersService {
    * @throws NotFoundException 角色不存在或不属于当前用户。
    */
   async getById(currentUser: CurrentUser, id: string): Promise<CharacterResponse> {
-    return this.toResponse(await this.findOwnedActiveCharacter(currentUser, id));
+    const character = await this.findVisibleActiveCharacter(currentUser, id);
+    const owner =
+      character.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
+    return this.toResponse(character, currentUser, owner?.displayName ?? null);
+  }
+
+  /** 复制内容库主数据和头像，生成只属于当前用户的静态副本。 */
+  async fork(currentUser: CurrentUser, id: string): Promise<CharacterResponse> {
+    const source = await this.findLibraryCharacter(currentUser, id);
+    const preparedAvatar = await this.assetsService.prepareCharacterAvatarCopy(
+      source.userId,
+      currentUser.id,
+      source.avatarAssetId
+    );
+    const name = await this.createSuggestedImportName(currentUser, source.name);
+
+    try {
+      const character = await this.prisma.$transaction(async (tx) => {
+        const asset = preparedAvatar ? await tx.asset.create({ data: preparedAvatar.data }) : null;
+        return tx.character.create({
+          data: {
+            userId: currentUser.id,
+            avatarAssetId: asset?.id ?? null,
+            name,
+            description: source.description,
+            personality: source.personality,
+            scenario: source.scenario,
+            firstMessage: source.firstMessage,
+            exampleMessagesJson: source.exampleMessagesJson,
+            metadataJson: source.metadataJson,
+            isSensitive: source.isSensitive,
+            isShared: false,
+            isArchived: false
+          },
+          include: { avatarAsset: true }
+        });
+      });
+      return this.toResponse(character, currentUser);
+    } catch (error) {
+      await this.assetsService.discardPreparedAvatarCopy(preparedAvatar);
+      throw error;
+    }
   }
 
   /**
@@ -288,6 +340,7 @@ export class CharactersService {
     id: string,
     dto: UpdateCharacterDto
   ): Promise<CharacterResponse> {
+    await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     // 先校验角色存在且属于当前用户
     await this.findOwnedActiveCharacter(currentUser, id);
     // 头像：未传(undefined)不动，传 null/值则解析校验归属
@@ -314,6 +367,7 @@ export class CharactersService {
           ? {}
           : { metadataJson: this.stringifyNullable(dto.metadata) }),
         ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
+        ...(dto.isShared === undefined ? {} : { isShared: dto.isShared }),
         ...(dto.isArchived === undefined ? {} : { isArchived: dto.isArchived })
       },
       include: {
@@ -325,7 +379,7 @@ export class CharactersService {
       await this.refreshConversationSensitivityForCharacter(currentUser, id, dto.isSensitive);
     }
 
-    return this.toResponse(character);
+    return this.toResponse(character, currentUser);
   }
 
   /**
@@ -386,6 +440,56 @@ export class CharactersService {
       });
     }
 
+    return character;
+  }
+
+  private async findVisibleActiveCharacter(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<CharacterWithAvatar> {
+    const owner = await this.contentLibraryService.getOwner();
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(currentUser);
+    const character = await this.prisma.character.findFirst({
+      where: {
+        id,
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false }),
+        OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
+      },
+      include: { avatarAsset: true }
+    });
+    if (!character) {
+      throw new NotFoundException({
+        code: ERROR_CODES.CHARACTER_NOT_FOUND,
+        message: 'Character not found.'
+      });
+    }
+    return character;
+  }
+
+  private async findLibraryCharacter(
+    currentUser: CurrentUser,
+    id: string
+  ): Promise<CharacterWithAvatar> {
+    const owner = await this.contentLibraryService.getOwner();
+    const character = await this.prisma.character.findFirst({
+      where: {
+        id,
+        userId: owner.id,
+        isShared: true,
+        deletedAt: null,
+        ...((await this.settingsService.shouldShowSensitiveContent(currentUser))
+          ? {}
+          : { isSensitive: false })
+      },
+      include: { avatarAsset: true }
+    });
+    if (!character) {
+      throw new NotFoundException({
+        code: ERROR_CODES.CONTENT_LIBRARY_ITEM_NOT_FOUND,
+        message: 'Shared character not found.'
+      });
+    }
     return character;
   }
 
@@ -520,7 +624,12 @@ export class CharactersService {
    * @param character 角色记录（含头像）。
    * @returns 角色响应。
    */
-  private toResponse(character: CharacterWithAvatar): CharacterResponse {
+  private toResponse(
+    character: CharacterWithAvatar,
+    currentUser: CurrentUser,
+    ownerName: string | null = null
+  ): CharacterResponse {
+    const isOwner = character.userId === currentUser.id;
     return {
       id: character.id,
       userId: character.userId,
@@ -534,6 +643,10 @@ export class CharactersService {
       exampleMessages: this.parseExampleMessages(character.exampleMessagesJson),
       metadata: this.parseRecord(character.metadataJson),
       isSensitive: character.isSensitive,
+      isShared: character.isShared,
+      isOwner,
+      ownerName,
+      canFork: !isOwner && character.isShared,
       isArchived: character.isArchived,
       createdAt: character.createdAt.toISOString(),
       updatedAt: character.updatedAt.toISOString()

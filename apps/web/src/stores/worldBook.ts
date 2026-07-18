@@ -7,6 +7,7 @@ import {
   deleteWorldBookEntry,
   fetchWorldBook,
   fetchWorldBooks,
+  forkWorldBook,
   updateWorldBook,
   updateWorldBookEntry,
   type WorldBook,
@@ -19,12 +20,14 @@ import type { WorldBookEntryPayload, WorldBookPayload } from '@tavern/shared';
 
 type WorldBookState = {
   items: WorldBook[];
+  libraryItems: WorldBook[];
   selectedId: string | null;
   total: number;
   page: number;
   pageSize: number;
   search: string;
   loading: boolean;
+  libraryLoading: boolean;
   saving: boolean;
   entrySaving: boolean;
   error: string | null;
@@ -35,12 +38,14 @@ type WorldBookState = {
 export const useWorldBookStore = defineStore('worldBook', {
   state: (): WorldBookState => ({
     items: [],
+    libraryItems: [],
     selectedId: null,
     total: 0,
     page: 1,
     pageSize: 20,
     search: '',
     loading: false,
+    libraryLoading: false,
     saving: false,
     entrySaving: false,
     error: null,
@@ -102,6 +107,37 @@ export const useWorldBookStore = defineStore('worldBook', {
         this.saveError = error instanceof Error ? error.message : '世界书刷新失败。';
 
         return null;
+      }
+    },
+    async loadLibrary(search = '') {
+      this.libraryLoading = true;
+      this.error = null;
+      try {
+        const result = await fetchWorldBooks({
+          page: 1,
+          pageSize: 100,
+          search: search.trim() || undefined,
+          scope: 'library'
+        });
+        this.libraryItems = result.items;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '世界书内容库加载失败。';
+      } finally {
+        this.libraryLoading = false;
+      }
+    },
+    async forkLibraryWorldBook(id: string, targetCharacterId?: string): Promise<WorldBook | null> {
+      this.saving = true;
+      this.saveError = null;
+      try {
+        const worldBook = await forkWorldBook(id, targetCharacterId);
+        await this.loadWorldBooks({ page: 1 });
+        return worldBook;
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '世界书复制失败。';
+        return null;
+      } finally {
+        this.saving = false;
       }
     },
     async createWorldBook(payload: WorldBookPayload): Promise<WorldBook | null> {

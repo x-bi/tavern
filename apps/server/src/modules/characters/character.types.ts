@@ -25,6 +25,10 @@ export type CharacterResponse = {
   metadata: Record<string, unknown> | null;
   /** 是否标记为敏感内容。 */
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   isArchived: boolean;
   createdAt: string;
   updatedAt: string;

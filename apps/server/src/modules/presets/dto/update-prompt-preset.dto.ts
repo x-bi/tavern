@@ -63,4 +63,8 @@ export class UpdatePromptPresetDto {
   @IsOptional()
   @IsBoolean()
   isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 }

@@ -50,6 +50,9 @@ export class CompanionsController {
   @Get(':id/export') exportJson(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
     return this.service.exportJson(user, id);
   }
+  @Post(':id/fork') fork(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
+    return this.service.fork(user, id);
+  }
   @Get(':id') get(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
     return this.service.getById(user, id);
   }

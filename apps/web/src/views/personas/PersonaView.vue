@@ -5,7 +5,7 @@
         <h2>Persona</h2>
         <p>维护用户身份、偏好和表达方式，后续 Prompt Builder 会从这里读取。</p>
       </div>
-      <n-space justify="end">
+      <n-space v-if="activeScope === 'owned'" justify="end">
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
           导入模板
         </n-button>
@@ -13,6 +13,11 @@
         <n-button type="primary" @click="openCreate">新建 Persona</n-button>
       </n-space>
     </header>
+
+    <n-tabs v-model:value="activeScope" type="segment">
+      <n-tab name="owned">我的 Persona</n-tab>
+      <n-tab name="library">内容库</n-tab>
+    </n-tabs>
 
     <section class="persona-view__toolbar">
       <n-input
@@ -25,7 +30,10 @@
       <n-button secondary @click="applySearch">搜索</n-button>
     </section>
 
-    <LoadingState v-if="personaStore.loading" text="正在加载 Persona" />
+    <LoadingState
+      v-if="activeScope === 'owned' ? personaStore.loading : personaStore.libraryLoading"
+      text="正在加载 Persona"
+    />
 
     <ErrorState
       v-else-if="personaStore.error"
@@ -34,14 +42,18 @@
     />
 
     <EmptyState
-      v-else-if="!personaStore.hasPersonas"
+      v-else-if="!visiblePersonas.length"
       title="还没有 Persona"
-      description="新建 Persona 后，可以集中维护用户身份、偏好和对话边界。"
+      :description="
+        activeScope === 'owned'
+          ? '新建 Persona 后，可以集中维护用户身份、偏好和对话边界。'
+          : '管理员尚未发布共享 Persona。'
+      "
     />
 
     <section v-else class="persona-view__grid" aria-label="Persona 列表">
       <n-card
-        v-for="persona in personaStore.items"
+        v-for="persona in visiblePersonas"
         :key="persona.id"
         class="persona-card"
         :bordered="false"
@@ -71,7 +83,20 @@
         </dl>
 
         <template #action>
-          <n-space justify="end">
+          <n-space v-if="activeScope === 'library'" justify="space-between">
+            <n-tag :bordered="false">{{ persona.ownerName ?? '内容库' }}</n-tag>
+            <n-button
+              v-if="persona.canFork"
+              type="primary"
+              size="small"
+              :loading="personaStore.saving"
+              @click="copyFromLibrary(persona.id)"
+            >
+              复制到我的 Persona
+            </n-button>
+            <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+          </n-space>
+          <n-space v-else justify="end">
             <n-button
               v-if="!persona.isDefault"
               size="small"
@@ -125,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
 import {
@@ -142,6 +167,7 @@ import PersonaEditor from '../../components/PersonaEditor.vue';
 import { usePersonaStore } from '../../stores/persona';
 import { downloadJson } from '../../utils/downloadJson';
 import type {
+  ContentLibraryScope,
   ModuleImportDuplicateNameStrategy,
   PersonaImportPreview,
   PersonaPayload
@@ -162,17 +188,35 @@ const importPreviewing = ref(false);
 const importing = ref(false);
 const templateLoading = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
+const activeScope = ref<ContentLibraryScope>('owned');
+const visiblePersonas = computed(() =>
+  activeScope.value === 'owned' ? personaStore.items : personaStore.libraryItems
+);
 
 onMounted(() => {
   void personaStore.loadPersonas();
 });
 
+watch(activeScope, (scope) => {
+  if (scope === 'library') void personaStore.loadLibrary(searchText.value);
+});
+
 function applySearch() {
   personaStore.setSearch(searchText.value);
+  if (activeScope.value === 'library') {
+    void personaStore.loadLibrary(searchText.value);
+    return;
+  }
   void personaStore.loadPersonas({
     page: 1,
     search: searchText.value
   });
+}
+
+async function copyFromLibrary(id: string) {
+  const copied = await personaStore.forkLibraryPersona(id);
+  if (copied) message.success(`已复制“${copied.name}”，后续修改不会与内容库同步。`);
+  else if (personaStore.saveError) message.error(personaStore.saveError);
 }
 
 function openCreate() {

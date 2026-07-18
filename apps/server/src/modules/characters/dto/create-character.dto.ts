@@ -68,4 +68,9 @@ export class CreateCharacterDto {
   @IsOptional()
   @IsBoolean()
   isSensitive?: boolean;
+
+  /** 是否发布到固定管理员内容库；普通成员不可设置。 */
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 }

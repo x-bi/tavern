@@ -5,7 +5,7 @@
         <h2>参数预设</h2>
         <p>维护对话生成参数和输出风格约束，后续聊天页会从这里选择预设。</p>
       </div>
-      <n-space justify="end">
+      <n-space v-if="activeScope === 'owned'" justify="end">
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
           导入模板
         </n-button>
@@ -13,6 +13,11 @@
         <n-button type="primary" @click="openCreate">新建预设</n-button>
       </n-space>
     </header>
+
+    <n-tabs v-model:value="activeScope" type="segment">
+      <n-tab name="owned">我的预设</n-tab>
+      <n-tab name="library">内容库</n-tab>
+    </n-tabs>
 
     <section class="preset-view__toolbar">
       <n-input
@@ -25,7 +30,10 @@
       <n-button secondary @click="applySearch">搜索</n-button>
     </section>
 
-    <LoadingState v-if="presetStore.loading" text="正在加载参数预设" />
+    <LoadingState
+      v-if="activeScope === 'owned' ? presetStore.loading : presetStore.libraryLoading"
+      text="正在加载参数预设"
+    />
 
     <ErrorState
       v-else-if="presetStore.error"
@@ -34,14 +42,18 @@
     />
 
     <EmptyState
-      v-else-if="!presetStore.hasPresets"
+      v-else-if="!visiblePresets.length"
       title="还没有参数预设"
-      description="新建预设后，可以集中维护 Temperature、Top P、Max Tokens 和输出风格约束。"
+      :description="
+        activeScope === 'owned'
+          ? '新建预设后，可以集中维护生成参数和输出风格约束。'
+          : '管理员尚未发布共享预设。'
+      "
     />
 
     <section v-else class="preset-view__grid" aria-label="参数预设列表">
       <n-card
-        v-for="preset in presetStore.items"
+        v-for="preset in visiblePresets"
         :key="preset.id"
         class="preset-card"
         :bordered="false"
@@ -71,7 +83,20 @@
         </section>
 
         <template #action>
-          <n-space justify="end">
+          <n-space v-if="activeScope === 'library'" justify="space-between">
+            <n-tag :bordered="false">{{ preset.ownerName ?? '内容库' }}</n-tag>
+            <n-button
+              v-if="preset.canFork"
+              type="primary"
+              size="small"
+              :loading="presetStore.saving"
+              @click="copyFromLibrary(preset.id)"
+            >
+              复制到我的预设
+            </n-button>
+            <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+          </n-space>
+          <n-space v-else justify="end">
             <n-button
               v-if="!preset.isDefault"
               size="small"
@@ -125,7 +150,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
 import {
@@ -143,6 +168,7 @@ import { usePresetStore } from '../../stores/preset';
 import { downloadJson } from '../../utils/downloadJson';
 import type {
   ModuleImportDuplicateNameStrategy,
+  ContentLibraryScope,
   PromptPresetImportPreview,
   PromptPresetPayload
 } from '@tavern/shared';
@@ -162,17 +188,35 @@ const importPreviewing = ref(false);
 const importing = ref(false);
 const templateLoading = ref(false);
 const drawerWidth = computed(() => Math.min(680, window.innerWidth));
+const activeScope = ref<ContentLibraryScope>('owned');
+const visiblePresets = computed(() =>
+  activeScope.value === 'owned' ? presetStore.items : presetStore.libraryItems
+);
 
 onMounted(() => {
   void presetStore.loadPresets();
 });
 
+watch(activeScope, (scope) => {
+  if (scope === 'library') void presetStore.loadLibrary(searchText.value);
+});
+
 function applySearch() {
   presetStore.setSearch(searchText.value);
+  if (activeScope.value === 'library') {
+    void presetStore.loadLibrary(searchText.value);
+    return;
+  }
   void presetStore.loadPresets({
     page: 1,
     search: searchText.value
   });
+}
+
+async function copyFromLibrary(id: string) {
+  const copied = await presetStore.forkLibraryPreset(id);
+  if (copied) message.success(`已复制“${copied.name}”，后续修改不会与内容库同步。`);
+  else if (presetStore.saveError) message.error(presetStore.saveError);
 }
 
 function openCreate() {

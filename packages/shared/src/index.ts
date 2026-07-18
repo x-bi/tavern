@@ -60,6 +60,7 @@ export type {
   ContentPackWorldBook,
   ContentPackWorldBookEntry
 } from './content-pack';
+export type { ContentLibraryFields, ContentLibraryScope } from './content-library';
 export type {
   CompanionChatStreamPayload,
   CompanionExportResponse,

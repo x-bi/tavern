@@ -27,4 +27,8 @@ export class CreatePersonaDto {
   @IsOptional()
   @IsBoolean()
   isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 }

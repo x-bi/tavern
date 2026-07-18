@@ -1,11 +1,15 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
+import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
 import type { CurrentUser } from '../users/user.types';
+import { SettingsService } from '../settings/settings.service';
 @Injectable()
 export class CompanionMessagesService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(CompanionMemoryService) private readonly memoryService: CompanionMemoryService,
+    @Inject(SettingsService) private readonly settingsService: SettingsService,
     @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
   ) {}
   async list(user: CurrentUser, companionId: string) {
@@ -22,48 +26,52 @@ export class CompanionMessagesService {
         code: 'COMPANION_MESSAGE_EDIT_FORBIDDEN',
         message: 'Only user messages can be edited.'
       });
-    const stale = await this.affectsSummary(message);
-    const updated = await this.prisma.$transaction(async (tx) => {
+    const { updated, stale } = await this.prisma.$transaction(async (tx) => {
       const updated = await tx.companionMessage.update({
         where: { id },
         data: { content: content.trim(), status: 'edited' }
       });
-      if (stale)
-        await tx.companionMemory.update({
-          where: { companionId: message.companionId },
-          data: { status: 'stale', nextRetryAt: null }
-        });
-      return updated;
+      const stale = await this.memoryService.markStaleIfAffected(message.companionId, message, tx);
+      return { updated, stale };
     });
+    if (stale) void this.memoryService.maybeScheduleUpdate(user, message.companionId);
     this.targetEvents.emit('companion', message.companionId, 'message_updated', { messageId: id });
     return updated;
   }
   async remove(user: CurrentUser, id: string) {
     const message = await this.find(user, id);
-    const stale = await this.affectsSummary(message);
-    await this.prisma.$transaction(async (tx) => {
+    if (message.status === 'generating')
+      throw new BadRequestException({
+        code: 'COMPANION_MESSAGE_BUSY',
+        message: 'Generating message cannot be deleted.'
+      });
+    const stale = await this.prisma.$transaction(async (tx) => {
       await tx.companionMessage.update({
         where: { id },
         data: { status: 'deleted', deletedAt: new Date() }
       });
-      if (stale)
-        await tx.companionMemory.update({
-          where: { companionId: message.companionId },
-          data: { status: 'stale', nextRetryAt: null }
-        });
+      return this.memoryService.markStaleIfAffected(message.companionId, message, tx);
     });
+    if (stale) void this.memoryService.maybeScheduleUpdate(user, message.companionId);
     this.targetEvents.emit('companion', message.companionId, 'message_deleted', { messageId: id });
     return { deleted: true, id };
   }
   async regenerate(user: CurrentUser, id: string) {
     const message = await this.find(user, id);
-    if (message.role !== 'assistant')
+    if (
+      message.role !== 'assistant' ||
+      (message.status !== 'complete' && message.status !== 'edited')
+    )
       throw new NotFoundException({
         code: 'COMPANION_MESSAGE_REGENERATE_INVALID',
         message: 'Only assistant messages can be regenerated.'
       });
     const latest = await this.prisma.companionMessage.findFirst({
-      where: { companionId: message.companionId, deletedAt: null },
+      where: {
+        companionId: message.companionId,
+        deletedAt: null,
+        status: { in: ['complete', 'edited'] }
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
     });
     if (latest?.id !== id)
@@ -78,30 +86,31 @@ export class CompanionMessagesService {
       streamPath: `/companions/${message.companionId}/chat/stream`
     };
   }
-  private async affectsSummary(message: { id: string; companionId: string; createdAt: Date }) {
-    const memory = await this.prisma.companionMemory.findUnique({
-      where: { companionId: message.companionId }
-    });
-    if (!memory?.lastSummarizedMessageId) return false;
-    const cursor = await this.prisma.companionMessage.findUnique({
-      where: { id: memory.lastSummarizedMessageId }
-    });
-    return Boolean(
-      cursor &&
-      (message.createdAt < cursor.createdAt ||
-        (message.createdAt.getTime() === cursor.createdAt.getTime() && message.id <= cursor.id))
-    );
-  }
   private async assertCompanion(user: CurrentUser, id: string) {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(user);
     const found = await this.prisma.companion.findFirst({
-      where: { id, userId: user.id, deletedAt: null }
+      where: {
+        id,
+        userId: user.id,
+        deletedAt: null,
+        ...(showSensitiveContent ? {} : { isSensitive: false })
+      }
     });
     if (!found)
       throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
   }
   private async find(user: CurrentUser, id: string) {
+    const showSensitiveContent = await this.settingsService.shouldShowSensitiveContent(user);
     const message = await this.prisma.companionMessage.findFirst({
-      where: { id, deletedAt: null, companion: { userId: user.id, deletedAt: null } }
+      where: {
+        id,
+        deletedAt: null,
+        companion: {
+          userId: user.id,
+          deletedAt: null,
+          ...(showSensitiveContent ? {} : { isSensitive: false })
+        }
+      }
     });
     if (!message)
       throw new NotFoundException({

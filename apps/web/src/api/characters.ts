@@ -9,7 +9,8 @@ import type {
   CharacterExportResponse,
   CharacterImportPayload,
   CharacterImportResponse as SharedCharacterImportResponse,
-  ModuleImportTemplateResponse
+  ModuleImportTemplateResponse,
+  ContentLibraryScope
 } from '@tavern/shared';
 import type {
   CharacterMetadata,
@@ -45,6 +46,10 @@ export type Character = {
   isArchived: boolean;
   /** 是否标记为敏感内容。 */
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */
@@ -61,6 +66,7 @@ export type CharacterListParams = {
   search?: string;
   /** 是否只看归档角色。 */
   isArchived?: boolean;
+  scope?: ContentLibraryScope;
 };
 
 /** 角色列表分页结果。 */
@@ -131,6 +137,13 @@ export async function fetchCharacter(id: string): Promise<Character> {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
+  return response.data;
+}
+
+export async function forkCharacter(id: string): Promise<Character> {
+  const response = await requestJson<Character>(`/characters/${id}/fork`, { method: 'POST' });
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   return response.data;
 }
 
@@ -268,6 +281,7 @@ function toQueryString(params: CharacterListParams): string {
   if (params.isArchived !== undefined) {
     query.set('isArchived', String(params.isArchived));
   }
+  if (params.scope) query.set('scope', params.scope);
 
   const value = query.toString();
 

@@ -1,5 +1,7 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsInt,
   IsObject,
@@ -17,10 +19,12 @@ export class CreateWorldBookDto {
   @MaxLength(120)
   name!: string;
 
-  /** 关联角色 ID；传 null 表示全局世界书。 */
+  /** 关联角色 ID 列表；传空数组或省略表示全局世界书。 */
   @IsOptional()
-  @IsString()
-  characterId?: string | null;
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  characterIds?: string[];
 
   /** 描述，可选，最长 4000。 */
   @IsOptional()
@@ -37,6 +41,10 @@ export class CreateWorldBookDto {
   @IsOptional()
   @IsBoolean()
   isSensitive?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isShared?: boolean;
 
   /** 扫描深度 1~200，可选，默认 6。 */
   @IsOptional()

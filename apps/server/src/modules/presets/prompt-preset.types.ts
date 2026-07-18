@@ -11,6 +11,7 @@ export type PromptPresetResponse = {
   userId: string;
   name: string;
   description: string;
+  systemPrompt: string;
   /** 输出规则（引导模型输出风格的指令）。 */
   outputRules: string;
   temperature: number | null;
@@ -18,6 +19,10 @@ export type PromptPresetResponse = {
   maxTokens: number | null;
   isDefault: boolean;
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   createdAt: string;
   updatedAt: string;
 };

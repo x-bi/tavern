@@ -42,8 +42,8 @@ export type WorldBookResponse = {
   id: string;
   /** 所属用户 ID。 */
   userId: string;
-  /** 关联角色 ID；共享世界书时为 null。 */
-  characterId: string | null;
+  /** 关联角色 ID 列表；为空时表示全局世界书。 */
+  characterIds: string[];
   /** 世界书名称。 */
   name: string;
   /** 世界书描述。 */
@@ -52,6 +52,10 @@ export type WorldBookResponse = {
   isEnabled: boolean;
   /** 是否标记为敏感内容。 */
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   /** 扫描深度（往前看多少条消息用于关键词命中）。 */
   scanDepth: number;
   /** 整本世界书的 token 预算。 */
@@ -71,8 +75,8 @@ export type WorldBookListResponse = PageResult<WorldBookResponse>;
 
 /** 创建 / 更新世界书的入参。 */
 export type WorldBookPayload = {
-  /** 关联角色 ID；共享世界书传 null 或省略。 */
-  characterId?: string | null;
+  /** 关联角色 ID 列表；传空数组或省略表示全局世界书。 */
+  characterIds?: string[];
   /** 世界书名称。 */
   name: string;
   /** 世界书描述。 */
@@ -81,6 +85,7 @@ export type WorldBookPayload = {
   isEnabled?: boolean;
   /** 是否标记为敏感内容；未传时默认 false。 */
   isSensitive?: boolean;
+  isShared?: boolean;
   /** 扫描深度。 */
   scanDepth?: number;
   /** 整本世界书的 token 预算。 */

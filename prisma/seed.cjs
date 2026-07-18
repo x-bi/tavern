@@ -288,7 +288,6 @@ async function main() {
     where: { id: ids.worldBook },
     update: {
       userId: user.id,
-      characterId: character.id,
       name: 'Lantern Archive Notes',
       description: 'Small world details for the sample archive character.',
       isEnabled: true,
@@ -298,12 +297,15 @@ async function main() {
         seed: true
       }),
       isSensitive: false,
-      deletedAt: null
+      deletedAt: null,
+      characterLinks: {
+        deleteMany: {},
+        create: { characterId: character.id }
+      }
     },
     create: {
       id: ids.worldBook,
       userId: user.id,
-      characterId: character.id,
       name: 'Lantern Archive Notes',
       description: 'Small world details for the sample archive character.',
       isEnabled: true,
@@ -312,7 +314,10 @@ async function main() {
       metadataJson: json({
         seed: true
       }),
-      isSensitive: false
+      isSensitive: false,
+      characterLinks: {
+        create: { characterId: character.id }
+      }
     }
   });
 

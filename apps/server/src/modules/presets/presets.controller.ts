@@ -68,6 +68,16 @@ export class PresetsController {
     return this.presetsService.getImportTemplate();
   }
 
+  @Post(':id/fork')
+  fork(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.presetsService.fork(currentUser, id);
+  }
+
+  @Get(':id')
+  getById(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.presetsService.getById(currentUser, id);
+  }
+
   /** 更新预设。PUT /prompt-presets/:id */
   @Put(':id')
   update(

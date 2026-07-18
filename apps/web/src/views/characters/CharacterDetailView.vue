@@ -18,7 +18,7 @@
         </div>
       </div>
 
-      <n-space class="character-detail__actions" justify="end">
+      <n-space v-if="character?.isOwner" class="character-detail__actions" justify="end">
         <n-button secondary :disabled="!character" @click="goEdit">编辑</n-button>
         <n-button
           secondary
@@ -46,6 +46,12 @@
           @click="confirmDelete"
         >
           删除
+        </n-button>
+      </n-space>
+      <n-space v-else-if="character" class="character-detail__actions" justify="end">
+        <n-tag :bordered="false">{{ character.ownerName ?? '管理员内容库' }}</n-tag>
+        <n-button type="primary" :loading="characterStore.saving" @click="forkCurrent">
+          复制到我的角色
         </n-button>
       </n-space>
     </header>
@@ -231,6 +237,14 @@ async function duplicateCurrent() {
 
   message.success('角色已复制');
   router.push({ name: 'character-detail', params: { id: duplicated.id } });
+}
+
+async function forkCurrent() {
+  if (!character.value?.canFork) return;
+  const copied = await characterStore.forkLibraryCharacter(character.value.id);
+  if (!copied) return;
+  message.success('已复制为你的独立角色，后续修改不会与内容库同步。');
+  router.push({ name: 'character-detail', params: { id: copied.id } });
 }
 
 async function exportCurrent() {

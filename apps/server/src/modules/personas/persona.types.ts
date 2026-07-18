@@ -8,6 +8,10 @@ export type PersonaResponse = {
   metadata: Record<string, unknown> | null;
   isDefault: boolean;
   isSensitive: boolean;
+  isShared: boolean;
+  isOwner: boolean;
+  ownerName: string | null;
+  canFork: boolean;
   createdAt: string;
   updatedAt: string;
 };

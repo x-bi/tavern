@@ -77,8 +77,9 @@
       <n-card
         v-for="item in visibleItems"
         :key="item.id"
-        hoverable
+        :hoverable="activeScope === 'owned'"
         class="companion-card"
+        :class="{ 'companion-card--interactive': activeScope === 'owned' }"
         @click="activeScope === 'owned' ? open(item.id) : undefined"
         ><div class="companion-card__body">
           <n-avatar round :size="52" :src="item.avatarUrl || undefined">{{
@@ -420,17 +421,24 @@ function downloadJson(fileName: string, value: unknown) {
   gap: 14px;
 }
 .companion-card {
+  height: 100%;
+}
+.companion-card--interactive {
   cursor: pointer;
 }
 .companion-card__body {
   display: flex;
   gap: 14px;
 }
+.companion-card__body > div {
+  min-width: 0;
+}
 .companion-card__actions {
   margin-top: 8px;
 }
 .companion-card h3 {
   margin: 0 0 6px;
+  overflow-wrap: anywhere;
 }
 .companion-card p {
   margin: 0 0 10px;

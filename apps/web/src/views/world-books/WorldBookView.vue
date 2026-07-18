@@ -139,7 +139,9 @@
         :key="worldBook.id"
         :title="worldBook.name"
       >
-        <p>{{ worldBook.description || '未填写描述' }}</p>
+        <p class="world-book-library__description">
+          {{ worldBook.description || '未填写描述' }}
+        </p>
         <n-space>
           <n-tag :bordered="false">{{ worldBook.entries.length }} 个条目</n-tag>
           <n-tag v-if="worldBook.characterIds.length" type="warning" :bordered="false"
@@ -681,6 +683,18 @@ function createEmptyWorldBookForm(): CreateWorldBookFormState {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 14px;
+}
+
+.world-book-library__description {
+  display: -webkit-box;
+  overflow: hidden;
+  min-height: 48px;
+  margin: 0 0 14px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .world-book-list {

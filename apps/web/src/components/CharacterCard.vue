@@ -36,10 +36,12 @@
     </div>
 
     <template #action>
-      <div class="character-card__actions">
-        <n-button size="small" secondary @click="$emit('view', character.id)">查看</n-button>
-        <n-button size="small" secondary @click="$emit('edit', character.id)">编辑</n-button>
-      </div>
+      <slot name="actions" :character="character">
+        <div class="character-card__actions">
+          <n-button size="small" secondary @click="$emit('view', character.id)">查看</n-button>
+          <n-button size="small" secondary @click="$emit('edit', character.id)">编辑</n-button>
+        </div>
+      </slot>
     </template>
   </n-card>
 </template>
@@ -51,6 +53,10 @@ import type { Character } from '../api/characters';
 
 const props = defineProps<{
   character: Character;
+}>();
+
+defineSlots<{
+  actions: (props: { character: Character }) => unknown;
 }>();
 
 defineEmits<{

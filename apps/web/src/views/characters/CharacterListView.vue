@@ -73,30 +73,33 @@
     </section>
 
     <section v-else class="character-list__grid" aria-label="角色内容库">
-      <n-card
+      <CharacterCard
         v-for="character in characterStore.libraryItems"
         :key="character.id"
-        :title="character.name"
+        :character="character"
       >
-        <p>{{ fallback(character.description) }}</p>
-        <template #footer>
-          <n-space justify="space-between">
-            <n-tag :bordered="false">{{ character.ownerName ?? '内容库' }}</n-tag>
-            <n-button v-if="activeScope === 'managed'" secondary @click="goDetail(character.id)">
-              只读查看
-            </n-button>
-            <n-button
-              v-else-if="character.canFork"
-              type="primary"
-              :loading="characterStore.saving"
-              @click="copyFromLibrary(character.id)"
-            >
-              复制到我的角色
-            </n-button>
-            <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+        <template #actions="{ character: cardCharacter }">
+          <n-space class="character-list__card-actions" justify="space-between" align="center">
+            <n-tag size="small" :bordered="false">
+              {{ cardCharacter.ownerName ?? '内容库' }}
+            </n-tag>
+            <n-space size="small">
+              <n-button size="small" secondary @click="goDetail(cardCharacter.id)">查看</n-button>
+              <n-tag v-if="activeScope === 'managed'" type="info" :bordered="false"> 只读 </n-tag>
+              <n-button
+                v-else-if="cardCharacter.canFork"
+                type="primary"
+                size="small"
+                :loading="characterStore.saving"
+                @click="copyFromLibrary(cardCharacter.id)"
+              >
+                复制到我的角色
+              </n-button>
+              <n-tag v-else type="success" :bordered="false">管理员主数据</n-tag>
+            </n-space>
           </n-space>
         </template>
-      </n-card>
+      </CharacterCard>
     </section>
 
     <ModuleJsonImportDrawer
@@ -430,6 +433,10 @@ function fallback(value: string) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 14px;
+}
+
+.character-list__card-actions {
+  width: 100%;
 }
 
 @media (max-width: 720px) {

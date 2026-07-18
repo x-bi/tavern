@@ -423,10 +423,15 @@ function parameterSummary(preset: PromptPreset): string[] {
 }
 
 .preset-card__description {
+  display: -webkit-box;
+  overflow: hidden;
   min-height: 24px;
   margin: 0;
   color: var(--text-muted);
   line-height: 1.6;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .preset-card__params {

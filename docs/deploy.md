@@ -118,6 +118,10 @@ docker compose up -d
 
 也可通过应用内的「备份/恢复」功能(后端 BackupsModule)导出 JSON。
 
+各模块软删除数据的查询与恢复、物理删除边界，以及“清空全部业务数据但保留管理员账号”的完整操作，见 [数据库删除恢复与数据清理手册](database-data-recovery-and-reset.md)。
+
+服务器需要硬删除管理员之外的全部数据时，可先执行 `bash scripts/reset-keep-admin.sh --admin <管理员用户名> --check`，检查通过后再去掉 `--check` 正式执行。
+
 ### 重置数据库
 
 ```bash

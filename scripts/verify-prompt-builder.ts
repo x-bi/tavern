@@ -353,6 +353,11 @@ const companion = companionBuilder.build({
 assert.equal(companion.includedMemory, true);
 assert.equal(companion.memorySkipReason, null);
 assert.match(companion.messages[0].content, /Mutual trust has formed/);
+assert.match(companion.messages[0].content, /稳定、独立的人格和主观能动性/);
+assert.match(companion.messages[0].content, /主动发起话题、追问、表达需求和推动关系发展/);
+assert.match(companion.messages[0].content, /表达方式首先服从 Companion identity/);
+assert.doesNotMatch(companion.messages[0].content, /明确标注为 AI/);
+assert.doesNotMatch(companion.messages[0].content, /不得声称自己是真人/);
 assert.deepEqual(companion.parameters, { temperature: 0.6, maxTokens: 300 });
 
 const noMemory = companionBuilder.build({

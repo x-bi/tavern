@@ -176,6 +176,16 @@
           <n-form-item label="身份设定"
             ><n-input v-model:value="settings.identityPrompt" type="textarea" :rows="4"
           /></n-form-item>
+          <n-form-item label="头像">
+            <AvatarUploader
+              :asset-id="settings.avatarAssetId"
+              :src="settings.avatarUrl"
+              :fallback="settings.name"
+              :disabled="savingSettings"
+              @uploaded="handleAvatarUploaded"
+              @clear="clearAvatar"
+            />
+          </n-form-item>
           <n-form-item label="聊天模型链"
             ><NSelect
               v-model:value="settings.modelFallbackGroupId"
@@ -189,6 +199,12 @@
           <n-form-item label="Persona"
             ><NSelect v-model:value="settings.personaId" clearable :options="personaOptions"
           /></n-form-item>
+          <div class="memory-switches">
+            <n-checkbox v-model:checked="settings.isSensitive">敏感内容</n-checkbox>
+            <n-checkbox v-if="isAdmin" v-model:checked="settings.isShared">
+              发布到成员内容库
+            </n-checkbox>
+          </div>
           <n-button :loading="savingSettings" @click="saveSettings">保存角色设置</n-button>
           <strong>长期记忆</strong>
           <div class="memory-switches">
@@ -259,6 +275,9 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseSseFrame } from '../../composables/useChatStream';
 import ShareManager from '../../components/ShareManager.vue';
+import AvatarUploader from '../../components/AvatarUploader.vue';
+import type { Asset } from '../../api/assets';
+import { getStoredCurrentUser } from '../../api/auth';
 import { useTargetEvents } from '../../composables/useTargetEvents';
 import {
   clearCompanionMemory,
@@ -282,6 +301,7 @@ const router = useRouter();
 const dialog = useDialog();
 const toast = useMessage();
 const id = String(route.params.companionId);
+const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const companion = ref<CompanionResponse | null>(null);
 const memory = ref<CompanionMemoryResponse | null>(null);
 const messages = ref<CompanionMessageResponse[]>([]);
@@ -303,9 +323,13 @@ const personaOptions = ref<SelectOption[]>([]);
 const settings = reactive({
   name: '',
   identityPrompt: '',
+  avatarAssetId: null as string | null,
+  avatarUrl: '',
   modelFallbackGroupId: null as string | null,
   promptPresetId: null as string | null,
-  personaId: null as string | null
+  personaId: null as string | null,
+  isSensitive: false,
+  isShared: false
 });
 const roleplayMarkers = ['台词', '我的动作', '对方动作', '旁白'];
 const memoryLabel = computed(() =>
@@ -371,9 +395,13 @@ async function load() {
     Object.assign(settings, {
       name: loadedCompanion.name,
       identityPrompt: loadedCompanion.identityPrompt,
+      avatarAssetId: loadedCompanion.avatarAssetId,
+      avatarUrl: loadedCompanion.avatarUrl ?? '',
       modelFallbackGroupId: loadedCompanion.modelFallbackGroupId,
       promptPresetId: loadedCompanion.promptPresetId,
-      personaId: loadedCompanion.personaId
+      personaId: loadedCompanion.personaId,
+      isSensitive: loadedCompanion.isSensitive,
+      isShared: loadedCompanion.isShared
     });
     modelOptions.value = models.items.map((item) => ({ label: item.name, value: item.id }));
     presetOptions.value = presets.items.map((item) => ({ label: item.name, value: item.id }));
@@ -596,12 +624,33 @@ async function saveSettings() {
   if (!settings.name.trim()) return;
   savingSettings.value = true;
   try {
-    companion.value = await updateCompanion(id, { ...settings });
+    companion.value = await updateCompanion(id, {
+      name: settings.name.trim(),
+      identityPrompt: settings.identityPrompt,
+      avatarAssetId: settings.avatarAssetId,
+      modelFallbackGroupId: settings.modelFallbackGroupId,
+      promptPresetId: settings.promptPresetId,
+      personaId: settings.personaId,
+      isSensitive: settings.isSensitive,
+      ...(isAdmin ? { isShared: settings.isShared } : {})
+    });
+    settings.avatarUrl = companion.value.avatarUrl ?? '';
+    toast.success('角色设置已保存');
   } catch (e) {
     error.value = e instanceof Error ? e.message : '保存角色设置失败';
   } finally {
     savingSettings.value = false;
   }
+}
+
+function handleAvatarUploaded(asset: Asset) {
+  settings.avatarAssetId = asset.id;
+  settings.avatarUrl = asset.publicPath ?? '';
+}
+
+function clearAvatar() {
+  settings.avatarAssetId = null;
+  settings.avatarUrl = '';
 }
 async function refreshMemory() {
   await refreshCompanionMemory(id);

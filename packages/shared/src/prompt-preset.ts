@@ -20,6 +20,12 @@ export type PromptPresetResponse = {
   topP: number | null;
   /** 最大输出 token 数；未设置时为 null。 */
   maxTokens: number | null;
+  /** 单次模型请求超时（毫秒）；未设置时为 null。 */
+  timeout: number | null;
+  /** 频率惩罚；未设置时为 null。 */
+  frequencyPenalty: number | null;
+  /** 存在惩罚；未设置时为 null。 */
+  presencePenalty: number | null;
   /** 是否为默认预设。 */
   isDefault: boolean;
   /** 是否标记为敏感内容。 */
@@ -43,14 +49,22 @@ export type PromptPresetPayload = {
   name: string;
   /** 预设描述。 */
   description?: string;
+  /** 预设级系统/开发者约束。 */
+  systemPrompt?: string;
   /** 输出约束规则文本。 */
   outputRules?: string;
   /** 采样温度。 */
-  temperature?: number;
+  temperature?: number | null;
   /** top_p。 */
-  topP?: number;
+  topP?: number | null;
   /** 最大输出 token 数。 */
-  maxTokens?: number;
+  maxTokens?: number | null;
+  /** 单次模型请求超时（毫秒）。 */
+  timeout?: number | null;
+  /** 频率惩罚。 */
+  frequencyPenalty?: number | null;
+  /** 存在惩罚。 */
+  presencePenalty?: number | null;
   /** 是否设为默认预设。 */
   isDefault?: boolean;
   /** 是否标记为敏感内容；未传时默认 false。 */

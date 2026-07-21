@@ -1,7 +1,7 @@
 /** 示例对话单条消息（用于引导模型的角色扮演风格）。 */
 export type ExampleMessage = {
-  /** 发言角色：user 用户方 / assistant 角色方 / system 系统指令。 */
-  role: 'user' | 'assistant' | 'system';
+  /** 发言角色：user 用户方 / assistant 角色方。 */
+  role: 'user' | 'assistant';
   /** 消息内容。 */
   content: string;
 };

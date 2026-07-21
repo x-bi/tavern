@@ -40,6 +40,11 @@ export type ModelProviderResponse = {
 
 export type ModelProviderListResponse = PageResult<ModelProviderResponse>;
 
+/** 当前 Model Gateway 已注册的供应商类型。 */
+export type SupportedModelProvidersResponse = {
+  items: string[];
+};
+
 export type ModelProviderPayload = {
   name: string;
   providerName: string;
@@ -61,6 +66,8 @@ export type ProviderModelResponse = {
   topP: number | null;
   maxTokens: number | null;
   timeout: number | null;
+  frequencyPenalty: number | null;
+  presencePenalty: number | null;
   contextLength: number | null;
   notes: string | null;
   sortOrder: number;
@@ -79,6 +86,8 @@ export type ProviderModelPayload = {
   topP?: number | null;
   maxTokens?: number | null;
   timeout?: number | null;
+  frequencyPenalty?: number | null;
+  presencePenalty?: number | null;
   contextLength?: number | null;
   notes?: string | null;
   sortOrder?: number;

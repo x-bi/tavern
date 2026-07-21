@@ -15,12 +15,23 @@
         <n-input v-model:value="form.name" maxlength="120" show-count placeholder="均衡叙事" />
       </n-form-item>
 
-      <n-form-item label="描述">
+      <n-form-item label="描述（仅用于管理说明，不发送给模型）">
         <n-input
           v-model:value="form.description"
           maxlength="500"
           show-count
           placeholder="适合日常角色对话的通用参数"
+        />
+      </n-form-item>
+
+      <n-form-item label="系统提示词">
+        <n-input
+          v-model:value="form.systemPrompt"
+          type="textarea"
+          maxlength="10000"
+          show-count
+          :autosize="{ minRows: 4, maxRows: 10 }"
+          placeholder="预设级系统/开发者约束；会进入酒馆与 AI 角色 Prompt。"
         />
       </n-form-item>
 
@@ -55,6 +66,45 @@
             :step="100"
             clearable
             placeholder="1200"
+          />
+        </n-form-item>
+      </div>
+
+      <n-divider title-placement="left">高级生成参数</n-divider>
+      <p class="prompt-preset-form__hint">
+        预设中的同名参数会覆盖模型默认参数；留空表示不在预设层指定。
+      </p>
+      <div class="prompt-preset-form__grid">
+        <n-form-item label="Timeout（毫秒）" path="timeout">
+          <n-input-number
+            v-model:value="form.timeout"
+            :min="1000"
+            :max="600000"
+            :step="1000"
+            clearable
+            placeholder="60000"
+          />
+        </n-form-item>
+
+        <n-form-item label="Frequency Penalty" path="frequencyPenalty">
+          <n-input-number
+            v-model:value="form.frequencyPenalty"
+            :min="-2"
+            :max="2"
+            :step="0.1"
+            clearable
+            placeholder="0"
+          />
+        </n-form-item>
+
+        <n-form-item label="Presence Penalty" path="presencePenalty">
+          <n-input-number
+            v-model:value="form.presencePenalty"
+            :min="-2"
+            :max="2"
+            :step="0.1"
+            clearable
+            placeholder="0"
           />
         </n-form-item>
       </div>
@@ -97,10 +147,14 @@ import { getStoredCurrentUser } from '../api/auth';
 type PromptPresetFormState = {
   name: string;
   description: string;
+  systemPrompt: string;
   outputRules: string;
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
+  timeout: number | null;
+  frequencyPenalty: number | null;
+  presencePenalty: number | null;
   isDefault: boolean;
   isSensitive: boolean;
   isShared: boolean;
@@ -163,6 +217,27 @@ const rules: FormRules = {
     max: 200000,
     message: 'Max Tokens 范围为 1 到 200000',
     trigger: ['blur', 'change']
+  },
+  timeout: {
+    type: 'number',
+    min: 1000,
+    max: 600000,
+    message: 'Timeout 范围为 1000 到 600000 毫秒',
+    trigger: ['blur', 'change']
+  },
+  frequencyPenalty: {
+    type: 'number',
+    min: -2,
+    max: 2,
+    message: 'Frequency Penalty 范围为 -2 到 2',
+    trigger: ['blur', 'change']
+  },
+  presencePenalty: {
+    type: 'number',
+    min: -2,
+    max: 2,
+    message: 'Presence Penalty 范围为 -2 到 2',
+    trigger: ['blur', 'change']
   }
 };
 
@@ -184,10 +259,14 @@ async function handleSubmit() {
   emit('submit', {
     name: form.name.trim(),
     description: form.description.trim(),
+    systemPrompt: form.systemPrompt.trim(),
     outputRules: form.outputRules.trim(),
-    temperature: form.temperature ?? undefined,
-    topP: form.topP ?? undefined,
-    maxTokens: form.maxTokens ?? undefined,
+    temperature: form.temperature,
+    topP: form.topP,
+    maxTokens: form.maxTokens,
+    timeout: form.timeout,
+    frequencyPenalty: form.frequencyPenalty,
+    presencePenalty: form.presencePenalty,
     isDefault: form.isDefault,
     isSensitive: form.isSensitive,
     ...(isAdmin ? { isShared: form.isShared } : {})
@@ -198,10 +277,14 @@ function createEmptyForm(): PromptPresetFormState {
   return {
     name: '',
     description: '',
+    systemPrompt: '',
     outputRules: '',
     temperature: null,
     topP: null,
     maxTokens: null,
+    timeout: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
     isDefault: false,
     isSensitive: false,
     isShared: false
@@ -212,10 +295,14 @@ function toForm(preset: PromptPreset): PromptPresetFormState {
   return {
     name: preset.name,
     description: preset.description,
+    systemPrompt: preset.systemPrompt,
     outputRules: preset.outputRules,
     temperature: preset.temperature,
     topP: preset.topP,
     maxTokens: preset.maxTokens,
+    timeout: preset.timeout,
+    frequencyPenalty: preset.frequencyPenalty,
+    presencePenalty: preset.presencePenalty,
     isDefault: preset.isDefault,
     isSensitive: preset.isSensitive,
     isShared: preset.isShared
@@ -238,6 +325,12 @@ function toForm(preset: PromptPreset): PromptPresetFormState {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 16px;
+}
+
+.prompt-preset-form__hint {
+  margin: -8px 0 12px;
+  color: var(--text-muted);
+  font-size: 13px;
 }
 
 .prompt-preset-form__switches {

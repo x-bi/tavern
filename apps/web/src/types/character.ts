@@ -1,7 +1,7 @@
 /** 角色对话示例的单条消息。 */
 export type ExampleMessage = {
   /** 消息角色。 */
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant';
   /** 消息正文。 */
   content: string;
 };

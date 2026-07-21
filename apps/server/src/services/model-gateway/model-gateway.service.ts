@@ -26,6 +26,16 @@ export class ModelGatewayService {
     private readonly registry: ModelGatewayRegistry
   ) {}
 
+  /** 返回当前已注册的规范 providerName 列表，供保存校验和前端选项复用。 */
+  getSupportedProviderNames(): string[] {
+    return this.registry.listProviderNames();
+  }
+
+  /** 判断 providerName（含已注册别名）是否可由当前 Gateway 处理。 */
+  supportsProviderName(providerName: string): boolean {
+    return this.registry.has(providerName);
+  }
+
   /**
    * 测试模型连接：委托给对应供应商适配器。
    * @param config 请求配置（含供应商名、baseUrl、apiKey 等）。

@@ -294,6 +294,13 @@ export class CharacterCardJsonImporter {
               ? record.text
               : '';
 
+        if (role && !this.isExampleRole(role)) {
+          throw new BadRequestException({
+            code: ERROR_CODES.CHARACTER_IMPORT_INVALID_FORMAT,
+            message: 'Character example messages only support user and assistant roles.'
+          });
+        }
+
         // role 必须合法且内容非空才保留
         return this.isExampleRole(role) && content.trim()
           ? [
@@ -363,7 +370,6 @@ export class CharacterCardJsonImporter {
    * 说话人识别规则（大小写不敏感）：
    * - user 变体（{{user}}/<user>/user/you）→ user；
    * - assistant 变体（{{char}}/<char>/assistant/char）或与角色同名 → assistant；
-   * - system → system；
    * - 其余无法识别 → null（视为上一条的多行内容）。
    */
   private parseExampleLine(line: string, characterName: string): ExampleMessage | null {
@@ -397,9 +403,11 @@ export class CharacterCardJsonImporter {
       return { role: 'assistant', content };
     }
 
-    // system
     if (normalizedSpeaker === 'system') {
-      return { role: 'system', content };
+      throw new BadRequestException({
+        code: ERROR_CODES.CHARACTER_IMPORT_INVALID_FORMAT,
+        message: 'Character example messages only support user and assistant roles.'
+      });
     }
 
     return null;
@@ -591,7 +599,7 @@ export class CharacterCardJsonImporter {
 
   /** 类型守卫：role 是否是合法的 ExampleMessage 角色。 */
   private isExampleRole(role: string): role is ExampleMessage['role'] {
-    return ['user', 'assistant', 'system'].includes(role);
+    return ['user', 'assistant'].includes(role);
   }
 
   /** 类型守卫：值是否是普通对象（非 null 非数组）。 */

@@ -11,6 +11,9 @@
           target-type="conversation"
           :target-id="conversationId"
         />
+        <n-button v-if="conversationId" secondary @click="openConversationSettings">
+          会话设置
+        </n-button>
         <n-button secondary @click="goConversations">返回会话</n-button>
       </n-space>
     </header>
@@ -85,13 +88,71 @@
         </section>
       </aside>
     </div>
+
+    <n-drawer v-model:show="settingsVisible" placement="right" :width="settingsDrawerWidth">
+      <n-drawer-content title="会话设置" closable>
+        <n-form label-placement="top" @submit.prevent="saveConversationSettings">
+          <n-form-item label="标题" required>
+            <n-input v-model:value="settingsForm.title" maxlength="160" />
+          </n-form-item>
+          <n-form-item label="角色">
+            <NSelect
+              v-model:value="settingsForm.characterId"
+              :options="characterOptions"
+              :disabled="hasConversationMessages"
+            />
+            <template #feedback>
+              {{
+                hasConversationMessages ? '会话已有消息，角色不可更换。' : '仅空会话可更换角色。'
+              }}
+            </template>
+          </n-form-item>
+          <n-form-item label="模型链">
+            <NSelect
+              v-model:value="settingsForm.modelFallbackGroupId"
+              clearable
+              :options="modelOptions"
+              placeholder="未选择"
+            />
+          </n-form-item>
+          <n-form-item label="Prompt 预设">
+            <NSelect
+              v-model:value="settingsForm.promptPresetId"
+              clearable
+              :options="presetOptions"
+              placeholder="未选择"
+            />
+          </n-form-item>
+          <n-form-item label="Persona">
+            <NSelect
+              v-model:value="settingsForm.personaId"
+              clearable
+              :options="personaOptions"
+              placeholder="未选择"
+            />
+          </n-form-item>
+          <n-form-item label="状态">
+            <NSelect v-model:value="settingsForm.status" :options="statusOptions" />
+          </n-form-item>
+          <n-alert v-if="conversationStore.saveError" type="error" :bordered="false">
+            {{ conversationStore.saveError }}
+          </n-alert>
+          <n-space justify="end">
+            <n-button secondary @click="settingsVisible = false">取消</n-button>
+            <n-button type="primary" attr-type="submit" :loading="conversationStore.saving">
+              保存
+            </n-button>
+          </n-space>
+        </n-form>
+      </n-drawer-content>
+    </n-drawer>
   </main>
 </template>
 
 <script setup lang="ts">
 import type { ChatStreamPayload } from '@tavern/shared';
-import { computed, onMounted, watch } from 'vue';
-import { useDialog, useMessage } from 'naive-ui';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 import { useRoute, useRouter } from 'vue-router';
 
 import { regenerateMessage, type Message } from '../../api/messages';
@@ -102,6 +163,10 @@ import { useChatStream } from '../../composables/useChatStream';
 import { useTargetEvents } from '../../composables/useTargetEvents';
 import { useChatStore } from '../../stores/chat';
 import { useConversationStore } from '../../stores/conversation';
+import { useCharacterStore } from '../../stores/character';
+import { useModelStore } from '../../stores/model';
+import { usePersonaStore } from '../../stores/persona';
+import { usePresetStore } from '../../stores/preset';
 
 const route = useRoute();
 const router = useRouter();
@@ -109,7 +174,21 @@ const dialog = useDialog();
 const message = useMessage();
 const chatStore = useChatStore();
 const conversationStore = useConversationStore();
+const characterStore = useCharacterStore();
+const modelStore = useModelStore();
+const personaStore = usePersonaStore();
+const presetStore = usePresetStore();
 const chatStream = useChatStream();
+const settingsVisible = ref(false);
+const settingsDrawerWidth = computed(() => Math.min(520, window.innerWidth));
+const settingsForm = reactive({
+  title: '',
+  characterId: '',
+  modelFallbackGroupId: null as string | null,
+  promptPresetId: null as string | null,
+  personaId: null as string | null,
+  status: 'active' as 'active' | 'archived'
+});
 const chatStreamAbortedCode = 'CHAT_STREAM_ABORTED';
 let syncTimer: number | null = null;
 const targetEvents = useTargetEvents(() => {
@@ -144,6 +223,25 @@ const modelLabel = computed(() => {
 });
 const presetLabel = computed(() => currentConversation.value?.promptPreset?.name ?? '未选择');
 const personaLabel = computed(() => currentConversation.value?.persona?.name ?? '未选择');
+const hasConversationMessages = computed(() => chatStore.visibleMessages.length > 0);
+const characterOptions = computed<SelectOption[]>(() =>
+  characterStore.items.map((item) => ({ label: item.name, value: item.id }))
+);
+const modelOptions = computed<SelectOption[]>(() =>
+  modelStore.fallbackGroups
+    .filter((item) => item.isEnabled)
+    .map((item) => ({ label: item.name, value: item.id }))
+);
+const presetOptions = computed<SelectOption[]>(() =>
+  presetStore.items.map((item) => ({ label: item.name, value: item.id }))
+);
+const personaOptions = computed<SelectOption[]>(() =>
+  personaStore.items.map((item) => ({ label: item.name, value: item.id }))
+);
+const statusOptions: SelectOption[] = [
+  { label: '活跃', value: 'active' },
+  { label: '已归档', value: 'archived' }
+];
 
 onMounted(() => {
   void loadCurrentRoom();
@@ -167,7 +265,7 @@ async function loadCurrentRoom() {
   targetEvents.connect('conversation', conversationId.value);
 
   await Promise.allSettled([
-    conversationStore.loadConversations({ page: 1, pageSize: 100 }),
+    conversationStore.loadConversation(conversationId.value),
     chatStore.loadMessages(conversationId.value, { page: 1, pageSize: 100, order: 'asc' })
   ]);
 }
@@ -182,6 +280,52 @@ function reloadMessages() {
 
 function goConversations() {
   void router.push({ name: 'conversations' });
+}
+
+async function openConversationSettings() {
+  const conversation = currentConversation.value;
+  if (!conversation) return;
+
+  Object.assign(settingsForm, {
+    title: conversation.title,
+    characterId: conversation.characterId,
+    modelFallbackGroupId: conversation.modelFallbackGroupId,
+    promptPresetId: conversation.promptPresetId,
+    personaId: conversation.personaId,
+    status: conversation.status === 'archived' ? 'archived' : 'active'
+  });
+  conversationStore.saveError = null;
+  settingsVisible.value = true;
+  await Promise.allSettled([
+    characterStore.loadCharacters({ page: 1, pageSize: 100 }),
+    modelStore.loadModelResources({ pageSize: 100 }),
+    presetStore.loadPresets({ page: 1, pageSize: 100 }),
+    personaStore.loadPersonas({ page: 1, pageSize: 100 })
+  ]);
+}
+
+async function saveConversationSettings() {
+  const activeId = conversationId.value;
+  if (!activeId || !settingsForm.title.trim() || !settingsForm.characterId) return;
+
+  const updated = await conversationStore.updateConversation(activeId, {
+    title: settingsForm.title.trim(),
+    characterId: settingsForm.characterId,
+    modelFallbackGroupId: settingsForm.modelFallbackGroupId,
+    promptPresetId: settingsForm.promptPresetId,
+    personaId: settingsForm.personaId,
+    status: settingsForm.status
+  });
+
+  if (!updated) return;
+  settingsVisible.value = false;
+  message.success('会话设置已保存');
+
+  if (updated.status === 'archived') {
+    await router.push({ name: 'conversations' });
+  } else {
+    await conversationStore.loadConversation(activeId);
+  }
 }
 
 function goPromptPreview() {

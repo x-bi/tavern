@@ -57,6 +57,20 @@ export class UpdateProviderModelDto {
 
   @IsOptional()
   @Type(() => Number)
+  @IsNumber()
+  @Min(-2)
+  @Max(2)
+  frequencyPenalty?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-2)
+  @Max(2)
+  presencePenalty?: number | null;
+
+  @IsOptional()
+  @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(2000000)

@@ -103,7 +103,8 @@ export type {
   ModelProviderResponse,
   ProviderModelListResponse,
   ProviderModelPayload,
-  ProviderModelResponse
+  ProviderModelResponse,
+  SupportedModelProvidersResponse
 } from './model';
 export type {
   ModelGatewayChatResult,

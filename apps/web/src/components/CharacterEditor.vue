@@ -27,8 +27,11 @@
           <n-input v-model:value="form.name" maxlength="120" show-count placeholder="角色名称" />
         </n-form-item>
 
-        <n-form-item label="标签">
-          <n-input v-model:value="form.tagsText" placeholder="fantasy, mystery, cozy" />
+        <n-form-item label="标签（仅用于角色整理和展示）">
+          <n-input
+            v-model:value="form.tagsText"
+            placeholder="fantasy, mystery, cozy；不发送给模型"
+          />
         </n-form-item>
       </div>
 
@@ -324,8 +327,8 @@ function parseExampleMessages(value: string): ExampleMessage[] | string {
       const role = line.slice(0, separatorIndex).trim();
       const content = line.slice(separatorIndex + 1).trim();
 
-      if (separatorIndex < 1 || !['user', 'assistant', 'system'].includes(role) || !content) {
-        return `第 ${index + 1} 行格式应为 user: 内容、assistant: 内容或 system: 内容。`;
+      if (separatorIndex < 1 || !['user', 'assistant'].includes(role) || !content) {
+        return `第 ${index + 1} 行格式应为 user: 内容或 assistant: 内容。系统约束请填写“系统提示”。`;
       }
 
       return {

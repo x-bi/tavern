@@ -185,6 +185,7 @@
               <li v-for="candidate in group.candidates" :key="candidate.id">
                 {{ candidate.priority }}. {{ candidate.model.providerDisplayName }} /
                 {{ candidate.model.name }}
+                <n-tag v-if="!candidate.isEnabled" size="small" type="warning">候选停用</n-tag>
               </li>
             </ol>
 
@@ -209,7 +210,11 @@
               <n-input v-model:value="providerForm.name" maxlength="120" />
             </n-form-item>
             <n-form-item label="Provider" required>
-              <n-input v-model:value="providerForm.providerName" maxlength="80" />
+              <NSelect
+                v-model:value="providerForm.providerName"
+                :options="supportedProviderOptions"
+                placeholder="选择后端已注册的供应商类型"
+              />
             </n-form-item>
             <n-form-item label="Base URL" required>
               <n-input v-model:value="providerForm.baseUrl" maxlength="500" />
@@ -220,16 +225,21 @@
                 type="password"
                 show-password-on="click"
                 maxlength="4096"
-                :placeholder="editingProvider?.apiKeyMask ? `已保存 ${editingProvider.apiKeyMask}` : ''"
+                :placeholder="
+                  editingProvider?.apiKeyMask ? `已保存 ${editingProvider.apiKeyMask}` : ''
+                "
               />
             </n-form-item>
             <n-form-item label="Timeout ms">
               <n-input-number v-model:value="providerForm.timeout" clearable :min="1000" />
             </n-form-item>
             <n-space>
-              <n-checkbox v-model:checked="providerForm.isDefault">默认供应商</n-checkbox>
+              <n-checkbox v-model:checked="providerForm.isDefault">配置页默认供应商</n-checkbox>
               <n-checkbox v-model:checked="providerForm.isEnabled">启用</n-checkbox>
             </n-space>
+            <p class="model-chain-form__hint">
+              仅影响配置页中新建模型时的默认选择；真实聊天由模型链决定。
+            </p>
           </template>
 
           <template v-else-if="drawerMode === 'model'">
@@ -255,8 +265,38 @@
               <n-form-item label="Timeout ms">
                 <n-input-number v-model:value="modelForm.timeout" clearable :min="1000" />
               </n-form-item>
+              <n-form-item label="上下文长度">
+                <n-input-number
+                  v-model:value="modelForm.contextLength"
+                  clearable
+                  :min="1"
+                  :max="2000000"
+                  placeholder="留空使用系统兜底"
+                />
+              </n-form-item>
+              <n-form-item label="Frequency Penalty">
+                <n-input-number
+                  v-model:value="modelForm.frequencyPenalty"
+                  clearable
+                  :min="-2"
+                  :max="2"
+                  :step="0.1"
+                />
+              </n-form-item>
+              <n-form-item label="Presence Penalty">
+                <n-input-number
+                  v-model:value="modelForm.presencePenalty"
+                  clearable
+                  :min="-2"
+                  :max="2"
+                  :step="0.1"
+                />
+              </n-form-item>
             </div>
-            <n-form-item label="备注">
+            <p class="model-chain-form__hint">
+              Max Tokens 是最大输出长度，需小于模型上下文长度；预设中的同名参数优先于模型默认参数。
+            </p>
+            <n-form-item label="内部备注（不影响生成）">
               <n-input v-model:value="modelForm.notes" type="textarea" maxlength="500" />
             </n-form-item>
             <n-checkbox v-model:checked="modelForm.isEnabled">启用</n-checkbox>
@@ -275,6 +315,19 @@
                 placeholder="按选择顺序生成调用顺序"
               />
             </n-form-item>
+            <div v-if="groupForm.modelIds.length" class="model-chain-candidates">
+              <div v-for="modelId in groupForm.modelIds" :key="modelId">
+                <span>{{ modelNameById(modelId) }}</span>
+                <n-switch
+                  :value="groupForm.candidateEnabled[modelId] !== false"
+                  size="small"
+                  @update:value="setCandidateEnabled(modelId, $event)"
+                >
+                  <template #checked>启用</template>
+                  <template #unchecked>停用</template>
+                </n-switch>
+              </div>
+            </div>
             <n-space>
               <n-checkbox v-model:checked="groupForm.isDefault">默认模型链</n-checkbox>
               <n-checkbox v-model:checked="groupForm.isEnabled">启用</n-checkbox>
@@ -300,6 +353,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 
 import {
+  fetchSupportedModelProviders,
   testProviderModelConnection,
   type ModelFallbackGroup,
   type ModelProvider,
@@ -321,6 +375,7 @@ const editingProvider = ref<ModelProvider | null>(null);
 const editingModel = ref<ProviderModel | null>(null);
 const editingGroup = ref<ModelFallbackGroup | null>(null);
 const testingId = ref<string | null>(null);
+const supportedProviderNames = ref<string[]>([]);
 const drawerWidth = computed(() => Math.min(720, window.innerWidth));
 const drawerTitle = computed(() => {
   if (drawerMode.value === 'provider') {
@@ -352,6 +407,9 @@ const modelForm = reactive({
   topP: null as number | null,
   maxTokens: null as number | null,
   timeout: null as number | null,
+  contextLength: null as number | null,
+  frequencyPenalty: null as number | null,
+  presencePenalty: null as number | null,
   notes: '',
   isEnabled: true
 });
@@ -359,6 +417,7 @@ const modelForm = reactive({
 const groupForm = reactive({
   name: '',
   modelIds: [] as string[],
+  candidateEnabled: {} as Record<string, boolean>,
   isDefault: false,
   isEnabled: true
 });
@@ -371,6 +430,13 @@ const providerOptions = computed<SelectOption[]>(() =>
   }))
 );
 
+const supportedProviderOptions = computed<SelectOption[]>(() =>
+  supportedProviderNames.value.map((providerName) => ({
+    label: providerName,
+    value: providerName
+  }))
+);
+
 const modelOptions = computed<SelectOption[]>(() =>
   modelStore.providerModels.map((model) => ({
     label: `${model.providerDisplayName} / ${model.name}`,
@@ -379,8 +445,18 @@ const modelOptions = computed<SelectOption[]>(() =>
   }))
 );
 
-onMounted(() => {
-  void modelStore.loadModelResources();
+onMounted(async () => {
+  const [supported] = await Promise.allSettled([
+    fetchSupportedModelProviders(),
+    modelStore.loadModelResources()
+  ]);
+
+  if (supported.status === 'fulfilled') {
+    supportedProviderNames.value = supported.value.items;
+  } else {
+    modelStore.error =
+      supported.reason instanceof Error ? supported.reason.message : '供应商类型加载失败。';
+  }
 });
 
 function openCreateProvider() {
@@ -391,6 +467,9 @@ function openCreateProvider() {
     baseUrl: '',
     apiKey: '',
     timeout: null,
+    contextLength: null,
+    frequencyPenalty: null,
+    presencePenalty: null,
     isDefault: false,
     isEnabled: true
   });
@@ -437,6 +516,9 @@ function openEditModel(model: ProviderModel) {
     topP: model.topP,
     maxTokens: model.maxTokens,
     timeout: model.timeout,
+    contextLength: model.contextLength,
+    frequencyPenalty: model.frequencyPenalty,
+    presencePenalty: model.presencePenalty,
     notes: model.notes ?? '',
     isEnabled: model.isEnabled
   });
@@ -448,6 +530,7 @@ function openCreateGroup() {
   Object.assign(groupForm, {
     name: '',
     modelIds: [],
+    candidateEnabled: {},
     isDefault: false,
     isEnabled: true
   });
@@ -456,12 +539,13 @@ function openCreateGroup() {
 
 function openEditGroup(group: ModelFallbackGroup) {
   editingGroup.value = group;
+  const candidates = group.candidates.slice().sort((left, right) => left.priority - right.priority);
   Object.assign(groupForm, {
     name: group.name,
-    modelIds: group.candidates
-      .slice()
-      .sort((left, right) => left.priority - right.priority)
-      .map((candidate) => candidate.modelId),
+    modelIds: candidates.map((candidate) => candidate.modelId),
+    candidateEnabled: Object.fromEntries(
+      candidates.map((candidate) => [candidate.modelId, candidate.isEnabled])
+    ),
     isDefault: group.isDefault,
     isEnabled: group.isEnabled
   });
@@ -493,8 +577,8 @@ async function submitDrawer() {
 }
 
 async function submitProvider() {
-  if (!providerForm.name.trim() || !providerForm.baseUrl.trim()) {
-    message.warning('请填写供应商名称和 Base URL。');
+  if (!providerForm.name.trim() || !providerForm.providerName || !providerForm.baseUrl.trim()) {
+    message.warning('请填写供应商名称、类型和 Base URL。');
     return;
   }
 
@@ -531,6 +615,9 @@ async function submitModel() {
     topP: modelForm.topP,
     maxTokens: modelForm.maxTokens,
     timeout: modelForm.timeout,
+    contextLength: modelForm.contextLength,
+    frequencyPenalty: modelForm.frequencyPenalty,
+    presencePenalty: modelForm.presencePenalty,
     notes: modelForm.notes.trim() || null,
     isEnabled: modelForm.isEnabled
   };
@@ -557,7 +644,7 @@ async function submitGroup() {
     candidates: groupForm.modelIds.map((modelId, index) => ({
       modelId,
       priority: index + 1,
-      isEnabled: true
+      isEnabled: groupForm.candidateEnabled[modelId] !== false
     }))
   };
   const result = editingGroup.value
@@ -635,10 +722,22 @@ function modelParamSummary(model: ProviderModel): string {
     model.temperature === null ? null : `temp ${model.temperature}`,
     model.topP === null ? null : `topP ${model.topP}`,
     model.maxTokens === null ? null : `max ${model.maxTokens}`,
-    model.timeout === null ? null : `${model.timeout}ms`
+    model.timeout === null ? null : `${model.timeout}ms`,
+    model.contextLength === null ? null : `ctx ${model.contextLength}`,
+    model.frequencyPenalty === null ? null : `freq ${model.frequencyPenalty}`,
+    model.presencePenalty === null ? null : `pres ${model.presencePenalty}`
   ].filter(Boolean);
 
   return parts.length > 0 ? parts.join(' / ') : '未设置';
+}
+
+function modelNameById(modelId: string): string {
+  const model = modelStore.providerModels.find((item) => item.id === modelId);
+  return model ? `${model.providerDisplayName} / ${model.name}` : modelId;
+}
+
+function setCandidateEnabled(modelId: string, value: boolean) {
+  groupForm.candidateEnabled[modelId] = value;
 }
 </script>
 
@@ -743,6 +842,29 @@ function modelParamSummary(model: ProviderModel): string {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.model-chain-form__hint {
+  margin: 0 0 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.model-chain-candidates {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.model-chain-candidates > div {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 6px;
 }
 
 @media (max-width: 780px) {

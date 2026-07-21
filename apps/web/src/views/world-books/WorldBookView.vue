@@ -232,7 +232,7 @@
             />
           </n-form-item>
 
-          <n-form-item label="描述">
+          <n-form-item label="描述（仅用于管理说明，不参与匹配或 Prompt 注入）">
             <n-input
               v-model:value="createForm.description"
               type="textarea"

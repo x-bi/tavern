@@ -78,6 +78,11 @@ export class ModelsService {
       .digest();
   }
 
+  /** 当前 Gateway 已注册的规范供应商名，作为页面选项与保存校验的共同来源。 */
+  listSupportedProviderNames(): { items: string[] } {
+    return { items: this.modelGateway.getSupportedProviderNames() };
+  }
+
   async listProviders(
     currentUser: CurrentUser,
     query: QueryModelResourcesDto
@@ -132,6 +137,7 @@ export class ModelsService {
     currentUser: CurrentUser,
     dto: CreateModelProviderDto
   ): Promise<ModelProviderResponse> {
+    this.assertSupportedProviderName(dto.providerName);
     const apiKey = this.normalizeApiKey(dto.apiKey);
     const data = {
       userId: currentUser.id,
@@ -176,6 +182,7 @@ export class ModelsService {
     dto: UpdateModelProviderDto
   ): Promise<ModelProviderResponse> {
     await this.findOwnedActiveProvider(currentUser, id);
+    if (dto.providerName !== undefined) this.assertSupportedProviderName(dto.providerName);
     const apiKey = dto.apiKey === undefined ? undefined : this.normalizeApiKey(dto.apiKey);
     const data: Prisma.ModelProviderUpdateInput = {
       ...(dto.name === undefined ? {} : { name: dto.name }),
@@ -800,6 +807,8 @@ export class ModelsService {
       topP: params.topP ?? null,
       maxTokens: params.maxTokens ?? null,
       timeout: params.timeout ?? model.provider.timeout ?? null,
+      frequencyPenalty: params.frequencyPenalty ?? null,
+      presencePenalty: params.presencePenalty ?? null,
       contextLength: model.contextLength,
       notes: model.notes,
       sortOrder: model.sortOrder,
@@ -899,6 +908,16 @@ export class ModelsService {
       }
     }
 
+    if (dto.frequencyPenalty !== undefined) {
+      if (dto.frequencyPenalty === null) delete next.frequencyPenalty;
+      else next.frequencyPenalty = dto.frequencyPenalty;
+    }
+
+    if (dto.presencePenalty !== undefined) {
+      if (dto.presencePenalty === null) delete next.presencePenalty;
+      else next.presencePenalty = dto.presencePenalty;
+    }
+
     return next;
   }
 
@@ -907,8 +926,20 @@ export class ModelsService {
       dto.temperature !== undefined ||
       dto.topP !== undefined ||
       dto.maxTokens !== undefined ||
-      dto.timeout !== undefined
+      dto.timeout !== undefined ||
+      dto.frequencyPenalty !== undefined ||
+      dto.presencePenalty !== undefined
     );
+  }
+
+  /** 保存前拒绝当前 Gateway 无法处理的 providerName。 */
+  private assertSupportedProviderName(providerName: string): void {
+    if (this.modelGateway.supportsProviderName(providerName)) return;
+
+    throw new BadRequestException({
+      code: ERROR_CODES.MODEL_GATEWAY_PROVIDER_UNSUPPORTED,
+      message: `Model provider "${providerName}" is not registered in Model Gateway.`
+    });
   }
 
   /**

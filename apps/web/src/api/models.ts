@@ -14,7 +14,8 @@ import type {
   ModelProviderResponse,
   ProviderModelListResponse,
   ProviderModelPayload,
-  ProviderModelResponse
+  ProviderModelResponse,
+  SupportedModelProvidersResponse
 } from '@tavern/shared';
 
 export type ModelProvider = ModelProviderResponse;
@@ -64,6 +65,16 @@ export async function fetchModelProviders(
   const response = await requestJson<ModelProviderListResponse>(
     `/model-providers${toQueryString(params)}`
   );
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
+export async function fetchSupportedModelProviders(): Promise<SupportedModelProvidersResponse> {
+  const response = await requestJson<SupportedModelProvidersResponse>('/model-providers/supported');
 
   if (!response.success) {
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);
@@ -172,7 +183,9 @@ export async function deleteProviderModel(id: string): Promise<ModelDeleteResult
   return response.data;
 }
 
-export async function testProviderModelConnection(id: string): Promise<ModelConnectionTestResponse> {
+export async function testProviderModelConnection(
+  id: string
+): Promise<ModelConnectionTestResponse> {
   const response = await requestJson<ModelConnectionTestResponse>(`/provider-models/${id}/test`, {
     method: 'POST'
   });

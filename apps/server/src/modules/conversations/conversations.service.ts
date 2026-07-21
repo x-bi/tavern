@@ -191,6 +191,18 @@ export class ConversationsService {
       dto.characterId === undefined
         ? undefined
         : await this.resolveCharacterId(currentUser, dto.characterId);
+    if (characterId !== undefined && characterId !== existing.characterId) {
+      const messageCount = await this.prisma.message.count({
+        where: { conversationId: id, deletedAt: null }
+      });
+
+      if (messageCount > 0) {
+        throw new BadRequestException({
+          code: ERROR_CODES.CONVERSATION_CHARACTER_LOCKED,
+          message: 'Conversation character cannot be changed after messages have been created.'
+        });
+      }
+    }
     const modelFallbackGroupId =
       dto.modelFallbackGroupId === undefined
         ? undefined
@@ -224,7 +236,9 @@ export class ConversationsService {
         ...(personaId === undefined ? {} : { personaId }),
         ...(dto.status === undefined ? {} : { status: dto.status }),
         usesSensitiveResource,
-        ...(dto.metadata === undefined ? {} : { metadataJson: this.stringifyNullable(dto.metadata) })
+        ...(dto.metadata === undefined
+          ? {}
+          : { metadataJson: this.stringifyNullable(dto.metadata) })
       },
       include: this.relationInclude()
     });

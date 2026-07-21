@@ -329,8 +329,7 @@ function fallback(value: string) {
 function roleLabel(role: ExampleMessage['role']) {
   const labels: Record<ExampleMessage['role'], string> = {
     user: '用户',
-    assistant: '角色',
-    system: '系统'
+    assistant: '角色'
   };
 
   return labels[role];

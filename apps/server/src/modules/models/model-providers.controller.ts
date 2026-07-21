@@ -40,6 +40,11 @@ export class ModelProvidersController {
     return this.modelsService.listProviders(currentUser, query);
   }
 
+  @Get('supported')
+  supported() {
+    return this.modelsService.listSupportedProviderNames();
+  }
+
   @Post()
   create(
     @CurrentUser() currentUser: CurrentUserType,

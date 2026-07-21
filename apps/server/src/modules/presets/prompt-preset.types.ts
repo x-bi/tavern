@@ -3,6 +3,9 @@ export type PromptPresetParams = {
   temperature?: number;
   topP?: number;
   maxTokens?: number;
+  timeout?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
 };
 
 /** 预设对外响应。 */
@@ -17,6 +20,9 @@ export type PromptPresetResponse = {
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
+  timeout: number | null;
+  frequencyPenalty: number | null;
+  presencePenalty: number | null;
   isDefault: boolean;
   isSensitive: boolean;
   isShared: boolean;

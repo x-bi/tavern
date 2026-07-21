@@ -77,6 +77,17 @@ export async function fetchConversations(
   return response.data;
 }
 
+/** 查询单个会话，供聊天页直接加载 active 或 archived 会话。 */
+export async function fetchConversation(id: string): Promise<ConversationResponse> {
+  const response = await requestJson<ConversationResponse>(`/conversations/${id}`);
+
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
+
+  return response.data;
+}
+
 /**
  * 创建会话。POST /conversations
  * @param payload 会话创建载荷。

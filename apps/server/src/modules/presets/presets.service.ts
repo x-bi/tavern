@@ -154,6 +154,7 @@ export class PresetsService {
       name: dto.name,
       // 可选字段未传时落库为空串
       description: dto.description ?? '',
+      systemPrompt: dto.systemPrompt ?? '',
       outputRules: dto.outputRules ?? '',
       // 参数提取后序列化成 JSON 存储
       parametersJson: this.stringifyParams(this.pickParams(dto)),
@@ -349,6 +350,7 @@ export class PresetsService {
     const data = {
       ...(dto.name === undefined ? {} : { name: dto.name }),
       ...(dto.description === undefined ? {} : { description: dto.description }),
+      ...(dto.systemPrompt === undefined ? {} : { systemPrompt: dto.systemPrompt }),
       ...(dto.outputRules === undefined ? {} : { outputRules: dto.outputRules }),
       ...(this.hasParamUpdate(dto) ? { parametersJson: this.stringifyParams(params) } : {}),
       ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
@@ -577,6 +579,9 @@ export class PresetsService {
       temperature: params.temperature ?? null,
       topP: params.topP ?? null,
       maxTokens: params.maxTokens ?? null,
+      timeout: params.timeout ?? null,
+      frequencyPenalty: params.frequencyPenalty ?? null,
+      presencePenalty: params.presencePenalty ?? null,
       isDefault: preset.isDefault,
       isSensitive: preset.isSensitive,
       isShared: preset.isShared,
@@ -607,14 +612,24 @@ export class PresetsService {
     existing: PromptPresetParams,
     dto: Partial<CreatePromptPresetDto | UpdatePromptPresetDto>
   ): PromptPresetParams {
-    return {
-      ...(existing.temperature === undefined ? {} : { temperature: existing.temperature }),
-      ...(existing.topP === undefined ? {} : { topP: existing.topP }),
-      ...(existing.maxTokens === undefined ? {} : { maxTokens: existing.maxTokens }),
-      ...(dto.temperature === undefined ? {} : { temperature: dto.temperature }),
-      ...(dto.topP === undefined ? {} : { topP: dto.topP }),
-      ...(dto.maxTokens === undefined ? {} : { maxTokens: dto.maxTokens })
-    };
+    const next: PromptPresetParams = { ...existing };
+
+    for (const field of [
+      'temperature',
+      'topP',
+      'maxTokens',
+      'timeout',
+      'frequencyPenalty',
+      'presencePenalty'
+    ] as const) {
+      const value = dto[field];
+
+      if (value === undefined) continue;
+      if (value === null) delete next[field];
+      else next[field] = value;
+    }
+
+    return next;
   }
 
   /**
@@ -623,7 +638,14 @@ export class PresetsService {
    * @returns 含任一参数字段返回 true。
    */
   private hasParamUpdate(dto: UpdatePromptPresetDto): boolean {
-    return dto.temperature !== undefined || dto.topP !== undefined || dto.maxTokens !== undefined;
+    return (
+      dto.temperature !== undefined ||
+      dto.topP !== undefined ||
+      dto.maxTokens !== undefined ||
+      dto.timeout !== undefined ||
+      dto.frequencyPenalty !== undefined ||
+      dto.presencePenalty !== undefined
+    );
   }
 
   /**
@@ -649,6 +671,9 @@ export class PresetsService {
     const temperature = value.temperature;
     const topP = value.topP ?? value.top_p;
     const maxTokens = value.maxTokens ?? value.max_tokens;
+    const timeout = value.timeout;
+    const frequencyPenalty = value.frequencyPenalty ?? value.frequency_penalty;
+    const presencePenalty = value.presencePenalty ?? value.presence_penalty;
 
     if (typeof temperature === 'number' && Number.isFinite(temperature)) {
       params.temperature = temperature;
@@ -660,6 +685,18 @@ export class PresetsService {
 
     if (typeof maxTokens === 'number' && Number.isFinite(maxTokens)) {
       params.maxTokens = Math.trunc(maxTokens);
+    }
+
+    if (typeof timeout === 'number' && Number.isFinite(timeout)) {
+      params.timeout = Math.trunc(timeout);
+    }
+
+    if (typeof frequencyPenalty === 'number' && Number.isFinite(frequencyPenalty)) {
+      params.frequencyPenalty = frequencyPenalty;
+    }
+
+    if (typeof presencePenalty === 'number' && Number.isFinite(presencePenalty)) {
+      params.presencePenalty = presencePenalty;
     }
 
     return params;
@@ -691,7 +728,14 @@ export class PresetsService {
         // 各字段校验类型后才保留（防止脏数据）
         ...(typeof parsed.temperature === 'number' ? { temperature: parsed.temperature } : {}),
         ...(typeof parsed.topP === 'number' ? { topP: parsed.topP } : {}),
-        ...(Number.isInteger(parsed.maxTokens) ? { maxTokens: parsed.maxTokens } : {})
+        ...(Number.isInteger(parsed.maxTokens) ? { maxTokens: parsed.maxTokens } : {}),
+        ...(Number.isInteger(parsed.timeout) ? { timeout: parsed.timeout } : {}),
+        ...(typeof parsed.frequencyPenalty === 'number'
+          ? { frequencyPenalty: parsed.frequencyPenalty }
+          : {}),
+        ...(typeof parsed.presencePenalty === 'number'
+          ? { presencePenalty: parsed.presencePenalty }
+          : {})
       };
     } catch {
       return {};

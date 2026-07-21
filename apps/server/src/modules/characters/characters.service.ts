@@ -692,7 +692,19 @@ export class CharactersService {
     try {
       const parsed = JSON.parse(value) as unknown;
 
-      return Array.isArray(parsed) ? (parsed as ExampleMessage[]) : [];
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+
+      return parsed.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+        const record = item as Record<string, unknown>;
+
+        return (record.role === 'user' || record.role === 'assistant') &&
+          typeof record.content === 'string'
+          ? [{ role: record.role, content: record.content }]
+          : [];
+      });
     } catch {
       return [];
     }

@@ -64,6 +64,8 @@ export type ProviderModelResponse = {
   topP: number | null;
   maxTokens: number | null;
   timeout: number | null;
+  frequencyPenalty: number | null;
+  presencePenalty: number | null;
   contextLength: number | null;
   notes: string | null;
   sortOrder: number;

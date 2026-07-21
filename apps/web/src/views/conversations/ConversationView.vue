@@ -21,6 +21,11 @@
       <n-button secondary @click="applySearch">搜索</n-button>
     </section>
 
+    <n-tabs v-model:value="activeStatus" type="segment" @update:value="changeStatus">
+      <n-tab name="active">进行中</n-tab>
+      <n-tab name="archived">已归档</n-tab>
+    </n-tabs>
+
     <n-alert
       v-if="!characterStore.loading && !characterStore.hasCharacters"
       type="warning"
@@ -39,8 +44,12 @@
 
     <EmptyState
       v-else-if="!conversationStore.hasConversations"
-      title="还没有会话"
-      description="新建会话后，可以从这里进入聊天页。"
+      :title="activeStatus === 'active' ? '还没有会话' : '还没有归档会话'"
+      :description="
+        activeStatus === 'active'
+          ? '新建会话后，可以从这里进入聊天页。'
+          : '在聊天页的会话设置中可将会话归档，并在这里恢复。'
+      "
     />
 
     <ConversationList
@@ -132,7 +141,7 @@ import { useConversationStore } from '../../stores/conversation';
 import { useModelStore } from '../../stores/model';
 import { usePersonaStore } from '../../stores/persona';
 import { usePresetStore } from '../../stores/preset';
-import type { ConversationPayload } from '@tavern/shared';
+import type { ConversationPayload, ConversationStatus } from '@tavern/shared';
 
 type ConversationFormState = {
   title: string;
@@ -151,6 +160,7 @@ const modelStore = useModelStore();
 const personaStore = usePersonaStore();
 const presetStore = usePresetStore();
 const searchText = ref(conversationStore.search);
+const activeStatus = ref<ConversationStatus>(conversationStore.status);
 const drawerVisible = ref(false);
 const busyId = ref<string | null>(null);
 const busyAction = ref<'clear' | 'delete' | null>(null);
@@ -172,9 +182,7 @@ const characterOptions = computed<SelectOption[]>(() =>
 
 const modelFallbackGroupOptions = computed<SelectOption[]>(() =>
   modelStore.fallbackGroups.map((group) => ({
-    label: `${group.name} / ${group.candidates.length} 个模型${
-      group.isEnabled ? '' : '（停用）'
-    }`,
+    label: `${group.name} / ${group.candidates.length} 个模型${group.isEnabled ? '' : '（停用）'}`,
     value: group.id,
     disabled: !group.isEnabled
   }))
@@ -200,7 +208,7 @@ onMounted(() => {
 
 async function loadInitialData() {
   await Promise.allSettled([
-    conversationStore.loadConversations(),
+    conversationStore.loadConversations({ status: activeStatus.value }),
     characterStore.loadCharacters({ page: 1, pageSize: 100, search: '' }),
     modelStore.loadModelResources({ page: 1, pageSize: 100, search: '' }),
     personaStore.loadPersonas({ page: 1, pageSize: 100, search: '' }),
@@ -212,7 +220,18 @@ function applySearch() {
   conversationStore.setSearch(searchText.value);
   void conversationStore.loadConversations({
     page: 1,
-    search: searchText.value
+    search: searchText.value,
+    status: activeStatus.value
+  });
+}
+
+function changeStatus(value: string | number) {
+  activeStatus.value = value === 'archived' ? 'archived' : 'active';
+  conversationStore.setSearch(searchText.value);
+  void conversationStore.loadConversations({
+    page: 1,
+    search: searchText.value,
+    status: activeStatus.value
   });
 }
 

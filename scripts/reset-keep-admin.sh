@@ -2,6 +2,7 @@
 
 # Tavern Lite 服务器硬清理脚本。
 # 保留一个明确指定的管理员账号和 Prisma 迁移记录，硬删除其余数据库数据与 uploads 文件。
+# bash scripts/reset-keep-admin.sh --admin root --yes
 
 set -Eeuo pipefail
 

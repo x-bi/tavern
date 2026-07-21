@@ -4,13 +4,14 @@ import {
   clearConversation,
   createConversation,
   deleteConversation,
+  fetchConversation,
   fetchConversations,
   updateConversation,
   type Conversation,
   type ConversationListParams,
   type ConversationMutationPayload
 } from '../api/conversations';
-import type { ConversationPayload } from '@tavern/shared';
+import type { ConversationPayload, ConversationStatus } from '@tavern/shared';
 
 type ConversationState = {
   items: Conversation[];
@@ -18,6 +19,7 @@ type ConversationState = {
   page: number;
   pageSize: number;
   search: string;
+  status: ConversationStatus;
   currentId: string | null;
   loading: boolean;
   saving: boolean;
@@ -32,6 +34,7 @@ export const useConversationStore = defineStore('conversation', {
     page: 1,
     pageSize: 20,
     search: '',
+    status: 'active',
     currentId: null,
     loading: false,
     saving: false,
@@ -40,8 +43,7 @@ export const useConversationStore = defineStore('conversation', {
   }),
   getters: {
     hasConversations: (state) => state.items.length > 0,
-    currentConversation: (state) =>
-      state.items.find((item) => item.id === state.currentId) ?? null
+    currentConversation: (state) => state.items.find((item) => item.id === state.currentId) ?? null
   },
   actions: {
     setSearch(value: string) {
@@ -63,7 +65,7 @@ export const useConversationStore = defineStore('conversation', {
           page,
           pageSize,
           search: search.trim() || undefined,
-          status: params.status ?? 'active'
+          status: params.status ?? this.status
         });
 
         this.items = result.items;
@@ -71,6 +73,7 @@ export const useConversationStore = defineStore('conversation', {
         this.page = result.page;
         this.pageSize = result.pageSize;
         this.search = search;
+        this.status = (params.status ?? this.status) as ConversationStatus;
 
         if (this.currentId && !this.items.some((item) => item.id === this.currentId)) {
           this.currentId = null;
@@ -79,6 +82,22 @@ export const useConversationStore = defineStore('conversation', {
         this.error = error instanceof Error ? error.message : '会话列表加载失败。';
       } finally {
         this.loading = false;
+      }
+    },
+    async loadConversation(id: string): Promise<Conversation | null> {
+      this.error = null;
+
+      try {
+        const conversation = await fetchConversation(id);
+        const index = this.items.findIndex((item) => item.id === id);
+
+        if (index >= 0) this.items[index] = conversation;
+        else this.items.unshift(conversation);
+
+        return conversation;
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '会话加载失败。';
+        return null;
       }
     },
     async createConversation(payload: ConversationPayload): Promise<Conversation | null> {

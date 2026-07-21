@@ -8,7 +8,7 @@ export type CharacterImportDuplicateNameStrategy = 'reject' | 'rename';
 /** 角色对话示例的单条消息（用于 mes_example 解析后的规范化表达）。 */
 export type CharacterImportExampleMessage = {
   /** 消息角色。 */
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant';
   /** 消息正文。 */
   content: string;
 };

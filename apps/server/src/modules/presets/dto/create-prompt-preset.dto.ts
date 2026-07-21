@@ -23,6 +23,12 @@ export class CreatePromptPresetDto {
   @MaxLength(500)
   description?: string;
 
+  /** 预设级系统提示词，可选，最长 10000。 */
+  @IsOptional()
+  @IsString()
+  @MaxLength(10000)
+  systemPrompt?: string;
+
   /** 输出规则，可选，最长 4000。 */
   @IsOptional()
   @IsString()
@@ -35,7 +41,7 @@ export class CreatePromptPresetDto {
   @IsNumber()
   @Min(0)
   @Max(2)
-  temperature?: number;
+  temperature?: number | null;
 
   /** top_p 0~1，可选。 */
   @IsOptional()
@@ -43,7 +49,7 @@ export class CreatePromptPresetDto {
   @IsNumber()
   @Min(0)
   @Max(1)
-  topP?: number;
+  topP?: number | null;
 
   /** 最大 token 数 1~200000，可选。 */
   @IsOptional()
@@ -51,7 +57,31 @@ export class CreatePromptPresetDto {
   @IsInt()
   @Min(1)
   @Max(200000)
-  maxTokens?: number;
+  maxTokens?: number | null;
+
+  /** 单次模型请求超时（毫秒）1000~600000，可选。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1000)
+  @Max(600000)
+  timeout?: number | null;
+
+  /** 频率惩罚 -2~2，可选。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-2)
+  @Max(2)
+  frequencyPenalty?: number | null;
+
+  /** 存在惩罚 -2~2，可选。 */
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  @Min(-2)
+  @Max(2)
+  presencePenalty?: number | null;
 
   /** 是否设为默认，可选，默认 false。 */
   @IsOptional()

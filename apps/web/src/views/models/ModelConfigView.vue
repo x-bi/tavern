@@ -263,7 +263,12 @@
                 <n-input-number v-model:value="modelForm.maxTokens" clearable :min="1" />
               </n-form-item>
               <n-form-item label="Timeout ms">
-                <n-input-number v-model:value="modelForm.timeout" clearable :min="1000" />
+                <n-input-number
+                  v-model:value="modelForm.timeout"
+                  clearable
+                  :min="1000"
+                  placeholder="留空继承供应商"
+                />
               </n-form-item>
               <n-form-item label="上下文长度">
                 <n-input-number
@@ -722,7 +727,11 @@ function modelParamSummary(model: ProviderModel): string {
     model.temperature === null ? null : `temp ${model.temperature}`,
     model.topP === null ? null : `topP ${model.topP}`,
     model.maxTokens === null ? null : `max ${model.maxTokens}`,
-    model.timeout === null ? null : `${model.timeout}ms`,
+    model.timeout !== null
+      ? `${model.timeout}ms`
+      : model.effectiveTimeout === null
+        ? null
+        : `${model.effectiveTimeout}ms（继承）`,
     model.contextLength === null ? null : `ctx ${model.contextLength}`,
     model.frequencyPenalty === null ? null : `freq ${model.frequencyPenalty}`,
     model.presencePenalty === null ? null : `pres ${model.presencePenalty}`

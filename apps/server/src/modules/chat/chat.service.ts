@@ -12,9 +12,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ModelGatewayService, type ModelGatewayStreamEvent } from '../../services/model-gateway';
 import {
   PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
-  PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS,
-  PROMPT_BUILDER_DEFAULT_MAX_PROMPT_TOKENS
+  PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS
 } from '../../services/prompt-builder/prompt-builder.constants';
+import { resolveModelPromptBudget } from '../../services/prompt-builder/prompt-budget';
 import { PromptBuilderService } from '../../services/prompt-builder/prompt-builder.service';
 import { estimatePromptTextTokens } from '../../services/prompt-builder/token-estimator';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
@@ -171,7 +171,6 @@ export class ChatService {
         currentUser,
         modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId
       });
-      const gatewayConfig = modelCandidates[0];
       const promptPreset = await this.resolvePromptPreset(currentUser, dto, conversation);
       const worldBooks = await this.worldBooksService.listPromptContexts(
         currentUser,
@@ -200,111 +199,117 @@ export class ChatService {
         message: this.toPublicEventMessage(assistantMessage)
       });
 
-      // 6. 构建 prompt（promptBuilder 组装各 section、裁剪历史、匹配世界书）
-      const prompt = this.promptBuilder.build(
-        this.toBuildPromptInput({
-          currentUser,
-          conversation,
-          history: preparedMessages.history,
-          currentUserMessage: preparedMessages.currentUserMessage,
-          promptPreset,
-          gatewayConfig,
-          worldBooks,
-          dto
-        })
-      );
-
       const fallbackAttempts: NonNullable<ChatMessageMetadata['modelFallback']>['attempts'] = [];
 
-      // 7. 流式调用模型链，首个模型未输出前失败则自动尝试下一个
+      // 6. 流式调用模型链；每个候选按自己的上下文长度重新构建 Prompt。
       for (const [candidateIndex, candidate] of modelCandidates.entries()) {
         let candidateEmittedDelta = false;
         let candidateError: { code: string; message: string } | null = null;
+        let prompt: ReturnType<PromptBuilderService['build']> | null = null;
 
-        for await (const event of this.modelGateway.streamChat(prompt.finalMessages, {
-          providerName: candidate.providerName,
-          baseUrl: candidate.baseUrl,
-          modelName: candidate.modelName,
-          apiKey: candidate.apiKey,
-          signal: abortController.signal,
-          ...this.mergeModelParams(candidate.params, promptPreset, {
-            isRegenerate: Boolean(dto.regenerateMessageId)
-          })
-        })) {
-          // 客户端中断：抛错走 catch（标 stopped）
-          if (abortController.signal.aborted) {
-            throw new Error('Chat stream aborted.');
-          }
+        try {
+          prompt = this.promptBuilder.build(
+            this.toBuildPromptInput({
+              currentUser,
+              conversation,
+              history: preparedMessages.history,
+              currentUserMessage: preparedMessages.currentUserMessage,
+              promptPreset,
+              gatewayConfig: candidate,
+              worldBooks,
+              dto
+            })
+          );
+        } catch (error) {
+          candidateError = this.toModelGatewayErrorPayload(error);
+        }
 
-          // delta：累积内容 + 转发增量给前端
-          if (event.type === 'delta') {
-            candidateEmittedDelta = true;
-            const resolvedDelta = this.resolveTemplateDelta(
-              assistantTemplateBuffer + event.text,
-              templateVariables,
-              false
-            );
-            assistantTemplateBuffer = resolvedDelta.pending;
-
-            if (resolvedDelta.text.length > 0) {
-              assistantContent += resolvedDelta.text;
-              this.writeSse(response, 'delta', {
-                text: resolvedDelta.text,
-                messageId: assistantMessage.id
-              });
-              this.targetEvents.emit('conversation', conversation.id, 'delta', {
-                text: resolvedDelta.text,
-                messageId: assistantMessage.id
-              });
+        if (prompt) {
+          for await (const event of this.modelGateway.streamChat(prompt.finalMessages, {
+            providerName: candidate.providerName,
+            baseUrl: candidate.baseUrl,
+            modelName: candidate.modelName,
+            apiKey: candidate.apiKey,
+            signal: abortController.signal,
+            ...this.mergeModelParams(candidate.params, promptPreset, {
+              isRegenerate: Boolean(dto.regenerateMessageId)
+            })
+          })) {
+            // 客户端中断：抛错走 catch（标 stopped）
+            if (abortController.signal.aborted) {
+              throw new Error('Chat stream aborted.');
             }
-            continue;
-          }
 
-          // done：完成消息 + 发完成事件 + 结束
-          if (event.type === 'done') {
-            finishReason = event.result.finishReason ?? 'stop';
-            const resolvedTail = this.resolveTemplateDelta(
-              assistantTemplateBuffer,
-              templateVariables,
-              true
-            );
-            assistantTemplateBuffer = resolvedTail.pending;
+            // delta：累积内容 + 转发增量给前端
+            if (event.type === 'delta') {
+              candidateEmittedDelta = true;
+              const resolvedDelta = this.resolveTemplateDelta(
+                assistantTemplateBuffer + event.text,
+                templateVariables,
+                false
+              );
+              assistantTemplateBuffer = resolvedDelta.pending;
 
-            if (resolvedTail.text.length > 0) {
-              assistantContent += resolvedTail.text;
-              this.writeSse(response, 'delta', {
-                text: resolvedTail.text,
-                messageId: assistantMessage.id
-              });
+              if (resolvedDelta.text.length > 0) {
+                assistantContent += resolvedDelta.text;
+                this.writeSse(response, 'delta', {
+                  text: resolvedDelta.text,
+                  messageId: assistantMessage.id
+                });
+                this.targetEvents.emit('conversation', conversation.id, 'delta', {
+                  text: resolvedDelta.text,
+                  messageId: assistantMessage.id
+                });
+              }
+              continue;
             }
-            fallbackAttempts.push({
-              providerName: candidate.providerName,
-              modelName: candidate.modelName,
-              status: 'succeeded'
-            });
-            await this.completeAssistantMessage(assistantMessage.id, assistantContent, event, {
-              groupId: candidate.modelFallbackGroupId ?? null,
-              selectedModelId: candidate.providerModelId ?? null,
-              attempts: fallbackAttempts
-            });
-            this.writeSse(response, 'done', {
-              messageId: assistantMessage.id,
-              finishReason
-            });
-            this.targetEvents.emit('conversation', conversation.id, 'generation_done', {
-              messageId: assistantMessage.id,
-              finishReason
-            });
-            return;
-          }
 
-          // error：未输出任何 delta 时可切下一个；已输出则停止，避免拼接两次生成
-          if (event.type === 'error') {
-            candidateError = {
-              code: event.code,
-              message: event.message
-            };
-            break;
+            // done：完成消息 + 发完成事件 + 结束
+            if (event.type === 'done') {
+              finishReason = event.result.finishReason ?? 'stop';
+              const resolvedTail = this.resolveTemplateDelta(
+                assistantTemplateBuffer,
+                templateVariables,
+                true
+              );
+              assistantTemplateBuffer = resolvedTail.pending;
+
+              if (resolvedTail.text.length > 0) {
+                assistantContent += resolvedTail.text;
+                this.writeSse(response, 'delta', {
+                  text: resolvedTail.text,
+                  messageId: assistantMessage.id
+                });
+              }
+              fallbackAttempts.push({
+                providerName: candidate.providerName,
+                modelName: candidate.modelName,
+                status: 'succeeded'
+              });
+              await this.completeAssistantMessage(assistantMessage.id, assistantContent, event, {
+                groupId: candidate.modelFallbackGroupId ?? null,
+                selectedModelId: candidate.providerModelId ?? null,
+                attempts: fallbackAttempts
+              });
+              this.writeSse(response, 'done', {
+                messageId: assistantMessage.id,
+                finishReason
+              });
+              this.targetEvents.emit('conversation', conversation.id, 'generation_done', {
+                messageId: assistantMessage.id,
+                finishReason
+              });
+              return;
+            }
+
+            // error：未输出任何 delta 时可切下一个；已输出则停止，避免拼接两次生成
+            if (event.type === 'error') {
+              candidateError = {
+                code: event.code,
+                message: event.message
+              };
+              break;
+            }
           }
         }
 
@@ -457,9 +462,7 @@ export class ChatService {
       currentUser,
       modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId
     });
-    const gatewayConfig = modelCandidates[0];
-
-    if (!gatewayConfig) {
+    if (!modelCandidates[0]) {
       throw new BadRequestException({
         code: ERROR_CODES.CHAT_MODEL_CONFIG_REQUIRED,
         message: '请先配置至少一个模型链后再生成建议。'
@@ -476,24 +479,23 @@ export class ChatService {
 
     this.assertModelCandidatesReady(modelCandidates);
 
-    const prompt = this.promptBuilder.build(
-      this.toBuildPromptInput({
-        currentUser,
-        conversation,
-        history,
-        currentUserMessage: this.createSuggestionPromptMessage(conversation.id, count),
-        promptPreset,
-        gatewayConfig,
-        worldBooks,
-        dto,
-        purpose: 'user_suggestions'
-      })
-    );
-
     let lastError: { code: string; message: string } | null = null;
 
     for (const candidate of modelCandidates) {
       try {
+        const prompt = this.promptBuilder.build(
+          this.toBuildPromptInput({
+            currentUser,
+            conversation,
+            history,
+            currentUserMessage: this.createSuggestionPromptMessage(conversation.id, count),
+            promptPreset,
+            gatewayConfig: candidate,
+            worldBooks,
+            dto,
+            purpose: 'user_suggestions'
+          })
+        );
         const result = await this.modelGateway.chat(prompt.finalMessages, {
           providerName: candidate.providerName,
           baseUrl: candidate.baseUrl,
@@ -1340,14 +1342,9 @@ export class ChatService {
     gatewayConfig: ModelGatewayConfig,
     promptPreset: PromptPreset | null
   ): number {
-    if (!gatewayConfig.contextLength || gatewayConfig.contextLength <= 0) {
-      return PROMPT_BUILDER_DEFAULT_MAX_PROMPT_TOKENS;
-    }
-
     const presetParameters = promptPreset ? this.parseParams(promptPreset.parametersJson) : null;
-    const outputBudget = presetParameters?.maxTokens ?? gatewayConfig.params.maxTokens ?? 1200;
 
-    return Math.max(0, Math.floor(gatewayConfig.contextLength - outputBudget));
+    return resolveModelPromptBudget(gatewayConfig, presetParameters?.maxTokens);
   }
 
   /**

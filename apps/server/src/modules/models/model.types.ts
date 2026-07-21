@@ -63,7 +63,10 @@ export type ProviderModelResponse = {
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
+  /** 模型自身显式覆盖的请求超时；null 表示继承供应商。 */
   timeout: number | null;
+  /** 合并模型覆盖值和供应商默认值后的实际请求超时。 */
+  effectiveTimeout: number | null;
   frequencyPenalty: number | null;
   presencePenalty: number | null;
   contextLength: number | null;

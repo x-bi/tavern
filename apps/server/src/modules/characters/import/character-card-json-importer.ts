@@ -294,22 +294,26 @@ export class CharacterCardJsonImporter {
               ? record.text
               : '';
 
-        if (role && !this.isExampleRole(role)) {
+        if (!this.isExampleRole(role)) {
           throw new BadRequestException({
             code: ERROR_CODES.CHARACTER_IMPORT_INVALID_FORMAT,
             message: 'Character example messages only support user and assistant roles.'
           });
         }
 
-        // role 必须合法且内容非空才保留
-        return this.isExampleRole(role) && content.trim()
-          ? [
-              {
-                role,
-                content: this.limitText(content.trim(), MAX_TEXT_LENGTH, 'mes_example', warnings)
-              }
-            ]
-          : [];
+        if (!content.trim()) {
+          throw new BadRequestException({
+            code: ERROR_CODES.CHARACTER_IMPORT_INVALID_FORMAT,
+            message: 'Character example message content must not be empty.'
+          });
+        }
+
+        return [
+          {
+            role,
+            content: this.limitText(content.trim(), MAX_TEXT_LENGTH, 'mes_example', warnings)
+          }
+        ];
       });
     }
 

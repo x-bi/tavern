@@ -12,6 +12,7 @@ import {
   type CompanionPromptParameters
 } from '../../services/companion-prompt-builder/companion-prompt-builder.service';
 import { ModelGatewayService } from '../../services/model-gateway';
+import { resolveModelPromptBudget } from '../../services/prompt-builder/prompt-budget';
 import { estimatePromptTextTokens } from '../../services/prompt-builder/token-estimator';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
 import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
@@ -128,19 +129,19 @@ export class CompanionChatService {
           code: 'MODEL_FALLBACK_GROUP_NOT_READY',
           message: 'No callable model candidate.'
         });
-      const built = this.builder.build(
-        this.toPromptInput(
-          companion,
-          prepared.history,
-          prepared.user.content,
-          this.promptBudget(candidates[0], companion.promptPreset)
-        )
-      );
       let finishReason: string | null = null;
       let succeeded = false;
       for (const candidate of candidates) {
         let emitted = false;
         try {
+          const built = this.builder.build(
+            this.toPromptInput(
+              companion,
+              prepared.history,
+              prepared.user.content,
+              this.promptBudget(candidate, companion.promptPreset)
+            )
+          );
           for await (const event of this.gateway.streamChat(built.messages, {
             providerName: candidate.providerName,
             baseUrl: candidate.baseUrl,
@@ -337,12 +338,7 @@ export class CompanionChatService {
       ? this.parsePresetParameters(preset.parametersJson)?.maxTokens
       : undefined;
 
-    return candidate?.contextLength
-      ? Math.max(
-          0,
-          candidate.contextLength - (presetMaxTokens ?? candidate.params.maxTokens ?? 1200)
-        )
-      : 8000;
+    return resolveModelPromptBudget(candidate, presetMaxTokens);
   }
   private personaText(persona: UserPersona | null) {
     return persona ? persona.content : null;

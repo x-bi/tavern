@@ -9,9 +9,13 @@ import { DtoValidationPipe } from '../apps/server/src/common/pipes/dto-validatio
 import { CreateCharacterDto } from '../apps/server/src/modules/characters/dto/create-character.dto';
 import { CharacterCardJsonImporter } from '../apps/server/src/modules/characters/import/character-card-json-importer';
 import { ModelsService } from '../apps/server/src/modules/models/models.service';
-import type { ModelGenerationParams } from '../apps/server/src/modules/models/model.types';
+import type {
+  ModelGenerationParams,
+  ProviderModelResponse
+} from '../apps/server/src/modules/models/model.types';
 import { PresetsService } from '../apps/server/src/modules/presets/presets.service';
 import type { PromptPresetParams } from '../apps/server/src/modules/presets/prompt-preset.types';
+import { resolveModelPromptBudget } from '../apps/server/src/services/prompt-builder/prompt-budget';
 
 type PresetParamHarness = {
   parseParams(value: string | null): PromptPresetParams;
@@ -24,6 +28,7 @@ type ModelParamHarness = {
     dto: Record<string, unknown>
   ): ModelGenerationParams;
   assertSupportedProviderName(providerName: string): void;
+  toProviderModelResponse(model: unknown): ProviderModelResponse;
 };
 
 function exceptionCode(error: unknown): string | undefined {
@@ -72,6 +77,26 @@ assert.deepEqual(editedModel, {
   frequencyPenalty: 0.6,
   presencePenalty: 0.3
 });
+const inheritedTimeoutModel = modelHarness.toProviderModelResponse({
+  id: 'model-1',
+  providerId: 'provider-1',
+  name: '测试模型',
+  model: 'test-model',
+  defaultParamsJson: null,
+  contextLength: 8192,
+  notes: null,
+  sortOrder: 0,
+  isEnabled: true,
+  createdAt: new Date('2026-01-01T00:00:00.000Z'),
+  updatedAt: new Date('2026-01-01T00:00:00.000Z'),
+  provider: {
+    provider: 'openai-compatible',
+    name: '测试供应商',
+    timeout: 45000
+  }
+});
+assert.equal(inheritedTimeoutModel.timeout, null);
+assert.equal(inheritedTimeoutModel.effectiveTimeout, 45000);
 assert.doesNotThrow(() => modelHarness.assertSupportedProviderName('openai-compatible'));
 assert.throws(
   () => modelHarness.assertSupportedProviderName('unknown-provider'),
@@ -79,6 +104,16 @@ assert.throws(
 );
 
 const characterPipe = new DtoValidationPipe(CreateCharacterDto);
+const importer = new CharacterCardJsonImporter();
+assert.throws(
+  () =>
+    characterPipe.transform({
+      name: '测试角色',
+      exampleMessages: [{ role: 'user', content: '   ' }]
+    }),
+  (error: unknown) => exceptionCode(error) === ERROR_CODES.VALIDATION_ERROR
+);
+
 assert.throws(
   () =>
     characterPipe.transform({
@@ -87,8 +122,34 @@ assert.throws(
     }),
   (error: unknown) => exceptionCode(error) === ERROR_CODES.VALIDATION_ERROR
 );
+assert.throws(
+  () =>
+    importer.map(
+      JSON.stringify({
+        name: '测试角色',
+        exampleMessages: [{ role: 'user', content: '   ' }]
+      })
+    ),
+  (error: unknown) => exceptionCode(error) === ERROR_CODES.CHARACTER_IMPORT_INVALID_FORMAT
+);
+assert.throws(
+  () =>
+    importer.map(
+      JSON.stringify({
+        name: '测试角色',
+        exampleMessages: [{ content: '缺少 role' }]
+      })
+    ),
+  (error: unknown) => exceptionCode(error) === ERROR_CODES.CHARACTER_IMPORT_INVALID_FORMAT
+);
 
-const importer = new CharacterCardJsonImporter();
+assert.equal(
+  resolveModelPromptBudget({ contextLength: 128000, params: { maxTokens: 4000 } }),
+  124000
+);
+assert.equal(resolveModelPromptBudget({ contextLength: 8192, params: { maxTokens: 1024 } }), 7168);
+assert.equal(resolveModelPromptBudget(null), 8000);
+
 assert.throws(
   () =>
     importer.map(
@@ -108,6 +169,41 @@ assert.match(
   modelViewSource,
   /isEnabled:\s*groupForm\.candidateEnabled\[modelId\]\s*!==\s*false/,
   '模型链保存必须提交候选项的实际启停状态。'
+);
+assert.match(
+  modelViewSource,
+  /model\.timeout !== null[\s\S]*model\.effectiveTimeout/,
+  '模型列表必须区分显式 timeout 和继承后的生效 timeout。'
+);
+
+const promptPreviewSource = readFileSync(
+  resolve(process.cwd(), '../../apps/server/src/modules/prompts/prompts.service.ts'),
+  'utf8'
+);
+assert.match(
+  promptPreviewSource,
+  /getGatewayCandidates[\s\S]*modelGateway: gatewayConfig[\s\S]*maxPromptTokens: resolveModelPromptBudget/,
+  'Prompt Preview 必须使用真实模型链和上下文预算。'
+);
+
+const chatSource = readFileSync(
+  resolve(process.cwd(), '../../apps/server/src/modules/chat/chat.service.ts'),
+  'utf8'
+);
+assert.match(
+  chatSource,
+  /for \(const \[candidateIndex, candidate\][\s\S]*gatewayConfig: candidate[\s\S]*streamChat\(prompt\.finalMessages/,
+  '酒馆聊天必须在候选循环内按当前候选重新构建 Prompt。'
+);
+
+const companionChatSource = readFileSync(
+  resolve(process.cwd(), '../../apps/server/src/modules/companion-chat/companion-chat.service.ts'),
+  'utf8'
+);
+assert.match(
+  companionChatSource,
+  /for \(const candidate of candidates\)[\s\S]*promptBudget\(candidate,[\s\S]*streamChat\(built\.messages/,
+  'AI 角色聊天必须在候选循环内按当前候选重新构建 Prompt。'
 );
 
 console.log('OK frontend/backend field alignment regression checks passed.');

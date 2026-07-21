@@ -82,7 +82,7 @@ function worldBook(entries: WorldBookContext['entries'], tokenBudget = 1000): Wo
   return {
     id: 'world-book-1',
     userId: 'user-1',
-    characterId: 'character-1',
+    characterIds: ['character-1'],
     name: 'Archive lore',
     description: '',
     isEnabled: true,

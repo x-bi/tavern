@@ -1,15 +1,10 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import type {
-  Character,
-  Conversation,
-  Message,
-  PromptPreset,
-  UserPersona
-} from '@prisma/client';
+import type { Character, Conversation, Message, PromptPreset, UserPersona } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PromptBuilderService } from '../../services/prompt-builder/prompt-builder.service';
+import { resolveModelPromptBudget } from '../../services/prompt-builder/prompt-budget';
 import {
   PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
   PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS
@@ -25,6 +20,8 @@ import type {
   WorldBookEntryPosition,
   WorldBookContext
 } from '../../services/prompt-builder/types';
+import { ModelsService } from '../models/models.service';
+import type { ModelGatewayConfig } from '../models/model.types';
 import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import { WorldBooksService } from '../world-books/world-books.service';
@@ -51,6 +48,8 @@ export class PromptsService {
     private readonly promptBuilder: PromptBuilderService,
     @Inject(WorldBooksService)
     private readonly worldBooksService: WorldBooksService,
+    @Inject(ModelsService)
+    private readonly modelsService: ModelsService,
     @Inject(SettingsService)
     private readonly settingsService: SettingsService
   ) {}
@@ -69,6 +68,11 @@ export class PromptsService {
   async preview(currentUser: CurrentUser, dto: PreviewPromptDto): Promise<PromptPreviewResponse> {
     // 取会话（含关联实体）
     const conversation = await this.findOwnedActiveConversation(currentUser, dto.conversationId);
+    const modelCandidates = await this.modelsService.getGatewayCandidates({
+      currentUser,
+      modelFallbackGroupId: conversation.modelFallbackGroupId
+    });
+    const gatewayConfig = modelCandidates[0] ?? null;
     // 取角色关联的世界书上下文（用于关键词扫描插入）
     const worldBooks = await this.worldBooksService.listPromptContexts(
       currentUser,
@@ -80,7 +84,14 @@ export class PromptsService {
       this.resolveHistoryTake(dto.historyLimit, worldBooks)
     );
     // 组装 prompt 构建输入（会话/角色/人设/预设/模型配置/历史/当前输入/世界书/选项）
-    const buildInput = this.toBuildPromptInput(currentUser, conversation, history, dto, worldBooks);
+    const buildInput = this.toBuildPromptInput(
+      currentUser,
+      conversation,
+      history,
+      dto,
+      worldBooks,
+      gatewayConfig
+    );
     // 构建 prompt（promptBuilder 内部组装各 section、裁剪历史、匹配世界书）
     const result = this.promptBuilder.build(buildInput);
     // 提取历史裁剪信息和世界书调试信息
@@ -181,8 +192,13 @@ export class PromptsService {
     conversation: PreviewConversation,
     history: Message[],
     dto: PreviewPromptDto,
-    worldBooks: WorldBookContext[]
+    worldBooks: WorldBookContext[],
+    gatewayConfig: ModelGatewayConfig | null
   ): BuildPromptInput {
+    const presetParameters = conversation.promptPreset
+      ? this.parseParams(conversation.promptPreset.parametersJson)
+      : null;
+
     return {
       userId: currentUser.id,
       conversation: {
@@ -221,11 +237,21 @@ export class PromptsService {
             description: conversation.promptPreset.description,
             systemPrompt: conversation.promptPreset.systemPrompt,
             outputRules: conversation.promptPreset.outputRules,
-            parameters: this.parseParams(conversation.promptPreset.parametersJson),
+            parameters: presetParameters,
             metadata: this.parseRecord(conversation.promptPreset.metadataJson)
           }
         : null,
-      modelGateway: null,
+      modelGateway: gatewayConfig
+        ? {
+            id: gatewayConfig.providerModelId ?? '',
+            name: gatewayConfig.displayName ?? gatewayConfig.modelName,
+            providerName: gatewayConfig.providerName,
+            baseUrl: gatewayConfig.baseUrl,
+            modelName: gatewayConfig.modelName,
+            parameters: gatewayConfig.params,
+            metadata: null
+          }
+        : null,
       history: history.map((message) => this.toChatMessageLike(message)),
       // 当前用户输入作为预览的"新消息"（id 标记为 preview 避免与真实消息混淆）
       currentUserMessage: {
@@ -244,6 +270,7 @@ export class PromptsService {
         mode: 'preview',
         historyLimit: dto.historyLimit,
         maxHistoryCharacters: dto.maxHistoryCharacters,
+        maxPromptTokens: resolveModelPromptBudget(gatewayConfig, presetParameters?.maxTokens),
         includeDebug: true,
         supportsDeveloperRole: dto.supportsDeveloperRole
       }
@@ -441,6 +468,12 @@ export class PromptsService {
         : {}),
       ...(typeof parsed.timeout === 'number' && Number.isInteger(parsed.timeout)
         ? { timeout: parsed.timeout }
+        : {}),
+      ...(typeof parsed.frequencyPenalty === 'number'
+        ? { frequencyPenalty: parsed.frequencyPenalty }
+        : {}),
+      ...(typeof parsed.presencePenalty === 'number'
+        ? { presencePenalty: parsed.presencePenalty }
         : {})
     };
   }

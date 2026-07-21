@@ -17,8 +17,10 @@
 
 - PromptPreset 已开放 `systemPrompt`、`timeout`、`frequencyPenalty`、`presencePenalty`，并支持 `null` 显式清空、`undefined` 保持原值；
 - ProviderModel 已开放 `contextLength` 和两个惩罚参数，预设同名参数优先于模型默认参数；
+- ProviderModel 的 `timeout` 只表示模型显式覆盖值，`effectiveTimeout` 表示合并供应商默认值后的生效值，普通编辑不会再固化继承值；
 - 模型链候选项已提供独立启停开关；Provider 类型选项与后端 Gateway 注册表共源；
-- 角色示例对话仅允许 `user` / `assistant`，内容包 starter conversation 的 `system` 历史消息不受影响；
+- Prompt Preview 已读取真实模型链预算；酒馆、候选建议和 AI 角色 fallback 均按当前候选模型重新构建 Prompt；
+- 角色示例对话仅允许非空的 `user` / `assistant`，内容包 starter conversation 的 `system` 历史消息不受影响；
 - 酒馆聊天页已提供会话设置，服务端会阻止有有效消息的会话更换角色；
 - 已创建 Companion 可再次修改头像、敏感标记和管理员共享标记；
 - `creatorNotes` 继续保持导入信息只读，`ProviderModel.sortOrder` 继续作为后端内部字段；
@@ -559,12 +561,15 @@ deletedAt: new Date();
 - 候选项 `isEnabled=false` 经过页面编辑后仍保持停用；
 - 停用候选项不会进入实际 fallback 解析结果；
 - `contextLength` 修改后影响 Prompt 预算；
+- Prompt Preview 与真实聊天按同一候选模型计算预算；
+- 不同上下文长度的 fallback 候选分别得到与自身匹配的 Prompt；
+- 模型普通编辑不会把供应商 `timeout` 继承值固化为模型覆盖值；
 - 未注册 `providerName` 无法保存；
 - ProviderModel 隐藏参数经过普通编辑不丢失。
 
 ### 角色
 
-- 示例对话只接受 `user`、`assistant`；
+- 示例对话只接受内容非空的 `user`、`assistant`；
 - 角色系统提示词仍进入 Prompt；
 - 点击删除仍执行当前软删除逻辑；
 - 角色普通列表仍不展示 `deletedAt != null` 的记录；

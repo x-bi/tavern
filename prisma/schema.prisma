@@ -39,8 +39,14 @@ model Character {
   userId              String
   avatarAssetId       String?
   name                String
+  coreIdentity        String    @default("")
   description         String    @default("")
   personality         String    @default("")
+  persistentPremise   String    @default("")
+  initialScenario     String    @default("")
+  extendedBackground  String    @default("")
+  characterRules      String    @default("")
+  speechStyle         String    @default("")
   scenario            String    @default("")
   firstMessage        String    @default("")
   exampleMessagesJson String?
@@ -52,9 +58,9 @@ model Character {
   updatedAt           DateTime  @updatedAt
   deletedAt           DateTime?
 
-  avatarAsset   Asset?         @relation("CharacterAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
-  conversations Conversation[]
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  avatarAsset    Asset?               @relation("CharacterAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
+  conversations  Conversation[]
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   worldBookLinks WorldBookCharacter[]
 
   @@index([userId])
@@ -90,18 +96,23 @@ model ModelProvider {
 }
 
 model ProviderModel {
-  id                String    @id @default(cuid())
-  providerId        String
-  name              String
-  model             String
-  defaultParamsJson String?
-  contextLength     Int?
-  notes             String?
-  sortOrder         Int       @default(0)
-  isEnabled         Boolean   @default(true)
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-  deletedAt         DateTime?
+  id                             String    @id @default(cuid())
+  providerId                     String
+  name                           String
+  model                          String
+  defaultParamsJson              String?
+  contextLength                  Int?
+  supportsDeveloperRole          Boolean   @default(false)
+  systemPlacement                String    @default("initial_only")
+  supportsMultipleSystemMessages Boolean   @default(false)
+  requiresAlternatingRoles       Boolean   @default(true)
+  tokenizerType                  String    @default("estimated_chars_v1")
+  notes                          String?
+  sortOrder                      Int       @default(0)
+  isEnabled                      Boolean   @default(true)
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+  deletedAt                      DateTime?
 
   fallbackCandidates ModelFallbackCandidate[]
   provider           ModelProvider            @relation(fields: [providerId], references: [id], onDelete: Cascade)
@@ -151,20 +162,23 @@ model ModelFallbackCandidate {
 }
 
 model PromptPreset {
-  id             String    @id @default(cuid())
-  userId         String
-  name           String
-  description    String    @default("")
-  systemPrompt   String    @default("")
-  outputRules    String    @default("")
-  parametersJson String?
-  metadataJson   String?
-  isSensitive    Boolean   @default(false)
-  isShared       Boolean   @default(false)
-  isDefault      Boolean   @default(false)
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  deletedAt      DateTime?
+  id                     String    @id @default(cuid())
+  userId                 String
+  name                   String
+  description            String    @default("")
+  systemPrompt           String    @default("")
+  outputRules            String    @default("")
+  instructionsJson       String    @default("[]")
+  outputRulesJson        String    @default("[]")
+  generationPurposesJson String    @default("[\"chat_reply\",\"regenerate\",\"continue\"]")
+  parametersJson         String?
+  metadataJson           String?
+  isSensitive            Boolean   @default(false)
+  isShared               Boolean   @default(false)
+  isDefault              Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
 
   conversations Conversation[]
   companions    Companion[]
@@ -178,21 +192,25 @@ model PromptPreset {
 }
 
 model UserPersona {
-  id           String    @id @default(cuid())
-  userId       String
-  name         String
-  content      String    @default("")
-  metadataJson String?
-  isSensitive  Boolean   @default(false)
-  isShared     Boolean   @default(false)
-  isDefault    Boolean   @default(false)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  deletedAt    DateTime?
+  id                     String    @id @default(cuid())
+  userId                 String
+  name                   String
+  content                String    @default("")
+  coreIdentity           String    @default("")
+  background             String    @default("")
+  interactionPreferences String    @default("")
+  metadataJson           String?
+  isSensitive            Boolean   @default(false)
+  isShared               Boolean   @default(false)
+  isDefault              Boolean   @default(false)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  deletedAt              DateTime?
 
-  conversations Conversation[]
-  companions    Companion[]
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations  Conversation[]
+  companions     Companion[]
+  worldBookLinks WorldBookPersona[]
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
   @@index([userId, isSensitive])
@@ -202,28 +220,35 @@ model UserPersona {
 }
 
 model Conversation {
-  id                    String    @id @default(cuid())
-  userId                String
-  characterId           String
-  modelFallbackGroupId  String?
-  promptPresetId        String?
-  personaId             String?
-  title                 String
-  status                String    @default("active")
-  metadataJson          String?
-  usesSensitiveResource Boolean   @default(false)
-  lastMessageAt         DateTime?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  deletedAt             DateTime?
+  id                      String    @id @default(cuid())
+  userId                  String
+  characterId             String
+  modelFallbackGroupId    String?
+  promptPresetId          String?
+  personaId               String?
+  title                   String
+  status                  String    @default("active")
+  version                 Int       @default(0)
+  activeGenerationLeaseId String?
+  metadataJson            String?
+  usesSensitiveResource   Boolean   @default(false)
+  lastMessageAt           DateTime?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  deletedAt               DateTime?
 
-  character          Character           @relation(fields: [characterId], references: [id], onDelete: Cascade)
-  messages           Message[]
-  modelFallbackGroup ModelFallbackGroup? @relation(fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
-  persona            UserPersona?        @relation(fields: [personaId], references: [id], onDelete: SetNull)
-  promptPreset       PromptPreset?       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
-  shareLinks         ShareLink[]
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  character                 Character                              @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  messages                  Message[]
+  turns                     ConversationTurn[]
+  generationRequests        ConversationGenerationRequest[]
+  worldBookActivationStates ConversationWorldBookActivationState[]
+  worldBookActivationEvents ConversationWorldBookActivationEvent[]
+  modelFallbackGroup        ModelFallbackGroup?                    @relation(fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
+  persona                   UserPersona?                           @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  promptPreset              PromptPreset?                          @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
+  shareLinks                ShareLink[]
+  worldBookLinks            WorldBookConversation[]
+  user                      User                                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, updatedAt])
   @@index([userId, usesSensitiveResource])
@@ -236,6 +261,7 @@ model Conversation {
 model Message {
   id             String    @id @default(cuid())
   conversationId String
+  turnId         String?
   role           String
   content        String
   status         String    @default("complete")
@@ -245,11 +271,142 @@ model Message {
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
 
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  activeForTurn             ConversationTurn?                      @relation("ConversationTurnActiveAssistant")
+  conversation              Conversation                           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  turn                      ConversationTurn?                      @relation("ConversationTurnMessages", fields: [turnId], references: [id], onDelete: Cascade)
+  userForTurn               ConversationTurn?                      @relation("ConversationTurnUserMessage")
+  generationTrace           ConversationMessageGenerationTrace?
+  generationResults         ConversationGenerationRequest[]        @relation("ConversationGenerationResult")
+  requestUserTraces         ConversationMessageGenerationTrace[]   @relation("ConversationTraceRequestUser")
+  rootUserTraces            ConversationMessageGenerationTrace[]   @relation("ConversationTraceRootUser")
+  worldBookStateActivations ConversationWorldBookActivationState[] @relation("ConversationWorldBookStateActivatedBy")
+  worldBookStateRoots       ConversationWorldBookActivationState[] @relation("ConversationWorldBookStateRootUser")
+  worldBookEventSources     ConversationWorldBookActivationEvent[] @relation("ConversationWorldBookEventSource")
+  worldBookEventRoots       ConversationWorldBookActivationEvent[] @relation("ConversationWorldBookEventRootUser")
 
   @@index([conversationId, createdAt])
+  @@index([turnId])
   @@index([role])
   @@index([status])
+}
+
+model ConversationTurn {
+  id                       String    @id @default(cuid())
+  conversationId           String
+  sequence                 Int
+  completedOrdinal         Int?
+  userMessageId            String    @unique
+  activeAssistantMessageId String?   @unique
+  status                   String
+  createdAt                DateTime  @default(now())
+  completedAt              DateTime?
+
+  activeAssistant    Message?                             @relation("ConversationTurnActiveAssistant", fields: [activeAssistantMessageId], references: [id], onDelete: SetNull)
+  conversation       Conversation                         @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  messages           Message[]                            @relation("ConversationTurnMessages")
+  userMessage        Message                              @relation("ConversationTurnUserMessage", fields: [userMessageId], references: [id], onDelete: Restrict)
+  generationRequests ConversationGenerationRequest[]
+  generationTraces   ConversationMessageGenerationTrace[]
+
+  @@unique([conversationId, sequence])
+  @@unique([conversationId, completedOrdinal])
+  @@index([conversationId, status])
+}
+
+model ConversationGenerationRequest {
+  id              String    @id
+  requestId       String
+  requestHash     String
+  conversationId  String
+  turnId          String
+  purpose         String
+  status          String
+  resultMessageId String?
+  errorCode       String?
+  baseVersion     Int
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  attempts      ConversationGenerationAttempt[]
+  conversation  Conversation                        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  resultMessage Message?                            @relation("ConversationGenerationResult", fields: [resultMessageId], references: [id], onDelete: SetNull)
+  trace         ConversationMessageGenerationTrace?
+  turn          ConversationTurn                    @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, requestId])
+  @@index([conversationId, status])
+  @@index([turnId])
+}
+
+model ConversationGenerationAttempt {
+  id                       String    @id @default(cuid())
+  generationRequestId      String
+  attemptIndex             Int
+  modelId                  String
+  status                   String
+  promptSnapshotHash       String?
+  capabilitiesSnapshotJson String?
+  modelParametersJson      String?
+  emittedDelta             Boolean   @default(false)
+  errorCode                String?
+  startedAt                DateTime  @default(now())
+  completedAt              DateTime?
+
+  generationRequest ConversationGenerationRequest @relation(fields: [generationRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([generationRequestId, attemptIndex])
+  @@index([modelId, status])
+}
+
+model ConversationMessageGenerationTrace {
+  id                       String   @id @default(cuid())
+  messageId                String   @unique
+  generationRequestId      String   @unique
+  turnId                   String
+  requestUserMessageId     String
+  generationPurpose        String
+  modelId                  String
+  compilerVersion          String
+  rootUserMessageId        String
+  promptSnapshotJson       String
+  promptSnapshotHash       String
+  capabilitiesSnapshotJson String
+  modelParametersJson      String
+  createdAt                DateTime @default(now())
+
+  generationRequest  ConversationGenerationRequest           @relation(fields: [generationRequestId], references: [id], onDelete: Restrict)
+  message            Message                                 @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  requestUserMessage Message                                 @relation("ConversationTraceRequestUser", fields: [requestUserMessageId], references: [id], onDelete: Restrict)
+  rootUserMessage    Message                                 @relation("ConversationTraceRootUser", fields: [rootUserMessageId], references: [id], onDelete: Restrict)
+  turn               ConversationTurn                        @relation(fields: [turnId], references: [id], onDelete: Restrict)
+  sectionTraces      ConversationMessagePromptSectionTrace[]
+  includedWorldBooks ConversationIncludedWorldBookTrace[]
+
+  @@index([turnId, createdAt])
+  @@index([rootUserMessageId])
+}
+
+model ConversationMessagePromptSectionTrace {
+  id                String  @id @default(cuid())
+  generationTraceId String
+  sectionId         String
+  sectionKind       String
+  sourceType        String
+  sourceId          String?
+  sourceRevisionId  String?
+  contentHash       String
+  compactUsed       Boolean
+  placement         String
+  conversationRole  String?
+  finalProviderRole String?
+  tokenEstimate     Int
+  included          Boolean
+  excludedReason    String?
+
+  generationTrace ConversationMessageGenerationTrace @relation(fields: [generationTraceId], references: [id], onDelete: Cascade)
+
+  @@unique([generationTraceId, sectionId])
+  @@index([sourceType, sourceId])
 }
 
 model WorldBook {
@@ -267,9 +424,12 @@ model WorldBook {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  characterLinks WorldBookCharacter[]
-  entries        WorldBookEntry[]
-  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characterLinks    WorldBookCharacter[]
+  personaLinks      WorldBookPersona[]
+  conversationLinks WorldBookConversation[]
+  companionLinks    WorldBookCompanion[]
+  entries           WorldBookEntry[]
+  user              User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, isEnabled])
   @@index([userId, isSensitive])
@@ -289,15 +449,51 @@ model WorldBookCharacter {
   @@index([characterId])
 }
 
+model WorldBookPersona {
+  worldBookId String
+  personaId   String
+  createdAt   DateTime @default(now())
+
+  worldBook WorldBook   @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
+  persona   UserPersona @relation(fields: [personaId], references: [id], onDelete: Cascade)
+
+  @@id([worldBookId, personaId])
+  @@index([personaId])
+}
+
+model WorldBookConversation {
+  worldBookId    String
+  conversationId String
+  createdAt      DateTime @default(now())
+
+  worldBook    WorldBook    @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([worldBookId, conversationId])
+  @@index([conversationId])
+}
+
+model WorldBookCompanion {
+  worldBookId String
+  companionId String
+  createdAt   DateTime @default(now())
+
+  worldBook WorldBook @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
+  companion Companion @relation(fields: [companionId], references: [id], onDelete: Cascade)
+
+  @@id([worldBookId, companionId])
+  @@index([companionId])
+}
+
 model WorldBookEntry {
   id                    String    @id @default(cuid())
   worldBookId           String
+  activeRevisionId      String?   @unique
   title                 String
   content               String
   keywordsJson          String
   secondaryKeywordsJson String?
   isEnabled             Boolean   @default(true)
-  priority              Int       @default(0)
   position              String    @default("before_history")
   tokenBudget           Int?
   caseSensitive         Boolean   @default(false)
@@ -306,11 +502,182 @@ model WorldBookEntry {
   updatedAt             DateTime  @updatedAt
   deletedAt             DateTime?
 
-  worldBook WorldBook @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
+  worldBook                    WorldBook                              @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
+  activeRevision               WorldBookEntryRevision?                @relation("WorldBookEntryActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
+  revisions                    WorldBookEntryRevision[]               @relation("WorldBookEntryRevisions")
+  conversationActivationStates ConversationWorldBookActivationState[]
+  companionActivationStates    CompanionWorldBookActivationState[]
+  conversationActivationEvents ConversationWorldBookActivationEvent[]
+  companionActivationEvents    CompanionWorldBookActivationEvent[]
+  conversationIncludedTraces   ConversationIncludedWorldBookTrace[]
+  companionIncludedTraces      CompanionIncludedWorldBookTrace[]
 
   @@index([worldBookId, isEnabled])
-  @@index([priority])
   @@index([deletedAt])
+}
+
+model WorldBookEntryRevision {
+  id                String   @id @default(cuid())
+  entryId           String
+  version           Int
+  configJson        String
+  content           String
+  compactContent    String?
+  compactSourceHash String?
+  contentHash       String
+  createdAt         DateTime @default(now())
+
+  entry                        WorldBookEntry                         @relation("WorldBookEntryRevisions", fields: [entryId], references: [id], onDelete: Cascade)
+  activeForEntry               WorldBookEntry?                        @relation("WorldBookEntryActiveRevision")
+  conversationActivationStates ConversationWorldBookActivationState[]
+  companionActivationStates    CompanionWorldBookActivationState[]
+  conversationActivationEvents ConversationWorldBookActivationEvent[]
+  companionActivationEvents    CompanionWorldBookActivationEvent[]
+  conversationIncludedTraces   ConversationIncludedWorldBookTrace[]
+  companionIncludedTraces      CompanionIncludedWorldBookTrace[]
+
+  @@unique([entryId, version])
+  @@index([entryId, createdAt])
+}
+
+model ConversationWorldBookActivationState {
+  id                             String  @id @default(cuid())
+  conversationId                 String
+  entryId                        String
+  entryRevisionId                String
+  activatedByMessageId           String?
+  rootUserMessageId              String?
+  lineageJson                    String
+  bridgeDepth                    Int
+  activatedAtCompletedTurn       Int?
+  stickyUntilCompletedTurn       Int?
+  continuationUntilCompletedTurn Int?
+  cooldownUntilCompletedTurn     Int?
+  pendingUntilCompletedTurn      Int?
+  manualActive                   Boolean @default(false)
+  stateVersion                   Int     @default(1)
+
+  conversation       Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  entry              WorldBookEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryRevision      WorldBookEntryRevision @relation(fields: [entryRevisionId], references: [id], onDelete: Restrict)
+  activatedByMessage Message?               @relation("ConversationWorldBookStateActivatedBy", fields: [activatedByMessageId], references: [id], onDelete: SetNull)
+  rootUserMessage    Message?               @relation("ConversationWorldBookStateRootUser", fields: [rootUserMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, entryId])
+  @@index([entryRevisionId])
+}
+
+model CompanionWorldBookActivationState {
+  id                             String  @id @default(cuid())
+  companionId                    String
+  entryId                        String
+  entryRevisionId                String
+  activatedByMessageId           String?
+  rootUserMessageId              String?
+  lineageJson                    String
+  bridgeDepth                    Int
+  activatedAtCompletedTurn       Int?
+  stickyUntilCompletedTurn       Int?
+  continuationUntilCompletedTurn Int?
+  cooldownUntilCompletedTurn     Int?
+  pendingUntilCompletedTurn      Int?
+  manualActive                   Boolean @default(false)
+  stateVersion                   Int     @default(1)
+
+  companion          Companion              @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  entry              WorldBookEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryRevision      WorldBookEntryRevision @relation(fields: [entryRevisionId], references: [id], onDelete: Restrict)
+  activatedByMessage CompanionMessage?      @relation("CompanionWorldBookStateActivatedBy", fields: [activatedByMessageId], references: [id], onDelete: SetNull)
+  rootUserMessage    CompanionMessage?      @relation("CompanionWorldBookStateRootUser", fields: [rootUserMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([companionId, entryId])
+  @@index([entryRevisionId])
+}
+
+model ConversationWorldBookActivationEvent {
+  id                String   @id @default(cuid())
+  conversationId    String
+  entryId           String
+  entryRevisionId   String
+  sourceType        String
+  sourceKey         String
+  sourceMessageId   String?
+  rootUserMessageId String?
+  lineageJson       String
+  bridgeDepth       Int
+  completedTurn     Int
+  createdAt         DateTime @default(now())
+
+  conversation    Conversation           @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  entry           WorldBookEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryRevision   WorldBookEntryRevision @relation(fields: [entryRevisionId], references: [id], onDelete: Restrict)
+  sourceMessage   Message?               @relation("ConversationWorldBookEventSource", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  rootUserMessage Message?               @relation("ConversationWorldBookEventRootUser", fields: [rootUserMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([conversationId, entryId, entryRevisionId, sourceKey])
+  @@index([conversationId, completedTurn])
+}
+
+model CompanionWorldBookActivationEvent {
+  id                String   @id @default(cuid())
+  companionId       String
+  entryId           String
+  entryRevisionId   String
+  sourceType        String
+  sourceKey         String
+  sourceMessageId   String?
+  rootUserMessageId String?
+  lineageJson       String
+  bridgeDepth       Int
+  completedTurn     Int
+  createdAt         DateTime @default(now())
+
+  companion       Companion              @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  entry           WorldBookEntry         @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  entryRevision   WorldBookEntryRevision @relation(fields: [entryRevisionId], references: [id], onDelete: Restrict)
+  sourceMessage   CompanionMessage?      @relation("CompanionWorldBookEventSource", fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  rootUserMessage CompanionMessage?      @relation("CompanionWorldBookEventRootUser", fields: [rootUserMessageId], references: [id], onDelete: SetNull)
+
+  @@unique([companionId, entryId, entryRevisionId, sourceKey])
+  @@index([companionId, completedTurn])
+}
+
+model ConversationIncludedWorldBookTrace {
+  id                String  @id @default(cuid())
+  generationTraceId String
+  entryId           String
+  entryRevisionId   String
+  activationSource  String
+  sourceMessageId   String?
+  rootUserMessageId String
+  lineageJson       String
+  bridgeDepth       Int
+
+  generationTrace ConversationMessageGenerationTrace @relation(fields: [generationTraceId], references: [id], onDelete: Cascade)
+  entry           WorldBookEntry                     @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  entryRevision   WorldBookEntryRevision             @relation(fields: [entryRevisionId], references: [id], onDelete: Restrict)
+
+  @@unique([generationTraceId, entryId])
+  @@index([entryRevisionId])
+}
+
+model CompanionIncludedWorldBookTrace {
+  id                String  @id @default(cuid())
+  generationTraceId String
+  entryId           String
+  entryRevisionId   String
+  activationSource  String
+  sourceMessageId   String?
+  rootUserMessageId String
+  lineageJson       String
+  bridgeDepth       Int
+
+  generationTrace CompanionMessageGenerationTrace @relation(fields: [generationTraceId], references: [id], onDelete: Cascade)
+  entry           WorldBookEntry                  @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  entryRevision   WorldBookEntryRevision          @relation(fields: [entryRevisionId], references: [id], onDelete: Restrict)
+
+  @@unique([generationTraceId, entryId])
+  @@index([entryRevisionId])
 }
 
 model Asset {
@@ -362,33 +729,57 @@ enum CompanionMemoryStatus {
 }
 
 model Companion {
-  id                   String    @id @default(cuid())
-  userId               String
-  avatarAssetId        String?
-  modelFallbackGroupId String?
-  promptPresetId       String?
-  personaId            String?
-  name                 String
-  identityPrompt       String    @default("")
-  isSensitive          Boolean   @default(false)
-  isShared             Boolean   @default(false)
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
-  deletedAt            DateTime?
+  id                      String    @id @default(cuid())
+  userId                  String
+  avatarAssetId           String?
+  modelFallbackGroupId    String?
+  promptPresetId          String?
+  personaId               String?
+  name                    String
+  identityPrompt          String    @default("")
+  coreIdentity            String    @default("")
+  personality             String    @default("")
+  speechStyle             String    @default("")
+  relationshipDefaults    String    @default("")
+  isSensitive             Boolean   @default(false)
+  isShared                Boolean   @default(false)
+  version                 Int       @default(0)
+  activeGenerationLeaseId String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  deletedAt               DateTime?
 
-  avatarAsset        Asset?              @relation("CompanionAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
-  modelFallbackGroup ModelFallbackGroup? @relation("CompanionModelFallbackGroup", fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
-  promptPreset       PromptPreset?       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
-  persona            UserPersona?        @relation(fields: [personaId], references: [id], onDelete: SetNull)
-  user               User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages           CompanionMessage[]
-  memory             CompanionMemory?
-  shareLinks         ShareLink[]
+  avatarAsset               Asset?                              @relation("CompanionAvatar", fields: [avatarAssetId], references: [id], onDelete: SetNull)
+  modelFallbackGroup        ModelFallbackGroup?                 @relation("CompanionModelFallbackGroup", fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
+  promptPreset              PromptPreset?                       @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
+  persona                   UserPersona?                        @relation(fields: [personaId], references: [id], onDelete: SetNull)
+  user                      User                                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages                  CompanionMessage[]
+  turns                     CompanionTurn[]
+  generationRequests        CompanionGenerationRequest[]
+  worldBookActivationStates CompanionWorldBookActivationState[]
+  worldBookActivationEvents CompanionWorldBookActivationEvent[]
+  memory                    CompanionMemory?
+  runtimeState              CompanionRuntimeState?
+  worldBookLinks            WorldBookCompanion[]
+  shareLinks                ShareLink[]
 
   @@index([userId, updatedAt])
   @@index([userId, isSensitive])
   @@index([isShared])
   @@index([deletedAt])
+}
+
+model CompanionRuntimeState {
+  id               String   @id @default(cuid())
+  companionId      String   @unique
+  currentMood      String?
+  currentSituation String?
+  version          Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  companion Companion @relation(fields: [companionId], references: [id], onDelete: Cascade)
 }
 
 model ShareLink {
@@ -419,6 +810,7 @@ model ShareLink {
 model CompanionMessage {
   id           String    @id @default(cuid())
   companionId  String
+  turnId       String?
   role         String
   content      String
   status       String    @default("complete")
@@ -428,10 +820,144 @@ model CompanionMessage {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  companion Companion @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  activeForTurn             CompanionTurn?                      @relation("CompanionTurnActiveAssistant")
+  companion                 Companion                           @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  turn                      CompanionTurn?                      @relation("CompanionTurnMessages", fields: [turnId], references: [id], onDelete: Cascade)
+  userForTurn               CompanionTurn?                      @relation("CompanionTurnUserMessage")
+  generationTrace           CompanionMessageGenerationTrace?
+  generationResults         CompanionGenerationRequest[]        @relation("CompanionGenerationResult")
+  requestUserTraces         CompanionMessageGenerationTrace[]   @relation("CompanionTraceRequestUser")
+  rootUserTraces            CompanionMessageGenerationTrace[]   @relation("CompanionTraceRootUser")
+  worldBookStateActivations CompanionWorldBookActivationState[] @relation("CompanionWorldBookStateActivatedBy")
+  worldBookStateRoots       CompanionWorldBookActivationState[] @relation("CompanionWorldBookStateRootUser")
+  worldBookEventSources     CompanionWorldBookActivationEvent[] @relation("CompanionWorldBookEventSource")
+  worldBookEventRoots       CompanionWorldBookActivationEvent[] @relation("CompanionWorldBookEventRootUser")
 
   @@index([companionId, createdAt])
+  @@index([turnId])
   @@index([status])
+}
+
+model CompanionTurn {
+  id                       String    @id @default(cuid())
+  companionId              String
+  sequence                 Int
+  completedOrdinal         Int?
+  userMessageId            String    @unique
+  activeAssistantMessageId String?   @unique
+  status                   String
+  createdAt                DateTime  @default(now())
+  completedAt              DateTime?
+
+  activeAssistant    CompanionMessage?                 @relation("CompanionTurnActiveAssistant", fields: [activeAssistantMessageId], references: [id], onDelete: SetNull)
+  companion          Companion                         @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  messages           CompanionMessage[]                @relation("CompanionTurnMessages")
+  userMessage        CompanionMessage                  @relation("CompanionTurnUserMessage", fields: [userMessageId], references: [id], onDelete: Restrict)
+  generationRequests CompanionGenerationRequest[]
+  generationTraces   CompanionMessageGenerationTrace[]
+
+  @@unique([companionId, sequence])
+  @@unique([companionId, completedOrdinal])
+  @@index([companionId, status])
+}
+
+model CompanionGenerationRequest {
+  id              String    @id
+  requestId       String
+  requestHash     String
+  companionId     String
+  turnId          String
+  purpose         String
+  status          String
+  resultMessageId String?
+  errorCode       String?
+  baseVersion     Int
+  createdAt       DateTime  @default(now())
+  completedAt     DateTime?
+
+  attempts      CompanionGenerationAttempt[]
+  companion     Companion                        @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  resultMessage CompanionMessage?                @relation("CompanionGenerationResult", fields: [resultMessageId], references: [id], onDelete: SetNull)
+  trace         CompanionMessageGenerationTrace?
+  turn          CompanionTurn                    @relation(fields: [turnId], references: [id], onDelete: Cascade)
+
+  @@unique([companionId, requestId])
+  @@index([companionId, status])
+  @@index([turnId])
+}
+
+model CompanionGenerationAttempt {
+  id                       String    @id @default(cuid())
+  generationRequestId      String
+  attemptIndex             Int
+  modelId                  String
+  status                   String
+  promptSnapshotHash       String?
+  capabilitiesSnapshotJson String?
+  modelParametersJson      String?
+  emittedDelta             Boolean   @default(false)
+  errorCode                String?
+  startedAt                DateTime  @default(now())
+  completedAt              DateTime?
+
+  generationRequest CompanionGenerationRequest @relation(fields: [generationRequestId], references: [id], onDelete: Cascade)
+
+  @@unique([generationRequestId, attemptIndex])
+  @@index([modelId, status])
+}
+
+model CompanionMessageGenerationTrace {
+  id                       String   @id @default(cuid())
+  messageId                String   @unique
+  generationRequestId      String   @unique
+  turnId                   String
+  requestUserMessageId     String
+  generationPurpose        String
+  modelId                  String
+  compilerVersion          String
+  rootUserMessageId        String
+  memoryRevisionIdUsed     String?
+  promptSnapshotJson       String
+  promptSnapshotHash       String
+  capabilitiesSnapshotJson String
+  modelParametersJson      String
+  createdAt                DateTime @default(now())
+
+  generationRequest  CompanionGenerationRequest           @relation(fields: [generationRequestId], references: [id], onDelete: Restrict)
+  message            CompanionMessage                     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  requestUserMessage CompanionMessage                     @relation("CompanionTraceRequestUser", fields: [requestUserMessageId], references: [id], onDelete: Restrict)
+  rootUserMessage    CompanionMessage                     @relation("CompanionTraceRootUser", fields: [rootUserMessageId], references: [id], onDelete: Restrict)
+  turn               CompanionTurn                        @relation(fields: [turnId], references: [id], onDelete: Restrict)
+  sectionTraces      CompanionMessagePromptSectionTrace[]
+  includedWorldBooks CompanionIncludedWorldBookTrace[]
+  memoryRevision     CompanionMemoryRevision?             @relation("CompanionTraceMemoryRevision", fields: [memoryRevisionIdUsed], references: [id], onDelete: SetNull)
+
+  @@index([turnId, createdAt])
+  @@index([rootUserMessageId])
+  @@index([memoryRevisionIdUsed])
+}
+
+model CompanionMessagePromptSectionTrace {
+  id                String  @id @default(cuid())
+  generationTraceId String
+  sectionId         String
+  sectionKind       String
+  sourceType        String
+  sourceId          String?
+  sourceRevisionId  String?
+  contentHash       String
+  compactUsed       Boolean
+  placement         String
+  conversationRole  String?
+  finalProviderRole String?
+  tokenEstimate     Int
+  included          Boolean
+  excludedReason    String?
+
+  generationTrace CompanionMessageGenerationTrace @relation(fields: [generationTraceId], references: [id], onDelete: Cascade)
+
+  @@unique([generationTraceId, sectionId])
+  @@index([sourceType, sourceId])
 }
 
 model CompanionMemory {
@@ -441,8 +967,8 @@ model CompanionMemory {
   isEnabled                  Boolean               @default(false)
   isPaused                   Boolean               @default(false)
   status                     CompanionMemoryStatus @default(ready)
-  relationshipState          String                @default("")
-  currentArc                 String                @default("")
+  activeRevisionId           String?               @unique
+  workingRevisionId          String?               @unique
   lastSummarizedMessageId    String?
   rebuildFromMessageId       String?
   historyFloorMessageId      String?
@@ -455,7 +981,9 @@ model CompanionMemory {
 
   companion                Companion                 @relation(fields: [companionId], references: [id], onDelete: Cascade)
   memoryModelFallbackGroup ModelFallbackGroup?       @relation("CompanionMemoryFallbackGroup", fields: [memoryModelFallbackGroupId], references: [id], onDelete: SetNull)
-  revisions                CompanionMemoryRevision[]
+  revisions                CompanionMemoryRevision[] @relation("CompanionMemoryRevisions")
+  activeRevision           CompanionMemoryRevision?  @relation("CompanionMemoryActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
+  workingRevision          CompanionMemoryRevision?  @relation("CompanionMemoryWorkingRevision", fields: [workingRevisionId], references: [id], onDelete: SetNull)
 
   @@index([status, nextRetryAt])
 }
@@ -464,14 +992,21 @@ model CompanionMemoryRevision {
   id                      String   @id @default(cuid())
   companionId             String
   version                 Int
-  relationshipState       String
-  currentArc              String
+  dataJson                String   @default("{\"claims\":[],\"relationshipSummary\":{\"content\":\"\",\"sourceClaimIds\":[]},\"currentArc\":{\"content\":\"\",\"sourceClaimIds\":[]}}")
+  dataHash                String   @default("")
+  sourceStartMessageId    String?
+  sourceEndMessageId      String?
+  sourceCompletedOrdinal  Int?
+  status                  String   @default("ready")
   lastSummarizedMessageId String?
   historyFloorMessageId   String?
   reason                  String
   createdAt               DateTime @default(now())
 
-  memory CompanionMemory @relation(fields: [companionId], references: [companionId], onDelete: Cascade)
+  memory           CompanionMemory                   @relation("CompanionMemoryRevisions", fields: [companionId], references: [companionId], onDelete: Cascade)
+  activeForMemory  CompanionMemory?                  @relation("CompanionMemoryActiveRevision")
+  workingForMemory CompanionMemory?                  @relation("CompanionMemoryWorkingRevision")
+  generationTraces CompanionMessageGenerationTrace[] @relation("CompanionTraceMemoryRevision")
 
   @@unique([companionId, version])
   @@index([companionId, createdAt])

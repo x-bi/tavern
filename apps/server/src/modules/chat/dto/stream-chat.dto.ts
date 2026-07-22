@@ -12,6 +12,12 @@ import {
 
 /** 流式聊天入参。userMessage 和 regenerateMessageId 二选一。 */
 export class StreamChatDto {
+  /** Client-generated idempotency key. Transparent retries reuse the same value. */
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  requestId!: string;
+
   /** 目标会话 ID，必填。 */
   @IsString()
   @MaxLength(128)
@@ -33,6 +39,12 @@ export class StreamChatDto {
   @IsString()
   @MaxLength(128)
   regenerateMessageId?: string;
+
+  /** Existing logical turn reused by an explicit regenerate/retry operation. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  turnId?: string;
 
   /** 指定模型链 ID，覆盖会话绑定的；传 null 用会话默认。 */
   @IsOptional()

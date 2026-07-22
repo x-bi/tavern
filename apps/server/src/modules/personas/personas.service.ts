@@ -26,6 +26,9 @@ import type { PersonaListResponse, PersonaResponse } from './persona.types';
 type PersonaImportPreview = {
   name: string;
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   metadata: Record<string, unknown> | null;
   isDefault: boolean;
   warnings: ModuleJsonImportWarning[];
@@ -42,6 +45,9 @@ type PersonaImportResponse = {
 type NormalizedPersonaImport = {
   name: string;
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   metadata: Record<string, unknown> | null;
   isDefault: boolean;
   warnings: ModuleJsonImportWarning[];
@@ -133,6 +139,9 @@ export class PersonasService {
       name: dto.name,
       // 可选字段未传时落库为空串；metadata 序列化成 JSON 存储
       content: dto.content ?? '',
+      coreIdentity: dto.coreIdentity ?? dto.content ?? '',
+      background: dto.background ?? '',
+      interactionPreferences: dto.interactionPreferences ?? '',
       metadataJson: this.stringifyNullable(dto.metadata),
       isDefault: dto.isDefault ?? false,
       isSensitive: dto.isSensitive ?? false,
@@ -228,6 +237,9 @@ export class PersonasService {
                 userId: currentUser.id,
                 name,
                 content: normalized.content,
+                coreIdentity: normalized.coreIdentity,
+                background: normalized.background,
+                interactionPreferences: normalized.interactionPreferences,
                 metadataJson: this.stringifyNullable(normalized.metadata),
                 isDefault: normalized.isDefault,
                 isSensitive: false,
@@ -240,6 +252,9 @@ export class PersonasService {
               userId: currentUser.id,
               name,
               content: normalized.content,
+              coreIdentity: normalized.coreIdentity,
+              background: normalized.background,
+              interactionPreferences: normalized.interactionPreferences,
               metadataJson: this.stringifyNullable(normalized.metadata),
               isDefault: normalized.isDefault,
               isSensitive: false,
@@ -268,6 +283,24 @@ export class PersonasService {
     return this.toResponse(persona, currentUser, owner?.displayName ?? null);
   }
 
+  async exportJson(currentUser: CurrentUser, id: string) {
+    const persona = await this.findOwnedActivePersona(currentUser, id);
+    return {
+      fileName: `${safeExportFileName(persona.name)}-persona.json`,
+      card: {
+        formatVersion: 'tavern-lite.persona.v1',
+        name: persona.name,
+        content: persona.content,
+        coreIdentity: persona.coreIdentity,
+        background: persona.background,
+        interactionPreferences: persona.interactionPreferences,
+        metadata: this.parseRecord(persona.metadataJson),
+        isDefault: persona.isDefault,
+        exportedAt: new Date().toISOString()
+      }
+    };
+  }
+
   async fork(currentUser: CurrentUser, id: string): Promise<PersonaResponse> {
     const source = await this.findLibraryPersona(currentUser, id);
     const names = await this.loadExistingNames(currentUser);
@@ -276,6 +309,9 @@ export class PersonasService {
         userId: currentUser.id,
         name: createAvailableName(source.name, names),
         content: source.content,
+        coreIdentity: source.coreIdentity,
+        background: source.background,
+        interactionPreferences: source.interactionPreferences,
         metadataJson: source.metadataJson,
         isSensitive: source.isSensitive,
         isShared: false,
@@ -293,6 +329,9 @@ export class PersonasService {
         formatVersion: 'tavern-lite.persona.v1',
         name: '示例 Persona',
         content: '我是用户希望在对话中呈现的身份、偏好与表达方式。',
+        coreIdentity: '用户不可被 AI 改写的核心身份。',
+        background: '',
+        interactionPreferences: '称呼、互动偏好与边界。',
         metadata: {},
         isDefault: false
       }
@@ -321,6 +360,11 @@ export class PersonasService {
     const data = {
       ...(dto.name === undefined ? {} : { name: dto.name }),
       ...(dto.content === undefined ? {} : { content: dto.content }),
+      ...(dto.coreIdentity === undefined ? {} : { coreIdentity: dto.coreIdentity }),
+      ...(dto.background === undefined ? {} : { background: dto.background }),
+      ...(dto.interactionPreferences === undefined
+        ? {}
+        : { interactionPreferences: dto.interactionPreferences }),
       ...(dto.metadata === undefined ? {} : { metadataJson: this.stringifyNullable(dto.metadata) }),
       ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
       ...(dto.isShared === undefined ? {} : { isShared: dto.isShared }),
@@ -447,6 +491,24 @@ export class PersonasService {
     return {
       name,
       content,
+      coreIdentity: limitText(
+        optionalString(record, 'coreIdentity', 'coreIdentity') ?? content,
+        8000,
+        'coreIdentity',
+        warnings
+      ),
+      background: limitText(
+        optionalString(record, 'background', 'background') ?? '',
+        12000,
+        'background',
+        warnings
+      ),
+      interactionPreferences: limitText(
+        optionalString(record, 'interactionPreferences', 'interactionPreferences') ?? '',
+        8000,
+        'interactionPreferences',
+        warnings
+      ),
       metadata: optionalRecord(record, 'metadata', 'metadata'),
       isDefault: optionalBoolean(record, 'isDefault', false, 'isDefault'),
       warnings
@@ -561,6 +623,9 @@ export class PersonasService {
       userId: persona.userId,
       name: persona.name,
       content: persona.content,
+      coreIdentity: persona.coreIdentity,
+      background: persona.background,
+      interactionPreferences: persona.interactionPreferences,
       metadata: this.parseRecord(persona.metadataJson),
       isDefault: persona.isDefault,
       isSensitive: persona.isSensitive,
@@ -653,4 +718,16 @@ export class PersonasService {
       }
     });
   }
+}
+
+function safeExportFileName(value: string): string {
+  return (
+    Array.from(value)
+      .filter((character) => character.charCodeAt(0) >= 32)
+      .join('')
+      .trim()
+      .replace(/[<>:"/\\|?*]+/g, '-')
+      .replace(/\s+/g, '-')
+      .slice(0, 80) || 'persona'
+  );
 }

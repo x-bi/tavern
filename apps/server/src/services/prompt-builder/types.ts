@@ -1,3 +1,6 @@
+import type { CompiledPromptSection } from '../context-engine/prompt-section.types';
+import type { GenerationPurpose } from '../context-engine/generation-lifecycle.types';
+
 /** Prompt 构建模式：chat 实际对话 / preview 预览调试。 */
 export type PromptBuildMode = 'chat' | 'preview';
 
@@ -103,8 +106,14 @@ export type PromptConversationContext = {
 export type PromptCharacterContext = {
   id: string;
   name: string;
+  coreIdentity: string;
   description: string;
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   scenario: string;
   firstMessage: string;
   exampleMessages?: ChatMessageLike[];
@@ -116,6 +125,9 @@ export type PromptPersonaContext = {
   id: string;
   name: string;
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -126,6 +138,14 @@ export type PromptPresetContext = {
   description: string;
   systemPrompt: string;
   outputRules: string;
+  instructions: string[];
+  outputRuleOperations: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+  generationPurposes: GenerationPurpose[];
   parameters?: PromptModelParameters | null;
   metadata?: Record<string, unknown> | null;
 };
@@ -156,13 +176,17 @@ export type PromptModelGatewayContext = {
 /** 世界书条目上下文。 */
 export type WorldBookEntryContext = {
   id: string;
+  activeRevisionId?: string | null;
   worldBookId: string;
   title: string;
   content: string;
+  compactContent?: string | null;
+  compactSourceHash?: string | null;
   keywords: string[];
   secondaryKeywords?: string[];
   isEnabled: boolean;
-  priority: number;
+  budgetPriority: number;
+  sortOrder: number;
   position: WorldBookEntryPosition;
   tokenBudget?: number | null;
   caseSensitive: boolean;
@@ -175,6 +199,9 @@ export type WorldBookContext = {
   userId: string;
   /** 关联角色 ID 列表；为空时为全局世界书。 */
   characterIds?: string[];
+  personaIds?: string[];
+  conversationIds?: string[];
+  companionIds?: string[];
   name: string;
   description: string;
   isEnabled: boolean;
@@ -192,6 +219,7 @@ export type WorldBookMatchedEntry = {
   worldBookId: string;
   worldBookName: string;
   entryId: string;
+  revisionId?: string | null;
   title: string;
   content: string;
   keywords: string[];
@@ -199,7 +227,8 @@ export type WorldBookMatchedEntry = {
   matchedKeywords: string[];
   secondaryKeywords?: string[];
   matchedSecondaryKeywords?: string[];
-  priority: number;
+  budgetPriority: number;
+  sortOrder: number;
   position: WorldBookEntryPosition;
   insertionOrder: WorldBookEntryPosition;
   tokenBudget?: number | null;
@@ -266,6 +295,8 @@ export type BuildPromptDebugInfo = {
   };
   /** 实际解析出的 Preset 参数；不存在 Preset 时为 null。 */
   presetParameters: PromptModelParameters | null;
+  /** V2 世界书 dry-run 决策；Preview 展示但不提交状态。 */
+  worldBookDecisions?: Array<Record<string, unknown>>;
 };
 
 /** 构建选项。 */
@@ -360,6 +391,10 @@ export type PromptPreviewWorldBookDebug = {
 export type PromptPreviewResponse = {
   conversationId: string;
   generatedAt: string;
+  dryRun: true;
+  compilerVersion: string;
+  promptSnapshotHash: string;
+  compiledSections: CompiledPromptSection[];
   sections: PromptSection[];
   logicalMessages: PromptBuilderMessage[];
   finalMessages: ProviderChatMessage[];

@@ -2,6 +2,11 @@ import { IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-valid
 
 /** Companion 流式聊天；新消息和重新生成二选一。 */
 export class StreamCompanionChatDto {
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  requestId!: string;
+
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -13,6 +18,11 @@ export class StreamCompanionChatDto {
   @IsString()
   @MaxLength(128)
   regenerateMessageId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  turnId?: string;
 }
 
 /** Companion Prompt 预览。 */

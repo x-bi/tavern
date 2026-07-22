@@ -46,6 +46,15 @@
         />
       </n-form-item>
 
+      <n-form-item label="核心身份">
+        <n-input
+          v-model:value="form.coreIdentity"
+          type="textarea"
+          maxlength="10000"
+          :autosize="{ minRows: 2, maxRows: 6 }"
+        />
+      </n-form-item>
+
       <n-form-item label="人格" path="personality">
         <n-input
           v-model:value="form.personality"
@@ -54,6 +63,47 @@
           show-count
           :autosize="{ minRows: 3, maxRows: 8 }"
           placeholder="角色性格、说话方式、行为偏好"
+        />
+      </n-form-item>
+
+      <n-form-item label="持续前提">
+        <n-input
+          v-model:value="form.persistentPremise"
+          type="textarea"
+          maxlength="10000"
+          :autosize="{ minRows: 2, maxRows: 6 }"
+        />
+      </n-form-item>
+      <n-form-item label="初始场景">
+        <n-input
+          v-model:value="form.initialScenario"
+          type="textarea"
+          maxlength="10000"
+          :autosize="{ minRows: 2, maxRows: 6 }"
+        />
+      </n-form-item>
+      <n-form-item label="扩展背景">
+        <n-input
+          v-model:value="form.extendedBackground"
+          type="textarea"
+          maxlength="20000"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+        />
+      </n-form-item>
+      <n-form-item label="角色规则">
+        <n-input
+          v-model:value="form.characterRules"
+          type="textarea"
+          maxlength="10000"
+          :autosize="{ minRows: 2, maxRows: 6 }"
+        />
+      </n-form-item>
+      <n-form-item label="说话方式">
+        <n-input
+          v-model:value="form.speechStyle"
+          type="textarea"
+          maxlength="10000"
+          :autosize="{ minRows: 2, maxRows: 6 }"
         />
       </n-form-item>
 
@@ -231,8 +281,14 @@ async function handleSubmit() {
   emit('submit', {
     avatarAssetId: form.avatarAssetId,
     name: form.name.trim(),
+    coreIdentity: form.coreIdentity.trim(),
     description: form.description.trim(),
     personality: form.personality.trim(),
+    persistentPremise: form.persistentPremise.trim(),
+    initialScenario: form.initialScenario.trim(),
+    extendedBackground: form.extendedBackground.trim(),
+    characterRules: form.characterRules.trim(),
+    speechStyle: form.speechStyle.trim(),
     scenario: form.scenario.trim(),
     firstMessage: form.firstMessage.trim(),
     exampleMessages: parsedExamples,
@@ -247,9 +303,15 @@ function createEmptyForm(): CharacterEditorForm {
     avatarAssetId: null,
     avatarUrl: '',
     name: '',
+    coreIdentity: '',
     tagsText: '',
     description: '',
     personality: '',
+    persistentPremise: '',
+    initialScenario: '',
+    extendedBackground: '',
+    characterRules: '',
+    speechStyle: '',
     scenario: '',
     firstMessage: '',
     systemPrompt: '',
@@ -264,9 +326,15 @@ function toForm(character: Character): CharacterEditorForm {
     avatarAssetId: character.avatarAssetId,
     avatarUrl: character.avatarUrl ?? '',
     name: character.name,
+    coreIdentity: character.coreIdentity,
     tagsText: Array.isArray(character.metadata?.tags) ? character.metadata.tags.join(', ') : '',
     description: character.description,
     personality: character.personality,
+    persistentPremise: character.persistentPremise,
+    initialScenario: character.initialScenario,
+    extendedBackground: character.extendedBackground,
+    characterRules: character.characterRules,
+    speechStyle: character.speechStyle,
     scenario: character.scenario,
     firstMessage: character.firstMessage,
     systemPrompt:

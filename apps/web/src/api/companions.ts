@@ -46,6 +46,17 @@ export async function updateCompanion(id: string, payload: Partial<CompanionPayl
     await requestJson<CompanionResponse>(`/companions/${id}`, { method: 'PUT', body: payload })
   );
 }
+export async function updateCompanionRuntimeState(
+  id: string,
+  payload: { currentMood?: string | null; currentSituation?: string | null }
+) {
+  return unwrap(
+    await requestJson<NonNullable<CompanionResponse['runtimeState']>>(
+      `/companions/${id}/runtime-state`,
+      { method: 'PUT', body: payload }
+    )
+  );
+}
 export async function deleteCompanion(id: string) {
   return unwrap(
     await requestJson<{ deleted: true; id: string }>(`/companions/${id}`, { method: 'DELETE' })
@@ -89,10 +100,12 @@ export async function deleteCompanionMessage(id: string) {
 }
 export async function regenerateCompanionMessage(id: string) {
   return unwrap(
-    await requestJson<{ id: string; companionId: string; regenerateMessageId: string }>(
-      `/companion-messages/${id}/regenerate`,
-      { method: 'POST' }
-    )
+    await requestJson<{
+      id: string;
+      companionId: string;
+      regenerateMessageId: string;
+      turnId: string;
+    }>(`/companion-messages/${id}/regenerate`, { method: 'POST' })
   );
 }
 export async function fetchCompanionMemory(id: string) {

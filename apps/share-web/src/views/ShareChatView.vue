@@ -51,7 +51,7 @@
               !streaming
             "
             class="text-button"
-            @click="regenerate(message.messageId)"
+            @click="regenerate(message)"
           >
             重新生成
           </button>
@@ -77,7 +77,11 @@
 </template>
 
 <script setup lang="ts">
-import type { PublicShareBootstrap, PublicShareMessage } from '@tavern/shared';
+import {
+  createGenerationRequestId,
+  type PublicShareBootstrap,
+  type PublicShareMessage
+} from '@tavern/shared';
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 const route = useRoute();
@@ -174,11 +178,18 @@ async function send() {
   if (!text || streaming.value) return;
   draft.value = '';
   appendOptimisticTurn(text);
-  await runStream('/chat/stream', { userMessage: text });
+  await runStream('/chat/stream', { requestId: createGenerationRequestId(), userMessage: text });
 }
-async function regenerate(messageId: string) {
-  appendOptimisticAssistant(messageId);
-  await runStream(`/messages/${encodeURIComponent(messageId)}/regenerate`);
+async function regenerate(message: PublicShareMessage) {
+  if (!message.turnId) {
+    streamError.value = '该历史消息没有逻辑轮次，无法重新生成。';
+    return;
+  }
+  appendOptimisticAssistant(message.messageId);
+  await runStream(`/messages/${encodeURIComponent(message.messageId)}/regenerate`, {
+    requestId: createGenerationRequestId(),
+    turnId: message.turnId
+  });
 }
 async function runStream(path: string, body?: unknown) {
   streaming.value = true;
@@ -230,6 +241,7 @@ async function consumeStream(stream: ReadableStream<Uint8Array>) {
         if (!message) {
           message = {
             messageId: data.messageId,
+            turnId: null,
             role: 'assistant',
             content: '',
             status: 'generating',
@@ -238,6 +250,7 @@ async function consumeStream(stream: ReadableStream<Uint8Array>) {
           };
           messages.value.push(message);
         }
+        if (!message) continue;
         message.content += data.text;
         void scrollToBottom();
       }
@@ -269,6 +282,7 @@ function createLocalMessage(
   localMessageSeed += 1;
   return {
     messageId: `local-${now}-${localMessageSeed}`,
+    turnId: null,
     role,
     content,
     status,

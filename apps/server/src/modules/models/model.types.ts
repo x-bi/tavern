@@ -34,6 +34,14 @@ export type ModelGatewayConfig = {
   modelName: string;
   apiKey: string | null;
   contextLength?: number | null;
+  capabilities: {
+    supportsDeveloperRole: boolean;
+    systemPlacement: 'initial_only' | 'midstream_allowed';
+    supportsMultipleSystemMessages: boolean;
+    requiresAlternatingRoles: boolean;
+    contextWindowTokens: number;
+    tokenizerType: string;
+  };
   params: ModelGenerationParams;
 };
 
@@ -70,6 +78,11 @@ export type ProviderModelResponse = {
   frequencyPenalty: number | null;
   presencePenalty: number | null;
   contextLength: number | null;
+  supportsDeveloperRole: boolean;
+  systemPlacement: 'initial_only' | 'midstream_allowed';
+  supportsMultipleSystemMessages: boolean;
+  requiresAlternatingRoles: boolean;
+  tokenizerType: string;
   notes: string | null;
   sortOrder: number;
   isEnabled: boolean;

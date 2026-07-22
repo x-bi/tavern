@@ -4,6 +4,10 @@ export type CompanionResponse = {
   userId: string;
   name: string;
   identityPrompt: string;
+  coreIdentity: string;
+  personality: string;
+  speechStyle: string;
+  relationshipDefaults: string;
   avatarAssetId: string | null;
   avatarUrl: string | null;
   modelFallbackGroupId: string | null;
@@ -11,6 +15,13 @@ export type CompanionResponse = {
   personaId: string | null;
   memoryEnabled: boolean;
   memoryPaused: boolean;
+  runtimeState: {
+    currentMood: string | null;
+    currentSituation: string | null;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
   isSensitive: boolean;
   isShared: boolean;
   isOwner: boolean;
@@ -41,6 +52,10 @@ export type CompanionExportResponse = {
     formatVersion: 'tavern-lite.companion.v1';
     name: string;
     identityPrompt: string;
+    coreIdentity: string;
+    personality: string;
+    speechStyle: string;
+    relationshipDefaults: string;
     exportedAt: string;
   };
 };

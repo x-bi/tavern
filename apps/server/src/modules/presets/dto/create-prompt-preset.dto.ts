@@ -1,6 +1,8 @@
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsArray,
+  IsIn,
   IsInt,
   IsNumber,
   IsOptional,
@@ -34,6 +36,27 @@ export class CreatePromptPresetDto {
   @IsString()
   @MaxLength(4000)
   outputRules?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  instructions?: string[];
+
+  @IsOptional()
+  @IsArray()
+  outputRuleOperations?: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+
+  @IsOptional()
+  @IsArray()
+  @IsIn(['chat_reply', 'regenerate', 'continue', 'user_suggestions', 'memory_summary'], {
+    each: true
+  })
+  generationPurposes?: string[];
 
   /** 采样温度 0~2，可选。 */
   @IsOptional()

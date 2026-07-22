@@ -8,6 +8,28 @@ export type WorldBookEntryInsertionOrder =
 /** 世界书条目对外响应。 */
 export type WorldBookEntryResponse = {
   id: string;
+  activeRevisionId: string | null;
+  contentType: string;
+  trustLevel: string;
+  activationMode: string;
+  matchMode: string;
+  primaryLogic: string;
+  secondaryLogic: string;
+  excludeKeywords: string[];
+  sameMessageOnly: boolean;
+  scanSources: string[];
+  userHistoryScanDepth: number;
+  stickyTurns: number;
+  continuationTurns: number;
+  cooldownTurns: number;
+  delayTurns: number;
+  cooldownPolicy: string;
+  generationPurposes: string[];
+  budgetPriority: number;
+  sortOrder: number;
+  compactContent: string | null;
+  compactSourceHash: string | null;
+  compactStale: boolean;
   worldBookId: string;
   title: string;
   content: string;
@@ -16,8 +38,6 @@ export type WorldBookEntryResponse = {
   /** 次要关键词。 */
   secondaryKeywords: string[];
   isEnabled: boolean;
-  /** 优先级（越大越优先）。 */
-  priority: number;
   insertionOrder: WorldBookEntryInsertionOrder;
   /** 条目独立 token 预算，为 null 时用世界书的。 */
   tokenBudget: number | null;
@@ -33,6 +53,9 @@ export type WorldBookResponse = {
   userId: string;
   /** 关联角色 ID 列表；为空表示全局世界书（所有角色共享）。 */
   characterIds: string[];
+  personaIds: string[];
+  conversationIds: string[];
+  companionIds: string[];
   name: string;
   description: string;
   isEnabled: boolean;

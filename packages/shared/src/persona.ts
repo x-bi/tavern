@@ -10,6 +10,9 @@ export type PersonaResponse = {
   name: string;
   /** Persona 正文（人设描述）。 */
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   /** 附加元数据；无则为 null。 */
   metadata: Record<string, unknown> | null;
   /** 是否为当前用户的默认 Persona。 */
@@ -39,6 +42,9 @@ export type PersonaPayload = {
   name: string;
   /** Persona 正文，未传时后端按空字符串处理。 */
   content?: string;
+  coreIdentity?: string;
+  background?: string;
+  interactionPreferences?: string;
   /** 附加元数据。 */
   metadata?: Record<string, unknown>;
   /** 是否设为默认 Persona。 */

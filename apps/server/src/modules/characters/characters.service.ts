@@ -142,9 +142,15 @@ export class CharactersService {
         userId: currentUser.id,
         avatarAssetId,
         name: dto.name,
+        coreIdentity: dto.coreIdentity ?? dto.description ?? '',
         // 可选字段未传时落库为空串（避免 null）
         description: dto.description ?? '',
         personality: dto.personality ?? '',
+        persistentPremise: dto.persistentPremise ?? dto.scenario ?? '',
+        initialScenario: dto.initialScenario ?? '',
+        extendedBackground: dto.extendedBackground ?? '',
+        characterRules: dto.characterRules ?? '',
+        speechStyle: dto.speechStyle ?? '',
         scenario: dto.scenario ?? '',
         firstMessage: dto.firstMessage ?? '',
         // exampleMessages / metadata 是结构化数据，序列化成 JSON 字符串存储
@@ -224,8 +230,14 @@ export class CharactersService {
         userId: currentUser.id,
         avatarAssetId: null,
         name: importName,
+        coreIdentity: preview.coreIdentity,
         description: preview.description,
         personality: preview.personality,
+        persistentPremise: preview.persistentPremise,
+        initialScenario: preview.initialScenario,
+        extendedBackground: preview.extendedBackground,
+        characterRules: preview.characterRules,
+        speechStyle: preview.speechStyle,
         scenario: preview.scenario,
         firstMessage: preview.firstMessage,
         exampleMessagesJson: this.stringifyNullable(preview.exampleMessages),
@@ -261,7 +273,13 @@ export class CharactersService {
         data: {
           name: '示例角色',
           description: '角色的背景、身份与外观设定。',
+          coreIdentity: '角色不可被场景覆盖的核心身份。',
           personality: '角色的性格、习惯与表达方式。',
+          persistentPremise: '跨轮次持续成立的前提。',
+          initialScenario: '只在初始阶段成立的场景。',
+          extendedBackground: '',
+          characterRules: '',
+          speechStyle: '',
           scenario: '角色与用户当前所处的场景。',
           first_mes: '你好，很高兴见到你。',
           mes_example: '<START>\n{{user}}: 你好\n示例角色: 你好呀，今天过得怎么样？'
@@ -371,8 +389,18 @@ export class CharactersService {
       data: {
         ...(avatarAssetId === undefined ? {} : { avatarAssetId }),
         ...(dto.name === undefined ? {} : { name: dto.name }),
+        ...(dto.coreIdentity === undefined ? {} : { coreIdentity: dto.coreIdentity }),
         ...(dto.description === undefined ? {} : { description: dto.description }),
         ...(dto.personality === undefined ? {} : { personality: dto.personality }),
+        ...(dto.persistentPremise === undefined
+          ? {}
+          : { persistentPremise: dto.persistentPremise }),
+        ...(dto.initialScenario === undefined ? {} : { initialScenario: dto.initialScenario }),
+        ...(dto.extendedBackground === undefined
+          ? {}
+          : { extendedBackground: dto.extendedBackground }),
+        ...(dto.characterRules === undefined ? {} : { characterRules: dto.characterRules }),
+        ...(dto.speechStyle === undefined ? {} : { speechStyle: dto.speechStyle }),
         ...(dto.scenario === undefined ? {} : { scenario: dto.scenario }),
         ...(dto.firstMessage === undefined ? {} : { firstMessage: dto.firstMessage }),
         ...(dto.exampleMessages === undefined
@@ -653,8 +681,14 @@ export class CharactersService {
       avatarAssetId: character.avatarAssetId,
       avatarUrl: character.avatarAsset?.publicPath ?? null,
       name: character.name,
+      coreIdentity: character.coreIdentity,
       description: character.description,
       personality: character.personality,
+      persistentPremise: character.persistentPremise,
+      initialScenario: character.initialScenario,
+      extendedBackground: character.extendedBackground,
+      characterRules: character.characterRules,
+      speechStyle: character.speechStyle,
       scenario: character.scenario,
       firstMessage: character.firstMessage,
       exampleMessages: this.parseExampleMessages(character.exampleMessagesJson),

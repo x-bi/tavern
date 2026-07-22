@@ -20,6 +20,8 @@ export type MessageResponse = {
   id: string;
   /** 所属会话 ID。 */
   conversationId: string;
+  /** Logical turn owning this message; null only for pre-turn imported/audit rows. */
+  turnId: string | null;
   /** 消息角色（标准 role 之外的字符串视为自定义角色）。 */
   role: MessageRole | string;
   /** 消息正文。 */
@@ -68,8 +70,9 @@ export type MessageRegenerateResponse = {
   conversationId: string;
   /** 被重新生成的目标 assistant 消息 ID。 */
   regenerateMessageId: string;
+  turnId: string;
   /** 替换策略：软删除原消息后生成新的，不物理删除历史。 */
-  replaceStrategy: 'soft-delete-target';
+  replaceStrategy: 'switch-active-on-success';
   /** 实际拉取生成内容的 SSE 流端点。 */
   streamPath: '/chat/stream';
   /** 给人看的说明。 */

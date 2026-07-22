@@ -4,6 +4,7 @@ import { Prisma, type Message } from '@prisma/client';
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
+import { ConversationReplayService } from '../../services/context-engine/replay.service';
 import type { CurrentUser } from '../users/user.types';
 import type { QueryMessagesDto } from './dto/query-messages.dto';
 import type { UpdateMessageDto } from './dto/update-message.dto';
@@ -24,7 +25,8 @@ export class MessagesService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
-    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
+    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService,
+    @Inject(ConversationReplayService) private readonly replayService: ConversationReplayService
   ) {}
 
   /**
@@ -126,6 +128,7 @@ export class MessagesService {
     this.targetEvents.emit('conversation', message.conversationId, 'message_updated', {
       messageId: message.id
     });
+    if (contentChanged) await this.replayService.replay(message.conversationId);
 
     return this.toResponse(message);
   }
@@ -147,6 +150,7 @@ export class MessagesService {
         deletedAt: new Date()
       }
     });
+    await this.replayService.replay(existing.conversationId);
     this.targetEvents.emit('conversation', existing.conversationId, 'message_deleted', {
       messageId: id
     });
@@ -171,12 +175,19 @@ export class MessagesService {
     const target = await this.findOwnedActiveMessage(currentUser, id);
     // 校验是否可重新生成（必须是 assistant、最新消息、有前一条 user 消息）
     await this.assertRegenerateTarget(target);
+    if (!target.turnId) {
+      throw new BadRequestException({
+        code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
+        message: 'Regenerate requires a logical turn.'
+      });
+    }
 
     return {
       id,
       conversationId: target.conversationId,
       regenerateMessageId: id,
-      replaceStrategy: 'soft-delete-target',
+      turnId: target.turnId,
+      replaceStrategy: 'switch-active-on-success',
       streamPath: '/chat/stream',
       message: 'Use /chat/stream with regenerateMessageId to regenerate this assistant reply.'
     };
@@ -302,6 +313,7 @@ export class MessagesService {
     return {
       id: message.id,
       conversationId: message.conversationId,
+      turnId: message.turnId,
       role: message.role,
       content: message.content,
       status: message.status,

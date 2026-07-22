@@ -21,8 +21,14 @@ export type CharacterImportWarning = {
 /** importer 解析后的中间结果：映射好的结构化字段 + 字段映射记录 + 警告。 */
 export type CharacterImportMappedCard = {
   name: string;
+  coreIdentity: string;
   description: string;
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   scenario: string;
   firstMessage: string;
   exampleMessages: ExampleMessage[];
@@ -39,8 +45,14 @@ type JsonRecord = Record<string, unknown>;
  */
 const FIELD_CANDIDATES = {
   name: ['name', 'char_name', 'character_name'],
+  coreIdentity: ['coreIdentity', 'core_identity'],
   description: ['description', 'desc'],
   personality: ['personality'],
+  persistentPremise: ['persistentPremise', 'persistent_premise'],
+  initialScenario: ['initialScenario', 'initial_scenario'],
+  extendedBackground: ['extendedBackground', 'extended_background'],
+  characterRules: ['characterRules', 'character_rules'],
+  speechStyle: ['speechStyle', 'speech_style'],
   scenario: ['scenario'],
   firstMessage: ['first_mes', 'firstMessage', 'first_message', 'greeting'],
   exampleMessages: ['mes_example', 'exampleMessages', 'example_messages'],
@@ -115,7 +127,23 @@ export class CharacterCardJsonImporter {
 
     // 提取各文本字段（每个都做长度截断，超长会写入 warnings）
     const description = this.pickText(card, root, FIELD_CANDIDATES.description, warnings);
+    const coreIdentity = this.pickText(card, root, FIELD_CANDIDATES.coreIdentity, warnings);
     const personality = this.pickText(card, root, FIELD_CANDIDATES.personality, warnings);
+    const persistentPremise = this.pickText(
+      card,
+      root,
+      FIELD_CANDIDATES.persistentPremise,
+      warnings
+    );
+    const initialScenario = this.pickText(card, root, FIELD_CANDIDATES.initialScenario, warnings);
+    const extendedBackground = this.pickText(
+      card,
+      root,
+      FIELD_CANDIDATES.extendedBackground,
+      warnings
+    );
+    const characterRules = this.pickText(card, root, FIELD_CANDIDATES.characterRules, warnings);
+    const speechStyle = this.pickText(card, root, FIELD_CANDIDATES.speechStyle, warnings);
     const scenario = this.pickText(card, root, FIELD_CANDIDATES.scenario, warnings);
     const firstMessage = this.pickText(card, root, FIELD_CANDIDATES.firstMessage, warnings);
     const systemPrompt = this.pickText(card, root, FIELD_CANDIDATES.systemPrompt, warnings);
@@ -140,7 +168,13 @@ export class CharacterCardJsonImporter {
     this.addMappedFields(fieldMappings, [
       [nameSource.source, 'name'],
       [description.source, 'description'],
+      [coreIdentity.source, 'coreIdentity'],
       [personality.source, 'personality'],
+      [persistentPremise.source, 'persistentPremise'],
+      [initialScenario.source, 'initialScenario'],
+      [extendedBackground.source, 'extendedBackground'],
+      [characterRules.source, 'characterRules'],
+      [speechStyle.source, 'speechStyle'],
       [scenario.source, 'scenario'],
       [firstMessage.source, 'firstMessage'],
       [exampleSource.source, 'exampleMessages'],
@@ -154,7 +188,13 @@ export class CharacterCardJsonImporter {
       // name 单独做长度限制（其余文本字段在 pickText 内已截断）
       name: this.limitText(nameSource.value, MAX_NAME_LENGTH, 'name', warnings),
       description: description.value,
+      coreIdentity: coreIdentity.value || description.value,
       personality: personality.value,
+      persistentPremise: persistentPremise.value || scenario.value,
+      initialScenario: initialScenario.value || scenario.value,
+      extendedBackground: extendedBackground.value,
+      characterRules: characterRules.value,
+      speechStyle: speechStyle.value,
       scenario: scenario.value,
       firstMessage: firstMessage.value,
       exampleMessages,

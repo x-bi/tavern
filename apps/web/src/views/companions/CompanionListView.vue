@@ -27,6 +27,17 @@
           ><n-input v-model:value="draft.name" maxlength="80" /></n-form-item
         ><n-form-item label="初始身份设定"
           ><n-input v-model:value="draft.identityPrompt" type="textarea" :rows="5" /></n-form-item
+        ><n-form-item label="核心身份"
+          ><n-input v-model:value="draft.coreIdentity" type="textarea" :rows="3" /></n-form-item
+        ><n-form-item label="稳定性格"
+          ><n-input v-model:value="draft.personality" type="textarea" :rows="2" /></n-form-item
+        ><n-form-item label="说话方式"
+          ><n-input v-model:value="draft.speechStyle" type="textarea" :rows="2" /></n-form-item
+        ><n-form-item label="关系默认值"
+          ><n-input
+            v-model:value="draft.relationshipDefaults"
+            type="textarea"
+            :rows="2" /></n-form-item
         ><n-form-item label="聊天模型链"
           ><NSelect
             v-model:value="draft.modelFallbackGroupId"
@@ -203,6 +214,10 @@ const showCreate = ref(false);
 const draft = reactive({
   name: '',
   identityPrompt: '',
+  coreIdentity: '',
+  personality: '',
+  speechStyle: '',
+  relationshipDefaults: '',
   modelFallbackGroupId: null as string | null,
   promptPresetId: null as string | null,
   personaId: null as string | null,
@@ -268,6 +283,10 @@ async function save() {
     const item = await createCompanion({
       name: draft.name,
       identityPrompt: draft.identityPrompt,
+      coreIdentity: draft.coreIdentity,
+      personality: draft.personality,
+      speechStyle: draft.speechStyle,
+      relationshipDefaults: draft.relationshipDefaults,
       avatarAssetId: asset?.id ?? null,
       modelFallbackGroupId: draft.modelFallbackGroupId,
       promptPresetId: draft.promptPresetId,

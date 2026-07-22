@@ -2,8 +2,17 @@ import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Character, Conversation, Message, PromptPreset, UserPersona } from '@prisma/client';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
+import { canonicalSha256 } from '../../common/canonical-json';
 import { PrismaService } from '../../prisma/prisma.service';
-import { PromptBuilderService } from '../../services/prompt-builder/prompt-builder.service';
+import { buildTavernPromptSections } from '../../services/context-engine/prompt-section-builder';
+import { WorldBookRuntimeService } from '../../services/context-engine/world-book-runtime.service';
+import { ConversationTimelineService } from '../../services/context-engine/timeline.service';
+import { ContextOwnershipValidator } from '../../services/context-engine/context-ownership-validator';
+import {
+  parsePresetOutputRuleOperations,
+  parsePresetStringArray
+} from '../../services/context-engine/preset-rule-compiler';
+import { compilePromptSections } from '../../services/context-engine/provider-prompt-compiler';
 import { resolveModelPromptBudget } from '../../services/prompt-builder/prompt-budget';
 import {
   PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
@@ -14,10 +23,7 @@ import type {
   ChatMessageLike,
   PromptHistoryTrimInfo,
   PromptModelParameters,
-  PromptPreviewWorldBookDebug,
   PromptPreviewResponse,
-  PromptSection,
-  WorldBookEntryPosition,
   WorldBookContext
 } from '../../services/prompt-builder/types';
 import { ModelsService } from '../models/models.service';
@@ -44,14 +50,18 @@ export class PromptsService {
   constructor(
     @Inject(PrismaService)
     private readonly prisma: PrismaService,
-    @Inject(PromptBuilderService)
-    private readonly promptBuilder: PromptBuilderService,
     @Inject(WorldBooksService)
     private readonly worldBooksService: WorldBooksService,
     @Inject(ModelsService)
     private readonly modelsService: ModelsService,
     @Inject(SettingsService)
-    private readonly settingsService: SettingsService
+    private readonly settingsService: SettingsService,
+    @Inject(WorldBookRuntimeService)
+    private readonly worldBookRuntime: WorldBookRuntimeService,
+    @Inject(ConversationTimelineService)
+    private readonly timeline: ConversationTimelineService,
+    @Inject(ContextOwnershipValidator)
+    private readonly ownershipValidator: ContextOwnershipValidator
   ) {}
 
   /**
@@ -76,7 +86,8 @@ export class PromptsService {
     // 取角色关联的世界书上下文（用于关键词扫描插入）
     const worldBooks = await this.worldBooksService.listPromptContexts(
       currentUser,
-      conversation.characterId
+      conversation.characterId,
+      { conversationId: conversation.id, personaId: conversation.personaId }
     );
     // 取最近消息，条数取 historyLimit 和世界书扫描深度的较大值（确保扫描到足够历史）
     const history = await this.listRecentMessages(
@@ -92,26 +103,126 @@ export class PromptsService {
       worldBooks,
       gatewayConfig
     );
-    // 构建 prompt（promptBuilder 内部组装各 section、裁剪历史、匹配世界书）
-    const result = this.promptBuilder.build(buildInput);
-    // 提取历史裁剪信息和世界书调试信息
-    const historyTrimInfo = this.toHistoryTrimInfo(dto, history.length, result);
-    const worldBookDebug = this.toWorldBookDebug(result);
+    const worldBookRuntime = await this.worldBookRuntime.evaluateConversation({
+      conversationId: conversation.id,
+      worldBooks,
+      history: buildInput.history,
+      currentUserMessage: buildInput.currentUserMessage,
+      purpose: 'chat_reply'
+    });
+    buildInput.worldBooks = [];
+    const capabilities = gatewayConfig?.capabilities ?? {
+      supportsDeveloperRole: false,
+      systemPlacement: 'initial_only' as const,
+      supportsMultipleSystemMessages: false,
+      requiresAlternatingRoles: true,
+      contextWindowTokens: 8192,
+      tokenizerType: 'estimated_chars_v1'
+    };
+    const maxPromptTokens = resolveModelPromptBudget(
+      gatewayConfig,
+      conversation.promptPreset
+        ? this.parseParams(conversation.promptPreset.parametersJson)?.maxTokens
+        : undefined
+    );
+    const compiled = compilePromptSections({
+      sections: [
+        ...buildTavernPromptSections(buildInput, 'chat_reply'),
+        ...worldBookRuntime.sections
+      ],
+      purpose: 'chat_reply',
+      capabilities,
+      maxPromptTokens
+    });
+    const promptSnapshotHash = canonicalSha256({
+      compilerVersion: compiled.compilerVersion,
+      capabilities,
+      messages: compiled.messages,
+      sections: compiled.sections
+    });
+    const historyTrimInfo = this.toHistoryTrimInfo(dto, buildInput, compiled);
+    const ownershipWarnings = this.ownershipValidator
+      .validate({
+        'character.coreIdentity': buildInput.character.coreIdentity,
+        'character.personality': buildInput.character.personality,
+        'character.persistentPremise': buildInput.character.persistentPremise,
+        'character.extendedBackground': buildInput.character.extendedBackground,
+        'character.characterRules': buildInput.character.characterRules,
+        'character.speechStyle': buildInput.character.speechStyle,
+        'persona.coreIdentity': buildInput.persona?.coreIdentity,
+        'persona.background': buildInput.persona?.background,
+        'persona.interactionPreferences': buildInput.persona?.interactionPreferences,
+        'preset.systemPrompt': buildInput.promptPreset?.systemPrompt,
+        'preset.outputRules': buildInput.promptPreset?.outputRules
+      })
+      .map((issue) => ({
+        code: issue.code,
+        message: issue.message,
+        details: { fields: issue.fields }
+      }));
+    const emptyWorldBookResult = {
+      scannedMessageIds: [] as string[],
+      scanDepth: 0,
+      tokenBudget: 0,
+      usedTokenEstimate: 0,
+      matchedEntries: [],
+      skippedEntries: []
+    };
 
     return {
-      conversationId: result.conversationId,
+      conversationId: conversation.id,
       generatedAt: new Date().toISOString(),
-      sections: result.sections,
-      logicalMessages: result.logicalMessages,
-      finalMessages: result.finalMessages,
-      worldBook: result.worldBook,
-      worldBookDebug,
+      dryRun: true,
+      compilerVersion: compiled.compilerVersion,
+      promptSnapshotHash,
+      compiledSections: compiled.sections,
+      sections: [],
+      logicalMessages: [],
+      finalMessages: compiled.messages,
+      worldBook: emptyWorldBookResult,
+      worldBookDebug: {
+        ...emptyWorldBookResult,
+        matchedCount: worldBookRuntime.decisions.filter((item) => item.included).length,
+        skippedCount: worldBookRuntime.decisions.filter((item) => !item.included).length,
+        insertedSections: compiled.sections
+          .filter((item) => item.section.kind === 'world_book' && item.included)
+          .map((item, order) => ({
+            sectionId: item.section.id,
+            entryId: item.section.sourceId ?? null,
+            title: item.section.sourceType,
+            insertionOrder: null,
+            order,
+            tokenEstimate: item.tokenEstimate
+          }))
+      },
       historyTrimInfo,
-      tokenEstimate: result.tokenEstimate,
+      tokenEstimate: compiled.tokenEstimate,
       debug: {
-        ...result.debug,
-        finalMessages: result.finalMessages,
-        truncatedHistory: historyTrimInfo.truncatedHistory
+        matchedEntries: [],
+        truncatedHistory: historyTrimInfo.truncatedHistory,
+        sectionOrder: compiled.sections.map((item) => item.section.id),
+        warnings: ownershipWarnings,
+        moduleTokenEstimates: {},
+        budget: {
+          promptBudget: maxPromptTokens,
+          fixedTokenEstimate: compiled.tokenEstimate,
+          worldBookTokenEstimate: compiled.sections
+            .filter((item) => item.section.kind === 'world_book' && item.included)
+            .reduce((sum, item) => sum + item.tokenEstimate, 0),
+          historyTokenEstimate: compiled.sections
+            .filter((item) => item.section.kind === 'history' && item.included)
+            .reduce((sum, item) => sum + item.tokenEstimate, 0),
+          currentUserTokenEstimate: compiled.sections
+            .filter((item) => item.section.kind === 'current_user' && item.included)
+            .reduce((sum, item) => sum + item.tokenEstimate, 0),
+          finalTokenEstimate: compiled.tokenEstimate,
+          trimmedHistoryCount: historyTrimInfo.truncatedCount
+        },
+        presetParameters: conversation.promptPreset
+          ? this.parseParams(conversation.promptPreset.parametersJson)
+          : null,
+        worldBookDecisions: worldBookRuntime.decisions,
+        finalMessages: compiled.messages
       }
     };
   }
@@ -164,20 +275,7 @@ export class PromptsService {
   ): Promise<Message[]> {
     // 限制条数在 1~100，未传用默认值
     const take = Math.max(1, Math.min(historyLimit ?? PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT, 100));
-    const messages = await this.prisma.message.findMany({
-      where: {
-        conversationId,
-        deletedAt: null,
-        status: {
-          not: 'deleted'
-        }
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take
-    });
-
-    // 数据库倒序取（最新在前），反转成正序（最早在前）便于按对话顺序构建
-    return messages.reverse();
+    return this.timeline.listPromptMessages(conversationId, { take });
   }
 
   /**
@@ -211,8 +309,14 @@ export class PromptsService {
       character: {
         id: conversation.character.id,
         name: conversation.character.name,
+        coreIdentity: conversation.character.coreIdentity,
         description: conversation.character.description,
         personality: conversation.character.personality,
+        persistentPremise: conversation.character.persistentPremise,
+        initialScenario: conversation.character.initialScenario,
+        extendedBackground: conversation.character.extendedBackground,
+        characterRules: conversation.character.characterRules,
+        speechStyle: conversation.character.speechStyle,
         scenario: conversation.character.scenario,
         firstMessage: conversation.character.firstMessage,
         // 示例对话从 JSON 解析成结构化消息
@@ -227,6 +331,9 @@ export class PromptsService {
             id: conversation.persona.id,
             name: conversation.persona.name,
             content: conversation.persona.content,
+            coreIdentity: conversation.persona.coreIdentity,
+            background: conversation.persona.background,
+            interactionPreferences: conversation.persona.interactionPreferences,
             metadata: this.parseRecord(conversation.persona.metadataJson)
           }
         : null,
@@ -237,6 +344,29 @@ export class PromptsService {
             description: conversation.promptPreset.description,
             systemPrompt: conversation.promptPreset.systemPrompt,
             outputRules: conversation.promptPreset.outputRules,
+            instructions: parsePresetStringArray(conversation.promptPreset.instructionsJson),
+            outputRuleOperations: parsePresetOutputRuleOperations(
+              conversation.promptPreset.outputRulesJson
+            ),
+            generationPurposes: parsePresetStringArray(
+              conversation.promptPreset.generationPurposesJson
+            ).filter(
+              (
+                purpose
+              ): purpose is
+                | 'chat_reply'
+                | 'regenerate'
+                | 'continue'
+                | 'user_suggestions'
+                | 'memory_summary' =>
+                [
+                  'chat_reply',
+                  'regenerate',
+                  'continue',
+                  'user_suggestions',
+                  'memory_summary'
+                ].includes(purpose)
+            ),
             parameters: presetParameters,
             metadata: this.parseRecord(conversation.promptPreset.metadataJson)
           }
@@ -286,85 +416,41 @@ export class PromptsService {
    */
   private toHistoryTrimInfo(
     dto: PreviewPromptDto,
-    availableHistoryCount: number,
-    result: ReturnType<PromptBuilderService['build']>
+    input: BuildPromptInput,
+    compiled: ReturnType<typeof compilePromptSections>
   ): PromptHistoryTrimInfo {
-    // 实际纳入 history section 的条数
-    const usedHistoryCount = result.sections.filter(
-      (section) => section.kind === 'history' && section.isIncluded
-    ).length;
+    const eligibleHistory = input.history.filter(
+      (message) =>
+        message.id !== input.currentUserMessage.id &&
+        message.status !== 'deleted' &&
+        message.status !== 'failed' &&
+        message.status !== 'generating' &&
+        (message.role === 'user' || message.role === 'assistant' || message.role === 'tool')
+    );
+    const includedIds = new Set(
+      compiled.sections
+        .filter((item) => item.section.kind === 'history' && item.included)
+        .map((item) => item.section.sourceId)
+    );
+    const truncatedHistory = eligibleHistory
+      .filter((message) => !includedIds.has(message.id))
+      .map((message) => ({
+        messageId: message.id,
+        role: message.role,
+        reason: 'token_budget' as const,
+        tokenEstimate: message.tokenCount ?? null
+      }));
+    const usedHistoryCount = includedIds.size;
 
     return {
       requestedHistoryLimit: dto.historyLimit ?? PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
       requestedMaxHistoryCharacters:
         dto.maxHistoryCharacters ?? PROMPT_BUILDER_DEFAULT_MAX_HISTORY_CHARACTERS,
-      availableHistoryCount,
+      availableHistoryCount: eligibleHistory.length,
       usedHistoryCount,
-      truncatedCount: result.truncatedHistory.length,
-      truncatedHistory: result.truncatedHistory
+      truncatedCount: truncatedHistory.length,
+      truncatedHistory
     };
-  }
-
-  /**
-   * 提取世界书调试信息：扫描深度、匹配/跳过的条目、实际插入的 section。
-   * @param result PromptBuilder 构建结果。
-   * @returns 世界书调试信息。
-   */
-  private toWorldBookDebug(
-    result: ReturnType<PromptBuilderService['build']>
-  ): PromptPreviewWorldBookDebug {
-    return {
-      scanDepth: result.worldBook.scanDepth,
-      tokenBudget: result.worldBook.tokenBudget,
-      usedTokenEstimate: result.worldBook.usedTokenEstimate,
-      scannedMessageIds: result.worldBook.scannedMessageIds,
-      matchedCount: result.worldBook.matchedEntries.length,
-      skippedCount: result.worldBook.skippedEntries.length,
-      matchedEntries: result.worldBook.matchedEntries,
-      skippedEntries: result.worldBook.skippedEntries,
-      insertedSections: result.sections
-        .filter((section) => section.kind === 'worldbook' && section.isIncluded)
-        .map((section) => this.toWorldBookInsertedSection(section))
-    };
-  }
-
-  /**
-   * 把 worldbook section 转成插入调试信息（含插入位置、顺序、token 估算）。
-   * @param section worldbook section。
-   * @returns 插入调试信息。
-   */
-  private toWorldBookInsertedSection(
-    section: PromptSection
-  ): PromptPreviewWorldBookDebug['insertedSections'][number] {
-    const metadata = this.isRecord(section.metadata) ? section.metadata : {};
-    const insertionOrder = this.toWorldBookInsertionOrder(metadata.insertionOrder);
-
-    return {
-      sectionId: section.id,
-      entryId: typeof metadata.entryId === 'string' ? metadata.entryId : (section.sourceId ?? null),
-      title: section.title,
-      insertionOrder,
-      order: section.order,
-      tokenEstimate: section.tokenEstimate
-    };
-  }
-
-  /**
-   * 校验并归一化世界书条目的插入位置；非法值返回 null。
-   * @param value 原始插入位置值。
-   * @returns 合法的插入位置，或 null。
-   */
-  private toWorldBookInsertionOrder(value: unknown): WorldBookEntryPosition | null {
-    if (
-      value === 'before_history' ||
-      value === 'after_history' ||
-      value === 'before_current_user_input' ||
-      value === 'after_current_user_input'
-    ) {
-      return value;
-    }
-
-    return null;
   }
 
   /**

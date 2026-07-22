@@ -176,6 +176,36 @@
           <n-form-item label="身份设定"
             ><n-input v-model:value="settings.identityPrompt" type="textarea" :rows="4"
           /></n-form-item>
+          <n-form-item label="核心身份"
+            ><n-input v-model:value="settings.coreIdentity" type="textarea" :rows="3"
+          /></n-form-item>
+          <n-form-item label="稳定性格"
+            ><n-input v-model:value="settings.personality" type="textarea" :rows="2"
+          /></n-form-item>
+          <n-form-item label="说话方式"
+            ><n-input v-model:value="settings.speechStyle" type="textarea" :rows="2"
+          /></n-form-item>
+          <n-form-item label="关系默认值"
+            ><n-input v-model:value="settings.relationshipDefaults" type="textarea" :rows="2"
+          /></n-form-item>
+          <n-form-item label="当前心境">
+            <n-input
+              v-model:value="settings.currentMood"
+              type="textarea"
+              :rows="2"
+              maxlength="1000"
+              placeholder="当前稳定情绪或心理状态；会进入运行态 Prompt。"
+            />
+          </n-form-item>
+          <n-form-item label="当前处境">
+            <n-input
+              v-model:value="settings.currentSituation"
+              type="textarea"
+              :rows="2"
+              maxlength="1000"
+              placeholder="当前地点、事件或关系处境；会进入运行态 Prompt。"
+            />
+          </n-form-item>
           <n-form-item label="头像">
             <AvatarUploader
               :asset-id="settings.avatarAssetId"
@@ -206,6 +236,7 @@
             </n-checkbox>
           </div>
           <n-button :loading="savingSettings" @click="saveSettings">保存角色设置</n-button>
+          <WorldBookRuntimePanel target-type="companion" :target-id="id" />
           <strong>长期记忆</strong>
           <div class="memory-switches">
             <n-checkbox v-model:checked="memory.isEnabled">开启长期记忆</n-checkbox
@@ -270,12 +301,14 @@ import type {
   CompanionMessageResponse,
   CompanionResponse
 } from '@tavern/shared';
+import { createGenerationRequestId } from '@tavern/shared';
 import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { parseSseFrame } from '../../composables/useChatStream';
 import ShareManager from '../../components/ShareManager.vue';
 import AvatarUploader from '../../components/AvatarUploader.vue';
+import WorldBookRuntimePanel from '../../components/WorldBookRuntimePanel.vue';
 import type { Asset } from '../../api/assets';
 import { getStoredCurrentUser } from '../../api/auth';
 import { useTargetEvents } from '../../composables/useTargetEvents';
@@ -290,6 +323,7 @@ import {
   restoreCompanionMemory,
   startCompanionChat,
   updateCompanion,
+  updateCompanionRuntimeState,
   updateCompanionMessage,
   updateCompanionMemory
 } from '../../api/companions';
@@ -323,6 +357,12 @@ const personaOptions = ref<SelectOption[]>([]);
 const settings = reactive({
   name: '',
   identityPrompt: '',
+  coreIdentity: '',
+  personality: '',
+  speechStyle: '',
+  relationshipDefaults: '',
+  currentMood: '',
+  currentSituation: '',
   avatarAssetId: null as string | null,
   avatarUrl: '',
   modelFallbackGroupId: null as string | null,
@@ -395,6 +435,12 @@ async function load() {
     Object.assign(settings, {
       name: loadedCompanion.name,
       identityPrompt: loadedCompanion.identityPrompt,
+      coreIdentity: loadedCompanion.coreIdentity,
+      personality: loadedCompanion.personality,
+      speechStyle: loadedCompanion.speechStyle,
+      relationshipDefaults: loadedCompanion.relationshipDefaults,
+      currentMood: loadedCompanion.runtimeState?.currentMood ?? '',
+      currentSituation: loadedCompanion.runtimeState?.currentSituation ?? '',
       avatarAssetId: loadedCompanion.avatarAssetId,
       avatarUrl: loadedCompanion.avatarUrl ?? '',
       modelFallbackGroupId: loadedCompanion.modelFallbackGroupId,
@@ -423,6 +469,7 @@ async function send() {
     {
       id: userTemp,
       companionId: id,
+      turnId: null,
       role: 'user',
       content: text,
       status: 'complete',
@@ -433,6 +480,7 @@ async function send() {
     {
       id: assistantTemp,
       companionId: id,
+      turnId: null,
       role: 'assistant',
       content: '',
       status: 'generating',
@@ -442,7 +490,7 @@ async function send() {
     }
   );
   await scrollBottom();
-  await runStream({ userMessage: text }, assistantTemp);
+  await runStream({ requestId: createGenerationRequestId(), userMessage: text }, assistantTemp);
 }
 
 function handleKeydown(event: KeyboardEvent) {
@@ -467,6 +515,7 @@ async function regenerate(messageId: string) {
     messages.value.push({
       id: tempId,
       companionId: id,
+      turnId: request.turnId,
       role: 'assistant',
       content: '',
       status: 'generating',
@@ -474,14 +523,21 @@ async function regenerate(messageId: string) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
-    await runStream({ regenerateMessageId: request.regenerateMessageId }, tempId);
+    await runStream(
+      {
+        requestId: createGenerationRequestId(),
+        regenerateMessageId: request.regenerateMessageId,
+        turnId: request.turnId
+      },
+      tempId
+    );
   } catch (e) {
     toast.error(e instanceof Error ? e.message : '重新生成失败');
   }
 }
 
 async function runStream(
-  payload: { userMessage?: string; regenerateMessageId?: string },
+  payload: import('@tavern/shared').CompanionChatStreamPayload,
   temporaryAssistantId: string
 ) {
   streaming.value = true;
@@ -624,9 +680,13 @@ async function saveSettings() {
   if (!settings.name.trim()) return;
   savingSettings.value = true;
   try {
-    companion.value = await updateCompanion(id, {
+    const updatedCompanion = await updateCompanion(id, {
       name: settings.name.trim(),
       identityPrompt: settings.identityPrompt,
+      coreIdentity: settings.coreIdentity,
+      personality: settings.personality,
+      speechStyle: settings.speechStyle,
+      relationshipDefaults: settings.relationshipDefaults,
       avatarAssetId: settings.avatarAssetId,
       modelFallbackGroupId: settings.modelFallbackGroupId,
       promptPresetId: settings.promptPresetId,
@@ -634,6 +694,11 @@ async function saveSettings() {
       isSensitive: settings.isSensitive,
       ...(isAdmin ? { isShared: settings.isShared } : {})
     });
+    const runtimeState = await updateCompanionRuntimeState(id, {
+      currentMood: settings.currentMood.trim() || null,
+      currentSituation: settings.currentSituation.trim() || null
+    });
+    companion.value = { ...updatedCompanion, runtimeState };
     settings.avatarUrl = companion.value.avatarUrl ?? '';
     toast.success('角色设置已保存');
   } catch (e) {

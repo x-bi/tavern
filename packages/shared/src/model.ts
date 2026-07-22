@@ -72,6 +72,11 @@ export type ProviderModelResponse = {
   frequencyPenalty: number | null;
   presencePenalty: number | null;
   contextLength: number | null;
+  supportsDeveloperRole: boolean;
+  systemPlacement: 'initial_only' | 'midstream_allowed';
+  supportsMultipleSystemMessages: boolean;
+  requiresAlternatingRoles: boolean;
+  tokenizerType: string;
   notes: string | null;
   sortOrder: number;
   isEnabled: boolean;
@@ -92,6 +97,11 @@ export type ProviderModelPayload = {
   frequencyPenalty?: number | null;
   presencePenalty?: number | null;
   contextLength?: number | null;
+  supportsDeveloperRole?: boolean;
+  systemPlacement?: 'initial_only' | 'midstream_allowed';
+  supportsMultipleSystemMessages?: boolean;
+  requiresAlternatingRoles?: boolean;
+  tokenizerType?: string;
   notes?: string | null;
   sortOrder?: number;
   isEnabled?: boolean;

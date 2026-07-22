@@ -301,6 +301,29 @@
             <p class="model-chain-form__hint">
               Max Tokens 是最大输出长度，需小于模型上下文长度；预设中的同名参数优先于模型默认参数。
             </p>
+            <n-divider>Prompt 编译能力</n-divider>
+            <div class="model-chain-form__grid">
+              <n-form-item label="System 位置">
+                <NSelect
+                  v-model:value="modelForm.systemPlacement"
+                  :options="systemPlacementOptions"
+                />
+              </n-form-item>
+              <n-form-item label="Tokenizer">
+                <NSelect v-model:value="modelForm.tokenizerType" :options="tokenizerOptions" />
+              </n-form-item>
+            </div>
+            <n-space vertical>
+              <n-checkbox v-model:checked="modelForm.supportsDeveloperRole"
+                >支持 developer role</n-checkbox
+              >
+              <n-checkbox v-model:checked="modelForm.supportsMultipleSystemMessages"
+                >支持多条 system</n-checkbox
+              >
+              <n-checkbox v-model:checked="modelForm.requiresAlternatingRoles"
+                >要求 user / assistant 交替</n-checkbox
+              >
+            </n-space>
             <n-form-item label="内部备注（不影响生成）">
               <n-input v-model:value="modelForm.notes" type="textarea" maxlength="500" />
             </n-form-item>
@@ -413,6 +436,11 @@ const modelForm = reactive({
   maxTokens: null as number | null,
   timeout: null as number | null,
   contextLength: null as number | null,
+  supportsDeveloperRole: false,
+  systemPlacement: 'initial_only' as 'initial_only' | 'midstream_allowed',
+  supportsMultipleSystemMessages: false,
+  requiresAlternatingRoles: true,
+  tokenizerType: 'estimated_chars_v1',
   frequencyPenalty: null as number | null,
   presencePenalty: null as number | null,
   notes: '',
@@ -426,6 +454,14 @@ const groupForm = reactive({
   isDefault: false,
   isEnabled: true
 });
+const systemPlacementOptions = [
+  { label: '仅消息序列开头', value: 'initial_only' },
+  { label: '允许中途插入', value: 'midstream_allowed' }
+];
+const tokenizerOptions = [
+  { label: '字符估算 v1', value: 'estimated_chars_v1' },
+  { label: 'OpenAI 兼容估算', value: 'openai_compatible' }
+];
 
 const providerOptions = computed<SelectOption[]>(() =>
   modelStore.providers.map((provider) => ({
@@ -472,9 +508,6 @@ function openCreateProvider() {
     baseUrl: '',
     apiKey: '',
     timeout: null,
-    contextLength: null,
-    frequencyPenalty: null,
-    presencePenalty: null,
     isDefault: false,
     isEnabled: true
   });
@@ -505,6 +538,14 @@ function openCreateModel() {
     topP: null,
     maxTokens: null,
     timeout: null,
+    contextLength: null,
+    supportsDeveloperRole: false,
+    systemPlacement: 'initial_only',
+    supportsMultipleSystemMessages: false,
+    requiresAlternatingRoles: true,
+    tokenizerType: 'estimated_chars_v1',
+    frequencyPenalty: null,
+    presencePenalty: null,
     notes: '',
     isEnabled: true
   });
@@ -522,6 +563,11 @@ function openEditModel(model: ProviderModel) {
     maxTokens: model.maxTokens,
     timeout: model.timeout,
     contextLength: model.contextLength,
+    supportsDeveloperRole: model.supportsDeveloperRole,
+    systemPlacement: model.systemPlacement,
+    supportsMultipleSystemMessages: model.supportsMultipleSystemMessages,
+    requiresAlternatingRoles: model.requiresAlternatingRoles,
+    tokenizerType: model.tokenizerType,
     frequencyPenalty: model.frequencyPenalty,
     presencePenalty: model.presencePenalty,
     notes: model.notes ?? '',
@@ -621,6 +667,11 @@ async function submitModel() {
     maxTokens: modelForm.maxTokens,
     timeout: modelForm.timeout,
     contextLength: modelForm.contextLength,
+    supportsDeveloperRole: modelForm.supportsDeveloperRole,
+    systemPlacement: modelForm.systemPlacement,
+    supportsMultipleSystemMessages: modelForm.supportsMultipleSystemMessages,
+    requiresAlternatingRoles: modelForm.requiresAlternatingRoles,
+    tokenizerType: modelForm.tokenizerType,
     frequencyPenalty: modelForm.frequencyPenalty,
     presencePenalty: modelForm.presencePenalty,
     notes: modelForm.notes.trim() || null,

@@ -108,6 +108,7 @@
             <n-tag type="info" :bordered="false">只读</n-tag>
           </n-space>
           <n-space v-else justify="end">
+            <n-button size="small" secondary @click="exportPersona(persona)">导出</n-button>
             <n-button
               v-if="!persona.isDefault"
               size="small"
@@ -165,6 +166,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
 import {
+  exportPersonaJson,
   fetchPersonaImportTemplate,
   importPersonaJson,
   type Persona,
@@ -260,6 +262,15 @@ function openEdit(persona: Persona) {
   editingPersona.value = persona;
   personaStore.saveError = null;
   drawerVisible.value = true;
+}
+
+async function exportPersona(persona: Persona) {
+  try {
+    const result = await exportPersonaJson(persona.id);
+    downloadJson(result.fileName, result.card);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : 'Persona 导出失败。');
+  }
 }
 
 function closeDrawer() {

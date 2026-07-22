@@ -101,8 +101,6 @@ export type WorldBookEntryImportPreview = {
   secondaryKeywords: string[];
   /** 是否启用。 */
   isEnabled: boolean;
-  /** 优先级。 */
-  priority: number;
   /** 注入位置。 */
   insertionOrder: string;
   /** token 预算。 */
@@ -111,6 +109,25 @@ export type WorldBookEntryImportPreview = {
   caseSensitive: boolean;
   /** 扩展元数据。 */
   metadata: Record<string, unknown> | null;
+  contentType: string;
+  trustLevel: string;
+  activationMode: string;
+  matchMode: string;
+  primaryLogic: string;
+  secondaryLogic: string;
+  excludeKeywords: string[];
+  sameMessageOnly: boolean;
+  scanSources: string[];
+  userHistoryScanDepth: number;
+  stickyTurns: number;
+  continuationTurns: number;
+  cooldownTurns: number;
+  delayTurns: number;
+  cooldownPolicy: string;
+  generationPurposes: string[];
+  budgetPriority: number;
+  sortOrder: number;
+  compactContent: string | null;
 };
 
 /** 世界书 JSON 导入预览。 */

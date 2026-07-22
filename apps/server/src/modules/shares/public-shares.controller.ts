@@ -5,7 +5,7 @@ import { TargetEventsService } from '../../services/target-events/target-events.
 import { ChatService } from '../chat/chat.service';
 import type { ChatResponseLike } from '../chat/chat.types';
 import { CompanionChatService } from '../companion-chat/companion-chat.service';
-import { PublicChatDto } from './dto/share.dto';
+import { PublicChatDto, PublicRegenerateDto } from './dto/share.dto';
 import { ShareTokenGuard } from './share-token.guard';
 import type { ShareRequest } from './share.types';
 import { SharesService } from './shares.service';
@@ -40,13 +40,13 @@ export class PublicSharesController {
       ? this.chat.streamInternal({
           owner: context.owner,
           conversationId: context.targetId,
-          payload: { userMessage: dto.userMessage },
+          payload: { requestId: dto.requestId, userMessage: dto.userMessage },
           response
         })
       : this.companionChat.streamInternal({
           owner: context.owner,
           companionId: context.targetId,
-          payload: { userMessage: dto.userMessage },
+          payload: { requestId: dto.requestId, userMessage: dto.userMessage },
           response
         });
   }
@@ -66,22 +66,23 @@ export class PublicSharesController {
   async regenerate(
     @Req() request: ShareRequest,
     @Param('messageId') messageId: string,
+    @Body(new DtoValidationPipe(PublicRegenerateDto)) dto: PublicRegenerateDto,
     @Res() response: ChatResponseLike
   ) {
     const context = request.shareContext!;
     this.shares.assertChatPermission(context);
-    await this.shares.assertPublicRegenerateTarget(context, messageId);
+    await this.shares.assertPublicRegenerateTarget(context, messageId, dto.turnId);
     return context.targetType === 'conversation'
       ? this.chat.streamInternal({
           owner: context.owner,
           conversationId: context.targetId,
-          payload: { regenerateMessageId: messageId },
+          payload: { requestId: dto.requestId, regenerateMessageId: messageId, turnId: dto.turnId },
           response
         })
       : this.companionChat.streamInternal({
           owner: context.owner,
           companionId: context.targetId,
-          payload: { regenerateMessageId: messageId },
+          payload: { requestId: dto.requestId, regenerateMessageId: messageId, turnId: dto.turnId },
           response
         });
   }

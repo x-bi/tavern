@@ -79,11 +79,7 @@
             </span>
             <span class="world-book-list__meta">
               <span>{{ worldBook.entries.length }} 条目</span>
-              <span>{{
-                worldBook.characterIds.length
-                  ? `关联 ${worldBook.characterIds.length} 个角色`
-                  : '全局'
-              }}</span>
+              <span>{{ bindingSummary(worldBook) }}</span>
               <span>scan {{ worldBook.scanDepth }}</span>
               <span>budget {{ worldBook.tokenBudget }}</span>
             </span>
@@ -115,6 +111,10 @@
           :entry-error="worldBookStore.entryError"
           :character-options="targetCharacterOptions"
           :characters-loading="characterStore.loading"
+          :persona-options="personaOptions"
+          :conversation-options="conversationOptions"
+          :companion-options="companionOptions"
+          :bindings-loading="bindingsLoading"
           @submit-book="saveWorldBook"
           @create-entry="createEntry"
           @update-entry="updateEntry"
@@ -232,6 +232,45 @@
             />
           </n-form-item>
 
+          <n-form-item label="关联 Persona">
+            <n-select
+              v-model:value="createForm.personaIds"
+              multiple
+              filterable
+              clearable
+              :loading="bindingsLoading"
+              :options="personaOptions"
+              max-tag-count="responsive"
+              placeholder="可多选；仅在指定 Persona 下生效"
+            />
+          </n-form-item>
+
+          <n-form-item label="关联会话">
+            <n-select
+              v-model:value="createForm.conversationIds"
+              multiple
+              filterable
+              clearable
+              :loading="bindingsLoading"
+              :options="conversationOptions"
+              max-tag-count="responsive"
+              placeholder="可多选；仅在指定会话中生效"
+            />
+          </n-form-item>
+
+          <n-form-item label="关联 AI 角色">
+            <n-select
+              v-model:value="createForm.companionIds"
+              multiple
+              filterable
+              clearable
+              :loading="bindingsLoading"
+              :options="companionOptions"
+              max-tag-count="responsive"
+              placeholder="可多选；仅在指定 AI 角色中生效"
+            />
+          </n-form-item>
+
           <n-form-item label="描述（仅用于管理说明，不参与匹配或 Prompt 注入）">
             <n-input
               v-model:value="createForm.description"
@@ -317,6 +356,9 @@ import { useWorldBookStore } from '../../stores/worldBook';
 import { useCharacterStore } from '../../stores/character';
 import { downloadJson } from '../../utils/downloadJson';
 import { getStoredCurrentUser } from '../../api/auth';
+import { fetchPersonas } from '../../api/personas';
+import { fetchConversations } from '../../api/conversations';
+import { fetchCompanions } from '../../api/companions';
 import type {
   ContentLibraryScope,
   ModuleImportDuplicateNameStrategy,
@@ -328,6 +370,9 @@ import type {
 type CreateWorldBookFormState = {
   name: string;
   characterIds: string[];
+  personaIds: string[];
+  conversationIds: string[];
+  companionIds: string[];
   description: string;
   scanDepth: number;
   tokenBudget: number;
@@ -358,6 +403,10 @@ const activeScope = ref<ContentLibraryScope>('owned');
 const targetModalVisible = ref(false);
 const targetCharacterId = ref<string | null>(null);
 const pendingLibraryWorldBook = ref<WorldBook | null>(null);
+const bindingsLoading = ref(false);
+const personaOptions = ref<Array<{ label: string; value: string }>>([]);
+const conversationOptions = ref<Array<{ label: string; value: string }>>([]);
+const companionOptions = ref<Array<{ label: string; value: string }>>([]);
 const targetCharacterOptions = computed(() =>
   characterStore.items.map((item) => ({ label: item.name, value: item.id }))
 );
@@ -394,7 +443,38 @@ const createRules: FormRules = {
 onMounted(() => {
   void worldBookStore.loadWorldBooks();
   void characterStore.loadCharacters({ page: 1, pageSize: 100, isArchived: false });
+  void loadBindingTargets();
 });
+
+async function loadBindingTargets() {
+  bindingsLoading.value = true;
+  try {
+    const [personas, conversations, companions] = await Promise.all([
+      fetchPersonas({ page: 1, pageSize: 100, scope: 'owned' }),
+      fetchConversations({ page: 1, pageSize: 100 }),
+      fetchCompanions('', 'owned')
+    ]);
+    personaOptions.value = personas.items.map((item) => ({ label: item.name, value: item.id }));
+    conversationOptions.value = conversations.items.map((item) => ({
+      label: item.title,
+      value: item.id
+    }));
+    companionOptions.value = companions.items.map((item) => ({ label: item.name, value: item.id }));
+  } catch (error) {
+    message.warning(error instanceof Error ? error.message : '绑定目标加载失败。');
+  } finally {
+    bindingsLoading.value = false;
+  }
+}
+
+function bindingSummary(worldBook: WorldBook) {
+  const count =
+    worldBook.characterIds.length +
+    worldBook.personaIds.length +
+    worldBook.conversationIds.length +
+    worldBook.companionIds.length;
+  return count > 0 ? `关联 ${count} 个目标` : '全局';
+}
 
 watch(activeScope, (scope) => {
   if (scope !== 'owned') {
@@ -481,6 +561,9 @@ async function submitCreateWorldBook() {
   const result = await worldBookStore.createWorldBook({
     name: createForm.name.trim(),
     characterIds: [...createForm.characterIds],
+    personaIds: [...createForm.personaIds],
+    conversationIds: [...createForm.conversationIds],
+    companionIds: [...createForm.companionIds],
     description: createForm.description.trim(),
     scanDepth: createForm.scanDepth,
     tokenBudget: createForm.tokenBudget,
@@ -646,6 +729,9 @@ function createEmptyWorldBookForm(): CreateWorldBookFormState {
   return {
     name: '',
     characterIds: [],
+    personaIds: [],
+    conversationIds: [],
+    companionIds: [],
     description: '',
     scanDepth: 6,
     tokenBudget: 1000,

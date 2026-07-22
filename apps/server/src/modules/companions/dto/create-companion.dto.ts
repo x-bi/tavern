@@ -10,6 +10,10 @@ export class CreateCompanionDto {
   @IsString()
   @MaxLength(12000)
   identityPrompt?: string;
+  @IsOptional() @IsString() @MaxLength(12000) coreIdentity?: string;
+  @IsOptional() @IsString() @MaxLength(12000) personality?: string;
+  @IsOptional() @IsString() @MaxLength(12000) speechStyle?: string;
+  @IsOptional() @IsString() @MaxLength(12000) relationshipDefaults?: string;
 
   @IsOptional()
   @IsString()

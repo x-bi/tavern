@@ -159,6 +159,17 @@ export async function fetchPromptPresetImportTemplate(): Promise<ModuleImportTem
   return response.data;
 }
 
+export async function exportPromptPresetJson(
+  id: string
+): Promise<{ fileName: string; card: Record<string, unknown> }> {
+  const response = await requestJson<{ fileName: string; card: Record<string, unknown> }>(
+    `/prompt-presets/${id}/export`
+  );
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  return response.data;
+}
+
 /**
  * 更新预设。PUT /prompt-presets/:id
  * @param id 预设 ID。

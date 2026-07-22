@@ -73,6 +73,12 @@ export class CreateProviderModelDto {
   @Max(2000000)
   contextLength?: number | null;
 
+  @IsOptional() @IsBoolean() supportsDeveloperRole?: boolean;
+  @IsOptional() @IsString() systemPlacement?: 'initial_only' | 'midstream_allowed';
+  @IsOptional() @IsBoolean() supportsMultipleSystemMessages?: boolean;
+  @IsOptional() @IsBoolean() requiresAlternatingRoles?: boolean;
+  @IsOptional() @IsString() @MaxLength(80) tokenizerType?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(500)

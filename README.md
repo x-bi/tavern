@@ -2,7 +2,7 @@
 
 Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完成个人和少量朋友可用的 Web MVP。
 
-项目采用 Vue 3 + Vite + TypeScript + Pinia + Vue Router + Naive UI 作为前端方案，NestJS + Prisma + SQLite 作为后端方案。首版围绕角色、会话、Prompt Builder、Model Gateway、SSE 流式聊天和本地持久化构建，不做大规模 SaaS。
+项目采用 Vue 3 + Vite + TypeScript + Pinia + Vue Router + Naive UI 作为前端方案，NestJS + Prisma + SQLite 作为后端方案。首版围绕角色、会话、Context Engine、Model Gateway、SSE 流式聊天和本地持久化构建，不做大规模 SaaS。
 
 ## MVP 范围
 
@@ -12,7 +12,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 - 角色 CRUD、角色头像、角色卡 JSON 导入导出。
 - 模型链配置、OpenAI-compatible 连接测试。
 - 会话与消息持久化。
-- Prompt Builder v1 和 Prompt 预览。
+- Context Engine 和 Prompt 预览。
 - `POST /api/chat/stream` 流式聊天。
 - 世界书关键词匹配与命中调试。
 - 基础设置、备份、恢复和单机部署。
@@ -42,7 +42,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 - `prisma/seed.cjs`：默认用户、模型链、Prompt 预设、Persona、样例角色和世界书 seed。
 - `data`：本地 SQLite 数据库与运行时数据目录。
 
-已实现的核心闭环：模型链配置与连接测试、角色与会话消息管理、Prompt Builder 与预览、Model Gateway、SSE 流式聊天、停止 / 重新生成 / 消息编辑删除、世界书关键词匹配与命中调试、导入导出与备份恢复。独立 AI 角色形态也已落地首版闭环：角色即唯一长期关系线程，使用隔离的数据模型、Prompt Builder、聊天路由和可选长期记忆；见 `AGENTS.md` §17 与 `docs/conversation-long-term-memory.md`。
+已实现的核心闭环：模型链配置与连接测试、角色与会话消息管理、Context Engine 与 Prompt 预览、Model Gateway、SSE 流式聊天、停止 / 重新生成 / 消息编辑删除、世界书匹配与运行态管理、导入导出与备份恢复。独立 AI 角色形态也已落地首版闭环：角色即唯一长期关系线程，使用隔离的数据模型、上下文构建、聊天路由和可选长期记忆；见 `AGENTS.md` §17 与 `docs/conversation-long-term-memory.md`。
 
 ## 启动方式
 
@@ -168,24 +168,23 @@ docker compose exec server pnpm db:migrate-legacy-admin -- --source=demo --targe
 
 迁移脚本在单个数据库事务中更新归属，成功后禁用旧 `demo` 账号；重复执行不会重复搬运数据。若 root 已存在同名模型供应商、模型链、Prompt 预设或 Persona，脚本会在写入前终止，要求先处理同名数据。
 
-## 计划目录
+## 项目目录
 
 ```text
 .
 ├── AGENTS.md
 ├── README.md
-├── docs/
-│   └── conversation-long-term-memory.md
+├── docs/                     # 当前架构、运维与验收文档
 ├── apps/
-│   ├── web/                 # Vue3 + Vite 前端，阶段 2 继续完善
-│   └── server/              # NestJS 后端，阶段 3 继续完善
+│   ├── web/                 # Vue3 + Vite 主站前端
+│   ├── share-web/           # 独立公共分享前端
+│   └── server/              # NestJS 后端
 ├── packages/
 │   └── shared/              # 前后端共享类型
 ├── prisma/                  # Prisma schema 与 migrations
 ├── data/                    # 本地运行时数据，禁止提交真实数据
-├── uploads/                 # 运行时上传文件，后续阶段创建且禁止提交真实文件
-├── scripts/                 # 项目维护脚本
-└── model-context/           # 项目资料与阶段提示词
+├── uploads/                 # 运行时上传文件，禁止提交真实文件
+└── scripts/                 # 项目维护与验证脚本
 ```
 
 ## Workspace 包
@@ -198,9 +197,9 @@ docker compose exec server pnpm db:migrate-legacy-admin -- --source=demo --targe
 
 根级脚本约定：
 
-- `pnpm dev`：并行运行前后端占位 dev 脚本。
-- `pnpm dev:web`：只运行前端占位 dev 脚本。
-- `pnpm dev:server`：只运行后端占位 dev 脚本。
+- `pnpm dev`：并行运行主站前端与后端开发服务。
+- `pnpm dev:web`：只运行主站 Vite 开发服务。
+- `pnpm dev:server`：只运行 NestJS 后端开发服务。
 - `pnpm typecheck`：执行各 workspace 的 TypeScript 检查。
 - `pnpm lint`：执行 ESLint。
 - `pnpm format:check`：检查 Prettier 格式。
@@ -209,10 +208,11 @@ docker compose exec server pnpm db:migrate-legacy-admin -- --source=demo --targe
 
 ## 开发规则入口
 
-所有后续开发任务先阅读 `AGENTS.md`。`AGENTS.md` 是项目唯一的开发规则与架构说明来源（已合并原 `docs/architecture.md`）。如果任务涉及架构、模块边界、API Key、Prompt Builder、Model Gateway、SSE、数据库变更或 AI 角色形态，必须遵守 `AGENTS.md` 中的约束。
+所有后续开发任务先阅读 `AGENTS.md`。`AGENTS.md` 是项目唯一的开发规则与架构说明来源（已合并原 `docs/architecture.md`）。如果任务涉及架构、模块边界、API Key、Context Engine、Model Gateway、SSE、数据库变更或 AI 角色形态，必须遵守 `AGENTS.md` 中的约束。
 
 ## 文档入口
 
 - 开发规则与架构：[AGENTS.md](./AGENTS.md)
 - AI 角色长期陪伴设计：[docs/conversation-long-term-memory.md](./docs/conversation-long-term-memory.md)
-- 阶段资料：[model-context/stages/README.md](./model-context/stages/README.md)
+- Context Engine 当前落地约束：[docs/tavern-codex-full-implementation-instructions.md](./docs/tavern-codex-full-implementation-instructions.md)
+- Context Engine 不变量验收：[docs/context-engine-invariant-matrix.md](./docs/context-engine-invariant-matrix.md)

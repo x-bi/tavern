@@ -22,6 +22,7 @@ export class CreateCharacterDto {
   @IsString()
   @MaxLength(120)
   name!: string;
+  @IsOptional() @IsString() @MaxLength(10000) coreIdentity?: string;
 
   /** 角色描述，可选，最长 10000。 */
   @IsOptional()
@@ -34,6 +35,11 @@ export class CreateCharacterDto {
   @IsString()
   @MaxLength(10000)
   personality?: string;
+  @IsOptional() @IsString() @MaxLength(10000) persistentPremise?: string;
+  @IsOptional() @IsString() @MaxLength(10000) initialScenario?: string;
+  @IsOptional() @IsString() @MaxLength(20000) extendedBackground?: string;
+  @IsOptional() @IsString() @MaxLength(10000) characterRules?: string;
+  @IsOptional() @IsString() @MaxLength(10000) speechStyle?: string;
 
   /** 场景设定，可选。 */
   @IsOptional()

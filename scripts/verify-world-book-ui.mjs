@@ -17,7 +17,14 @@ assertIncludes(view, ':options="targetCharacterOptions"', 'owned character optio
 assertIncludes(editor, 'v-model:value="bookForm.characterIds"', 'edit character binding');
 assertIncludes(editor, ':options="characterOptions"', 'edit character options');
 
-console.log('World book character binding UI checks passed.');
+for (const target of ['persona', 'conversation', 'companion']) {
+  assertIncludes(view, `v-model:value="createForm.${target}Ids"`, `create ${target} binding`);
+  assertIncludes(editor, `v-model:value="bookForm.${target}Ids"`, `edit ${target} binding`);
+}
+assertIncludes(editor, 'editingEntry?.compactStale', 'compact stale editor warning');
+assertIncludes(editor, 'entry.compactStale', 'compact stale list warning');
+
+console.log('World book multi-target binding and compact stale UI checks passed.');
 
 function assertIncludes(source, expected, label) {
   if (!source.includes(expected)) throw new Error(`Missing ${label}: ${expected}`);

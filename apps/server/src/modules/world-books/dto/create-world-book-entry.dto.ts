@@ -16,8 +16,53 @@ import {
 
 import { WORLD_BOOK_ENTRY_INSERTION_ORDERS } from '../world-books.constants';
 
+const CONTENT_TYPES = ['lore', 'state', 'behavior_rule', 'reference'] as const;
+const TRUST_LEVELS = [
+  'system',
+  'user_authored',
+  'imported_untrusted',
+  'user_confirmed_import'
+] as const;
+const ACTIVATION_MODES = ['constant', 'keyword', 'manual'] as const;
+const MATCH_MODES = ['contains', 'normalized_phrase'] as const;
+const SCAN_SOURCES = ['current_user', 'user_history', 'assistant_latest'] as const;
+const GENERATION_PURPOSES = [
+  'chat_reply',
+  'regenerate',
+  'continue',
+  'user_suggestions',
+  'memory_summary'
+] as const;
+
 /** 创建世界书条目入参。title/content/keywords 必填，其余可选。 */
 export class CreateWorldBookEntryDto {
+  @IsOptional() @IsIn(CONTENT_TYPES) contentType?: string;
+  @IsOptional() @IsIn(TRUST_LEVELS) trustLevel?: string;
+  @IsOptional() @IsIn(ACTIVATION_MODES) activationMode?: string;
+  @IsOptional() @IsIn(MATCH_MODES) matchMode?: string;
+  @IsOptional() @IsIn(['any', 'all']) primaryLogic?: string;
+  @IsOptional() @IsIn(['and_any', 'and_all', 'not_any', 'not_all']) secondaryLogic?: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(50) @IsString({ each: true }) excludeKeywords?: string[];
+  @IsOptional() @IsBoolean() sameMessageOnly?: boolean;
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(SCAN_SOURCES, { each: true })
+  scanSources?: string[];
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) userHistoryScanDepth?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) stickyTurns?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) continuationTurns?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) cooldownTurns?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) @Max(100) delayTurns?: number;
+  @IsOptional() @IsIn(['strict', 'current_user_override']) cooldownPolicy?: string;
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsIn(GENERATION_PURPOSES, { each: true })
+  generationPurposes?: string[];
+  @IsOptional() @Type(() => Number) @IsInt() @Min(-10000) @Max(10000) budgetPriority?: number;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(-10000) @Max(10000) sortOrder?: number;
+  @IsOptional() @IsString() @MaxLength(20000) compactContent?: string;
   /** 条目标题，必填，最长 160。 */
   @IsString()
   @MaxLength(160)
@@ -48,14 +93,6 @@ export class CreateWorldBookEntryDto {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
-
-  /** 优先级 -10000~10000，可选，默认 0。 */
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(-10000)
-  @Max(10000)
-  priority?: number;
 
   /** 插入位置，可选，默认 before_history。 */
   @IsOptional()

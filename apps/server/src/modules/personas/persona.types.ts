@@ -4,6 +4,9 @@ export type PersonaResponse = {
   userId: string;
   name: string;
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   /** 扩展元数据，可为 null。 */
   metadata: Record<string, unknown> | null;
   isDefault: boolean;

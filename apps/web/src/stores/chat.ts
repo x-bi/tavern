@@ -402,6 +402,7 @@ function createLocalMessage(params: {
   return {
     id: createLocalId(params.role),
     conversationId: params.conversationId,
+    turnId: null,
     role: params.role,
     content: params.content,
     status: params.status,

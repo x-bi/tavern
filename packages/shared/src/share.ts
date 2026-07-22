@@ -29,6 +29,7 @@ export type CreateShareLinkPayload = {
 };
 export type PublicShareMessage = {
   messageId: string;
+  turnId: string | null;
   role: string;
   content: string;
   status: string;

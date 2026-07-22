@@ -24,6 +24,8 @@ import { ForkWorldBookDto } from './dto/fork-world-book.dto';
 import { QueryWorldBooksDto } from './dto/query-world-books.dto';
 import { UpdateWorldBookEntryDto } from './dto/update-world-book-entry.dto';
 import { UpdateWorldBookDto } from './dto/update-world-book.dto';
+import { SetManualWorldBookActivationDto } from './dto/set-manual-world-book-activation.dto';
+import { QueryWorldBookRuntimeDto } from './dto/query-world-book-runtime.dto';
 import { WorldBooksService } from './world-books.service';
 
 /**
@@ -45,6 +47,15 @@ export class WorldBooksController {
     @Query(new DtoValidationPipe(QueryWorldBooksDto)) query: QueryWorldBooksDto
   ) {
     return this.worldBooksService.list(currentUser, query);
+  }
+
+  /** 查询目标可用条目及实时 activation state。 */
+  @Get('world-book-runtime')
+  runtimeState(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Query(new DtoValidationPipe(QueryWorldBookRuntimeDto)) query: QueryWorldBookRuntimeDto
+  ) {
+    return this.worldBooksService.listRuntimeStates(currentUser, query.targetType, query.targetId);
   }
 
   /** 创建世界书。POST /world-books */
@@ -69,6 +80,11 @@ export class WorldBooksController {
   @Get('world-books/import-template')
   importTemplate() {
     return this.worldBooksService.getImportTemplate();
+  }
+
+  @Get('world-books/:id/export')
+  exportJson(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
+    return this.worldBooksService.exportJson(currentUser, id);
   }
 
   @Post('world-books/:id/fork')
@@ -128,5 +144,16 @@ export class WorldBooksController {
   @HttpCode(HttpStatus.OK)
   removeEntry(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
     return this.worldBooksService.removeEntry(currentUser, id);
+  }
+
+  /** 显式激活或取消 manual 世界书条目，operationId 保证重试幂等。 */
+  @Post('world-book-entries/:id/manual-activation')
+  setManualActivation(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Param('id') id: string,
+    @Body(new DtoValidationPipe(SetManualWorldBookActivationDto))
+    dto: SetManualWorldBookActivationDto
+  ) {
+    return this.worldBooksService.setManualActivation(currentUser, id, dto);
   }
 }

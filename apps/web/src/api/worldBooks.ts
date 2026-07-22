@@ -16,7 +16,8 @@ import type {
   WorldBookPayload,
   WorldBookResponse,
   WorldBookUpdatePayload,
-  ContentLibraryScope
+  ContentLibraryScope,
+  WorldBookRuntimeResponse
 } from '@tavern/shared';
 
 /** 世界书数据（shared 类型别名）。 */
@@ -177,6 +178,17 @@ export async function fetchWorldBookImportTemplate(): Promise<ModuleImportTempla
   return response.data;
 }
 
+export async function exportWorldBookJson(
+  id: string
+): Promise<{ fileName: string; card: Record<string, unknown> }> {
+  const response = await requestJson<{ fileName: string; card: Record<string, unknown> }>(
+    `/world-books/${id}/export`
+  );
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  return response.data;
+}
+
 /**
  * 更新世界书。PUT /world-books/:id
  * @param id 世界书 ID。
@@ -284,6 +296,38 @@ export async function deleteWorldBookEntry(id: string): Promise<WorldBookDeleteR
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
+  return response.data;
+}
+
+export async function setManualWorldBookActivation(
+  id: string,
+  payload: {
+    operationId: string;
+    targetType: 'conversation' | 'companion';
+    targetId: string;
+    active: boolean;
+  }
+) {
+  const response = await requestJson<{
+    targetType: string;
+    targetId: string;
+    entryId: string;
+    active: boolean;
+    stateVersion: number;
+  }>(`/world-book-entries/${id}/manual-activation`, { method: 'POST', body: payload });
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  return response.data;
+}
+
+export async function fetchWorldBookRuntimeState(
+  targetType: 'conversation' | 'companion',
+  targetId: string
+): Promise<WorldBookRuntimeResponse> {
+  const query = new URLSearchParams({ targetType, targetId });
+  const response = await requestJson<WorldBookRuntimeResponse>(`/world-book-runtime?${query}`);
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   return response.data;
 }
 

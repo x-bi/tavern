@@ -101,6 +101,11 @@
       </section>
 
       <section class="character-detail__section page-panel">
+        <h3>核心身份</h3>
+        <p>{{ fallback(character.coreIdentity) }}</p>
+      </section>
+
+      <section class="character-detail__section page-panel">
         <h3>描述</h3>
         <p>{{ fallback(character.description) }}</p>
       </section>
@@ -108,6 +113,31 @@
       <section class="character-detail__section page-panel">
         <h3>人格</h3>
         <p>{{ fallback(character.personality) }}</p>
+      </section>
+
+      <section class="character-detail__section page-panel">
+        <h3>持续前提</h3>
+        <p>{{ fallback(character.persistentPremise) }}</p>
+      </section>
+
+      <section class="character-detail__section page-panel">
+        <h3>初始场景</h3>
+        <p>{{ fallback(character.initialScenario) }}</p>
+      </section>
+
+      <section class="character-detail__section page-panel">
+        <h3>扩展背景</h3>
+        <p>{{ fallback(character.extendedBackground) }}</p>
+      </section>
+
+      <section class="character-detail__section page-panel">
+        <h3>角色规则</h3>
+        <p>{{ fallback(character.characterRules) }}</p>
+      </section>
+
+      <section class="character-detail__section page-panel">
+        <h3>说话风格</h3>
+        <p>{{ fallback(character.speechStyle) }}</p>
       </section>
 
       <section class="character-detail__section page-panel">

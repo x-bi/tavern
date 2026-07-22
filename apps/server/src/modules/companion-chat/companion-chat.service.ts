@@ -5,22 +5,45 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import type { CompanionMessage, PromptPreset, UserPersona } from '@prisma/client';
+import type { CompanionMessage, PromptPreset } from '@prisma/client';
+import { canonicalJson, canonicalSha256 } from '../../common/canonical-json';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  CompanionPromptBuilderService,
-  type CompanionPromptParameters
-} from '../../services/companion-prompt-builder/companion-prompt-builder.service';
+import type {
+  CompanionPromptParameters,
+  CompanionPromptInput
+} from '../../services/context-engine/companion-prompt-contract';
 import { ModelGatewayService } from '../../services/model-gateway';
 import { resolveModelPromptBudget } from '../../services/prompt-builder/prompt-budget';
 import { estimatePromptTextTokens } from '../../services/prompt-builder/token-estimator';
+import type { ChatMessageLike } from '../../services/prompt-builder/types';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
+import { GenerationLifecycleService } from '../../services/context-engine/generation-lifecycle.service';
+import { CompanionTimelineService } from '../../services/context-engine/timeline.service';
+import { ContextOwnershipValidator } from '../../services/context-engine/context-ownership-validator';
+import { shouldTryNextModelCandidate } from '../../services/context-engine/model-fallback-policy';
+import type {
+  PreparedGeneration,
+  ProposedGenerationTrace
+} from '../../services/context-engine/generation-lifecycle.types';
+import { buildCompanionPromptSections } from '../../services/context-engine/companion-prompt-section-builder';
+import { compilePromptSections } from '../../services/context-engine/provider-prompt-compiler';
+import {
+  parsePresetOutputRuleOperations,
+  parsePresetStringArray
+} from '../../services/context-engine/preset-rule-compiler';
+import type { CompiledPrompt } from '../../services/context-engine/prompt-section.types';
+import {
+  WorldBookRuntimeService,
+  type WorldBookRuntimeResult
+} from '../../services/context-engine/world-book-runtime.service';
 import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
 import { ModelsService } from '../models/models.service';
+import type { ModelGatewayConfig } from '../models/model.types';
 import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import type { ChatResponseLike } from '../chat/chat.types';
 import { StreamCompanionChatDto } from './dto/stream-companion-chat.dto';
+import { WorldBooksService } from '../world-books/world-books.service';
 
 type OwnedCompanion = Awaited<ReturnType<CompanionChatService['findOwned']>>;
 const COMPANION_HISTORY_LIMIT = 20;
@@ -31,12 +54,17 @@ export class CompanionChatService {
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
-    @Inject(CompanionPromptBuilderService) private readonly builder: CompanionPromptBuilderService,
     @Inject(ModelsService) private readonly models: ModelsService,
     @Inject(ModelGatewayService) private readonly gateway: ModelGatewayService,
     @Inject(CompanionMemoryService) private readonly memoryService: CompanionMemoryService,
     @Inject(SettingsService) private readonly settingsService: SettingsService,
-    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
+    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService,
+    @Inject(GenerationLifecycleService) private readonly lifecycle: GenerationLifecycleService,
+    @Inject(WorldBooksService) private readonly worldBooks: WorldBooksService,
+    @Inject(WorldBookRuntimeService) private readonly worldBookRuntime: WorldBookRuntimeService,
+    @Inject(CompanionTimelineService) private readonly timeline: CompanionTimelineService,
+    @Inject(ContextOwnershipValidator)
+    private readonly ownershipValidator: ContextOwnershipValidator
   ) {}
 
   streamInternal(params: {
@@ -58,27 +86,89 @@ export class CompanionChatService {
   async preview(user: CurrentUser, companionId: string, userInput: string) {
     const companion = await this.findOwned(user, companionId);
     const history = await this.listHistory(companionId, COMPANION_HISTORY_LIMIT);
+    const worldBooks = await this.worldBooks.listPromptContexts(user, null, {
+      companionId,
+      personaId: companion.personaId
+    });
+    const previewUser = this.toContextMessage(
+      companionId,
+      'preview-current-user',
+      'user',
+      userInput
+    );
+    const worldBookRuntime = await this.worldBookRuntime.evaluateCompanion({
+      companionId,
+      worldBooks,
+      history: history.map((message) => this.toContextMessageFromCompanion(message)),
+      currentUserMessage: previewUser,
+      purpose: 'chat_reply'
+    });
     const candidates = await this.models.getGatewayCandidates({
       currentUser: user,
       modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
     });
-    const result = this.builder.build(
-      this.toPromptInput(
-        companion,
-        history,
-        userInput,
-        this.promptBudget(candidates[0], companion.promptPreset)
-      )
+    const promptInput = this.toPromptInput(
+      companion,
+      history,
+      userInput,
+      this.promptBudget(candidates[0], companion.promptPreset)
     );
-    const revision = await this.prisma.companionMemoryRevision.findFirst({
-      where: { companionId },
-      orderBy: { version: 'desc' },
-      select: { version: true }
+    const capabilities = candidates[0]?.capabilities ?? {
+      supportsDeveloperRole: false,
+      systemPlacement: 'initial_only' as const,
+      supportsMultipleSystemMessages: false,
+      requiresAlternatingRoles: true,
+      contextWindowTokens: 8192,
+      tokenizerType: 'estimated_chars_v1'
+    };
+    const compiled = compilePromptSections({
+      sections: [
+        ...buildCompanionPromptSections(promptInput, 'chat_reply'),
+        ...worldBookRuntime.sections
+      ],
+      purpose: 'chat_reply',
+      capabilities,
+      maxPromptTokens: promptInput.maxPromptTokens ?? 8000
     });
+    const parameters = promptInput.preset?.parameters ?? null;
+    const warnings = this.ownershipValidator
+      .validate({
+        'companion.coreIdentity': promptInput.coreIdentity,
+        'companion.personality': promptInput.personality,
+        'companion.speechStyle': promptInput.speechStyle,
+        'companion.relationshipDefaults': promptInput.relationshipDefaults,
+        'persona.coreIdentity': promptInput.personaProfile?.coreIdentity,
+        'persona.background': promptInput.personaProfile?.background,
+        'persona.interactionPreferences': promptInput.personaProfile?.interactionPreferences,
+        'preset.systemPrompt': promptInput.preset?.systemPrompt,
+        'preset.outputRules': promptInput.preset?.outputRules,
+        memory: [promptInput.memory?.relationshipState, promptInput.memory?.currentArc]
+          .filter(Boolean)
+          .join('\n')
+      })
+      .map((issue) => ({
+        code: issue.code,
+        message: issue.message,
+        details: { fields: issue.fields }
+      }));
     return {
-      ...result,
-      memoryVersion: revision?.version ?? null,
-      generatedAt: new Date().toISOString()
+      messages: compiled.messages,
+      parameters,
+      warnings,
+      promptBudget: promptInput.maxPromptTokens ?? 8000,
+      tokenEstimate: compiled.tokenEstimate,
+      dryRun: true as const,
+      compilerVersion: compiled.compilerVersion,
+      promptSnapshotHash: canonicalSha256({
+        compilerVersion: compiled.compilerVersion,
+        capabilities,
+        messages: compiled.messages,
+        sections: compiled.sections
+      }),
+      compiledSections: compiled.sections,
+      memoryVersion: companion.memory?.activeRevision?.version ?? null,
+      generatedAt: new Date().toISOString(),
+      worldBookDecisions: worldBookRuntime.decisions
     };
   }
 
@@ -108,14 +198,45 @@ export class CompanionChatService {
     const close = () => abort.abort();
     response.on('close', close);
     let assistant: CompanionMessage | null = null;
+    let generation: Extract<PreparedGeneration<CompanionMessage>, { state: 'started' }> | null =
+      null;
     let content = '';
     try {
-      const prepared = dto.regenerateMessageId
-        ? await this.prepareRegenerate(companionId, dto.regenerateMessageId)
-        : await this.prepareNew(companionId, dto.userMessage!);
-      assistant = prepared.assistant;
+      const prepared = await this.lifecycle.beginCompanion(companionId, {
+        requestId: dto.requestId,
+        userMessage: dto.userMessage,
+        regenerateMessageId: dto.regenerateMessageId,
+        turnId: dto.turnId,
+        requestContext: dto
+      });
+      if (prepared.state === 'idempotent_complete') {
+        this.writeEvent(response, 'done', {
+          messageId: prepared.messageId,
+          finishReason: 'stop',
+          idempotentReplay: true
+        });
+        return;
+      }
+      generation = prepared;
+      assistant = prepared.assistantMessage;
+      const history = await this.listHistory(companionId, COMPANION_HISTORY_LIMIT, [
+        prepared.userMessage.id,
+        prepared.assistantMessage.id,
+        ...(dto.regenerateMessageId ? [dto.regenerateMessageId] : [])
+      ]);
+      const worldBooks = await this.worldBooks.listPromptContexts(user, null, {
+        companionId,
+        personaId: companion.personaId
+      });
+      const worldBookRuntime = await this.worldBookRuntime.evaluateCompanion({
+        companionId,
+        worldBooks,
+        history: history.map((message) => this.toContextMessageFromCompanion(message)),
+        currentUserMessage: this.toContextMessageFromCompanion(prepared.userMessage),
+        purpose: generation.purpose
+      });
       this.targetEvents.emit('companion', companionId, 'message_created', {
-        message: this.toPublicEventMessage(prepared.user)
+        message: this.toPublicEventMessage(prepared.userMessage)
       });
       this.targetEvents.emit('companion', companionId, 'generation_started', {
         message: this.toPublicEventMessage(assistant)
@@ -131,24 +252,54 @@ export class CompanionChatService {
         });
       let finishReason: string | null = null;
       let succeeded = false;
-      for (const candidate of candidates) {
+      let successfulTrace: ProposedGenerationTrace | null = null;
+      for (const [candidateIndex, candidate] of candidates.entries()) {
         let emitted = false;
+        let attemptErrorCode: string | undefined;
+        const attempt = await this.lifecycle.createCompanionAttempt(
+          generation.requestDatabaseId,
+          candidateIndex,
+          candidate.providerModelId ?? candidate.modelName
+        );
         try {
-          const built = this.builder.build(
-            this.toPromptInput(
-              companion,
-              prepared.history,
-              prepared.user.content,
-              this.promptBudget(candidate, companion.promptPreset)
-            )
+          const promptInput = this.toPromptInput(
+            companion,
+            history,
+            prepared.userMessage.content,
+            this.promptBudget(candidate, companion.promptPreset)
           );
-          for await (const event of this.gateway.streamChat(built.messages, {
+          const compiled = compilePromptSections({
+            sections: [
+              ...buildCompanionPromptSections(promptInput, generation.purpose),
+              ...worldBookRuntime.sections
+            ],
+            purpose: generation.purpose,
+            capabilities: candidate.capabilities,
+            maxPromptTokens: promptInput.maxPromptTokens ?? 8000
+          });
+          const parameters = {
+            ...candidate.params,
+            ...(promptInput.preset?.parameters ?? {})
+          };
+          successfulTrace = this.toGenerationTrace(
+            compiled,
+            candidate,
+            parameters,
+            prepared.userMessage.id,
+            companion.memory?.activeRevisionId ?? null,
+            worldBookRuntime
+          );
+          await this.lifecycle.updateCompanionAttemptSnapshot(attempt.id, {
+            hash: successfulTrace.promptSnapshotHash,
+            capabilities: candidate.capabilities,
+            parameters
+          });
+          for await (const event of this.gateway.streamChat(compiled.messages, {
             providerName: candidate.providerName,
             baseUrl: candidate.baseUrl,
             modelName: candidate.modelName,
             apiKey: candidate.apiKey,
-            ...candidate.params,
-            ...(built.parameters ?? {}),
+            ...parameters,
             signal: abort.signal
           })) {
             if (event.type === 'delta') {
@@ -165,20 +316,53 @@ export class CompanionChatService {
               succeeded = true;
             }
             if (event.type === 'error') {
-              if (emitted) throw new Error(event.message);
+              attemptErrorCode = event.code;
+              if (emitted) throw Object.assign(new Error(event.message), { code: event.code });
               break;
             }
           }
         } catch (error) {
-          if (emitted || abort.signal.aborted) throw error;
+          attemptErrorCode = this.errorCode(error, abort.signal.aborted);
+          await this.lifecycle.finishCompanionAttempt(
+            attempt.id,
+            abort.signal.aborted ? 'stopped' : 'failed',
+            emitted,
+            attemptErrorCode
+          );
+          if (
+            !shouldTryNextModelCandidate({
+              emittedDelta: emitted,
+              accumulatedContent: content,
+              hasNextCandidate: candidateIndex < candidates.length - 1,
+              aborted: abort.signal.aborted
+            })
+          )
+            throw error;
           continue;
         }
-        if (succeeded) break;
+        if (succeeded) {
+          await this.lifecycle.finishCompanionAttempt(attempt.id, 'succeeded', emitted);
+          break;
+        }
+        await this.lifecycle.finishCompanionAttempt(
+          attempt.id,
+          'failed',
+          emitted,
+          attemptErrorCode ?? 'MODEL_CANDIDATE_FAILED'
+        );
       }
       if (!succeeded) throw new Error('All model candidates failed.');
-      await this.prisma.companionMessage.update({
-        where: { id: assistant.id },
-        data: { content, status: 'complete', tokenCount: this.estimateTokens(content) }
+      if (!successfulTrace) throw new Error('Generation trace was not prepared.');
+      await this.lifecycle.completeCompanion({
+        companionId,
+        requestDatabaseId: generation.requestDatabaseId,
+        turnId: generation.turnId,
+        assistantMessageId: assistant.id,
+        expectedVersion: generation.expectedVersion,
+        content,
+        tokenCount: this.estimateTokens(content),
+        purpose: generation.purpose,
+        trace: successfulTrace
       });
       this.writeEvent(response, 'done', { messageId: assistant.id, finishReason });
       this.targetEvents.emit('companion', companionId, 'generation_done', {
@@ -186,20 +370,31 @@ export class CompanionChatService {
         finishReason
       });
       void this.memoryService.maybeScheduleUpdate(user, companionId);
-    } catch {
+    } catch (error) {
       const aborted = abort.signal.aborted;
-      if (assistant)
-        await this.prisma.companionMessage.update({
-          where: { id: assistant.id },
-          data: { content, status: aborted ? 'stopped' : 'failed' }
+      const code = this.errorCode(error, aborted);
+      if (assistant && generation && code !== 'CONTEXT_COMMIT_CONFLICT')
+        await this.lifecycle.failCompanion({
+          companionId,
+          requestDatabaseId: generation.requestDatabaseId,
+          turnId: generation.turnId,
+          assistantMessageId: assistant.id,
+          content,
+          status: aborted ? 'stopped' : 'failed',
+          errorCode: code
         });
       this.writeEvent(response, 'error', {
-        code: aborted ? 'COMPANION_CHAT_STOPPED' : 'COMPANION_CHAT_FAILED',
-        message: aborted ? 'Generation stopped.' : 'Companion generation failed.'
+        code,
+        message:
+          code === 'CONTEXT_COMMIT_CONFLICT'
+            ? 'Companion context changed; provisional output was discarded.'
+            : aborted
+              ? 'Generation stopped.'
+              : 'Companion generation failed.'
       });
       this.targetEvents.emit('companion', companionId, 'generation_failed', {
         messageId: assistant?.id ?? null,
-        code: aborted ? 'COMPANION_CHAT_STOPPED' : 'COMPANION_CHAT_FAILED'
+        code
       });
     } finally {
       response.off('close', close);
@@ -208,85 +403,8 @@ export class CompanionChatService {
     }
   }
 
-  private async prepareNew(companionId: string, text: string) {
-    const [user, assistant] = await this.prisma.$transaction([
-      this.prisma.companionMessage.create({
-        data: {
-          companionId,
-          role: 'user',
-          content: text.trim(),
-          status: 'complete',
-          tokenCount: this.estimateTokens(text)
-        }
-      }),
-      this.prisma.companionMessage.create({
-        data: { companionId, role: 'assistant', content: '', status: 'generating' }
-      })
-    ]);
-    return {
-      user,
-      assistant,
-      history: await this.listHistory(companionId, COMPANION_HISTORY_LIMIT, [user.id, assistant.id])
-    };
-  }
-
-  private async prepareRegenerate(companionId: string, id: string) {
-    const messages = await this.listHistory(companionId, 200);
-    const index = messages.findIndex((message) => message.id === id);
-    const target = messages[index];
-    if (!target || target.role !== 'assistant' || index !== messages.length - 1)
-      throw new BadRequestException({
-        code: 'COMPANION_MESSAGE_REGENERATE_INVALID',
-        message: 'Only latest assistant message can be regenerated.'
-      });
-    const user = [...messages.slice(0, index)].reverse().find((message) => message.role === 'user');
-    if (!user)
-      throw new BadRequestException({
-        code: 'COMPANION_MESSAGE_REGENERATE_INVALID',
-        message: 'Previous user message not found.'
-      });
-    const assistant = await this.prisma.$transaction(async (tx) => {
-      const replacement = await tx.companionMessage.create({
-        data: {
-          companionId,
-          role: 'assistant',
-          content: '',
-          status: 'generating',
-          metadataJson: JSON.stringify({ regenerateOfMessageId: id })
-        }
-      });
-      await tx.companionMessage.update({
-        where: { id },
-        data: {
-          status: 'deleted',
-          deletedAt: new Date(),
-          metadataJson: JSON.stringify({ regeneratedByMessageId: replacement.id })
-        }
-      });
-      await this.memoryService.markStaleIfAffected(companionId, target, tx);
-      return replacement;
-    });
-    return {
-      user,
-      assistant,
-      history: messages
-        .filter((message) => message.id !== id && message.id !== user.id)
-        .slice(-COMPANION_HISTORY_LIMIT)
-    };
-  }
-
   private async listHistory(companionId: string, take: number, exclude: string[] = []) {
-    const messages = await this.prisma.companionMessage.findMany({
-      where: {
-        companionId,
-        deletedAt: null,
-        status: { in: ['complete', 'edited'] },
-        ...(exclude.length ? { id: { notIn: exclude } } : {})
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take
-    });
-    return messages.reverse();
+    return this.timeline.listPromptMessages(companionId, { take, excludeIds: exclude });
   }
 
   private async findOwned(user: CurrentUser, id: string) {
@@ -298,7 +416,12 @@ export class CompanionChatService {
         deletedAt: null,
         ...(showSensitiveContent ? {} : { isSensitive: false })
       },
-      include: { persona: true, promptPreset: true, memory: true }
+      include: {
+        persona: true,
+        promptPreset: true,
+        runtimeState: true,
+        memory: { include: { activeRevision: true } }
+      }
     });
     if (!companion)
       throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
@@ -310,19 +433,40 @@ export class CompanionChatService {
     history: CompanionMessage[],
     userInput: string,
     maxPromptTokens?: number
-  ) {
+  ): CompanionPromptInput {
     return {
       name: companion.name,
-      identityPrompt: companion.identityPrompt,
-      persona: this.personaText(companion.persona),
+      companionId: companion.id,
+      identityPrompt: [
+        companion.coreIdentity || companion.identityPrompt,
+        companion.personality,
+        companion.speechStyle,
+        companion.relationshipDefaults
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      coreIdentity: companion.coreIdentity || companion.identityPrompt,
+      personality: companion.personality,
+      speechStyle: companion.speechStyle,
+      relationshipDefaults: companion.relationshipDefaults,
+      personaProfile: companion.persona
+        ? {
+            id: companion.persona.id,
+            content: companion.persona.content,
+            coreIdentity: companion.persona.coreIdentity,
+            background: companion.persona.background,
+            interactionPreferences: companion.persona.interactionPreferences
+          }
+        : null,
       preset: this.presetContext(companion.promptPreset),
-      memory: companion.memory,
+      memory: this.activeMemoryContext(companion.memory),
+      runtimeState: companion.runtimeState,
       history: history
         .filter(
           (m): m is CompanionMessage & { role: 'user' | 'assistant' } =>
             m.role === 'user' || m.role === 'assistant'
         )
-        .map((m) => ({ role: m.role, content: m.content })),
+        .map((m) => ({ id: m.id, role: m.role, content: m.content })),
       userInput,
       maxPromptTokens
     };
@@ -340,14 +484,15 @@ export class CompanionChatService {
 
     return resolveModelPromptBudget(candidate, presetMaxTokens);
   }
-  private personaText(persona: UserPersona | null) {
-    return persona ? persona.content : null;
-  }
   private presetContext(preset: PromptPreset | null) {
     return preset
       ? {
+          id: preset.id,
           systemPrompt: preset.systemPrompt,
           outputRules: preset.outputRules,
+          instructions: parsePresetStringArray(preset.instructionsJson),
+          outputRuleOperations: parsePresetOutputRuleOperations(preset.outputRulesJson),
+          generationPurposes: parsePresetStringArray(preset.generationPurposesJson),
           parameters: this.parsePresetParameters(preset.parametersJson)
         }
       : null;
@@ -397,9 +542,137 @@ export class CompanionChatService {
   private estimateTokens(value: string) {
     return estimatePromptTextTokens(value);
   }
+  private toGenerationTrace(
+    compiled: CompiledPrompt,
+    candidate: ModelGatewayConfig,
+    parameters: CompanionPromptParameters,
+    userMessageId: string,
+    memoryRevisionIdUsed: string | null,
+    worldBookRuntime: WorldBookRuntimeResult
+  ): ProposedGenerationTrace {
+    const capabilities = candidate.capabilities;
+    const sections = compiled.sections.map((item) => ({
+      sectionId: item.section.id,
+      sectionKind: item.section.kind,
+      sourceType: item.section.sourceType,
+      sourceId: item.section.sourceId ?? null,
+      sourceRevisionId: item.section.sourceRevisionId ?? null,
+      contentHash: canonicalSha256(item.section.content),
+      compactUsed: item.compactUsed,
+      placement: item.section.placement,
+      conversationRole: item.section.conversationRole ?? null,
+      finalProviderRole: item.finalProviderRole,
+      tokenEstimate: item.tokenEstimate,
+      included: item.included,
+      excludedReason: item.excludedReason
+    }));
+    const snapshot = {
+      compilerVersion: compiled.compilerVersion,
+      messages: compiled.messages,
+      parameters,
+      capabilities,
+      sections
+    };
+    const includedWorldBooks = worldBookRuntime.includedWorldBooks.filter((trace) =>
+      compiled.sections.some((item) => item.included && item.section.sourceId === trace.entryId)
+    );
+    const includedEntryIds = new Set(includedWorldBooks.map((trace) => trace.entryId));
+    return {
+      requestUserMessageId: userMessageId,
+      rootUserMessageId: userMessageId,
+      modelId: candidate.providerModelId ?? candidate.modelName,
+      compilerVersion: compiled.compilerVersion,
+      promptSnapshotJson: canonicalJson(snapshot),
+      promptSnapshotHash: canonicalSha256(snapshot),
+      capabilitiesSnapshotJson: canonicalJson(capabilities),
+      modelParametersJson: canonicalJson(parameters),
+      memoryRevisionIdUsed,
+      includedWorldBooks,
+      worldBookStateChanges: worldBookRuntime.stateChanges.filter(
+        (change) =>
+          includedEntryIds.has(change.entryId) || change.payload.sourceType === 'delay_pending'
+      ),
+      sections
+    };
+  }
+
+  private toContextMessageFromCompanion(message: CompanionMessage): ChatMessageLike {
+    return this.toContextMessage(
+      message.companionId,
+      message.id,
+      message.role,
+      message.content,
+      message.status
+    );
+  }
+
+  private toContextMessage(
+    companionId: string,
+    id: string,
+    role: string,
+    content: string,
+    status = 'complete'
+  ): ChatMessageLike {
+    return { id, conversationId: companionId, role, content, status };
+  }
+
+  private activeMemoryContext(memory: OwnedCompanion['memory']) {
+    if (!memory) return null;
+    if (!memory.activeRevision || memory.status === 'stale') {
+      return {
+        isEnabled: memory.isEnabled,
+        revisionId: memory.activeRevisionId,
+        relationshipState: '',
+        currentArc: '',
+        status: memory.status
+      };
+    }
+    try {
+      const data = JSON.parse(memory.activeRevision.dataJson) as {
+        relationshipSummary?: { content?: unknown };
+        currentArc?: { content?: unknown };
+      };
+      return {
+        isEnabled: memory.isEnabled,
+        revisionId: memory.activeRevision.id,
+        status: memory.status,
+        relationshipState:
+          typeof data.relationshipSummary?.content === 'string'
+            ? data.relationshipSummary.content
+            : '',
+        currentArc: typeof data.currentArc?.content === 'string' ? data.currentArc.content : ''
+      };
+    } catch {
+      return {
+        isEnabled: memory.isEnabled,
+        revisionId: memory.activeRevisionId,
+        relationshipState: '',
+        currentArc: '',
+        status: memory.status
+      };
+    }
+  }
+  private errorCode(error: unknown, aborted: boolean): string {
+    if (aborted) return 'COMPANION_CHAT_STOPPED';
+    if (typeof error === 'object' && error !== null) {
+      if ('code' in error && typeof error.code === 'string') return error.code;
+      if ('getResponse' in error && typeof error.getResponse === 'function') {
+        const response = error.getResponse() as unknown;
+        if (
+          typeof response === 'object' &&
+          response !== null &&
+          'code' in response &&
+          typeof response.code === 'string'
+        )
+          return response.code;
+      }
+    }
+    return 'COMPANION_CHAT_FAILED';
+  }
   private toPublicEventMessage(message: CompanionMessage) {
     return {
       messageId: message.id,
+      turnId: message.turnId,
       role: message.role,
       content: message.content,
       status: message.status,

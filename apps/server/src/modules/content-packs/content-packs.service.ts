@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
+import { canonicalSha256 } from '../../common/canonical-json';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CurrentUser } from '../users/user.types';
 import {
@@ -20,12 +21,24 @@ import {
 import type { ImportContentPackDto } from './dto/import-content-pack.dto';
 
 type JsonRecord = Record<string, unknown>;
+type ContentPackPresetRule = {
+  key: string;
+  content: string;
+  operation: 'add' | 'replace_optional' | 'disable_optional';
+  sortOrder: number;
+};
 
 type NormalizedCharacter = {
   ref: string;
   name: string;
+  coreIdentity: string;
   description: string;
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   scenario: string;
   firstMessage: string;
   exampleMessages: ContentPackMessage[];
@@ -38,6 +51,9 @@ type NormalizedPersona = {
   ref: string;
   name: string;
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   metadata: JsonRecord | null;
   isDefault: boolean;
   finalName: string;
@@ -50,6 +66,9 @@ type NormalizedPromptPreset = {
   description: string;
   systemPrompt: string;
   outputRules: string;
+  instructions: string[];
+  outputRuleOperations: ContentPackPresetRule[];
+  generationPurposes: string[];
   parameters: JsonRecord | null;
   metadata: JsonRecord | null;
   isDefault: boolean;
@@ -79,13 +98,15 @@ type NormalizedWorldBookEntry = Required<
     | 'keywords'
     | 'secondaryKeywords'
     | 'isEnabled'
-    | 'priority'
+    | 'budgetPriority'
+    | 'sortOrder'
     | 'caseSensitive'
   >
 > & {
   insertionOrder: NonNullable<ContentPackWorldBookEntry['insertionOrder']>;
   tokenBudget: number | null;
   metadata: JsonRecord | null;
+  revisionConfig: JsonRecord;
 };
 
 type NormalizedStarterConversation = {
@@ -313,8 +334,14 @@ export class ContentPacksService {
           data: {
             userId: currentUser.id,
             name: character.finalName,
+            coreIdentity: character.coreIdentity,
             description: character.description,
             personality: character.personality,
+            persistentPremise: character.persistentPremise,
+            initialScenario: character.initialScenario,
+            extendedBackground: character.extendedBackground,
+            characterRules: character.characterRules,
+            speechStyle: character.speechStyle,
             scenario: character.scenario,
             firstMessage: character.firstMessage,
             exampleMessagesJson: this.stringifyNullable(character.exampleMessages),
@@ -347,6 +374,9 @@ export class ContentPacksService {
             userId: currentUser.id,
             name: persona.finalName,
             content: persona.content,
+            coreIdentity: persona.coreIdentity,
+            background: persona.background,
+            interactionPreferences: persona.interactionPreferences,
             metadataJson: this.stringifyNullable(persona.metadata),
             isDefault: persona.isDefault,
             isSensitive: false
@@ -378,6 +408,9 @@ export class ContentPacksService {
             description: preset.description,
             systemPrompt: preset.systemPrompt,
             outputRules: preset.outputRules,
+            instructionsJson: JSON.stringify(preset.instructions),
+            outputRulesJson: JSON.stringify(preset.outputRuleOperations),
+            generationPurposesJson: JSON.stringify(preset.generationPurposes),
             parametersJson: this.stringifyNullable(preset.parameters),
             metadataJson: this.stringifyNullable(preset.metadata),
             isDefault: preset.isDefault,
@@ -416,21 +449,41 @@ export class ContentPacksService {
         result.worldBookIds.push(created.id);
 
         if (worldBook.entries.length > 0) {
-          await tx.worldBookEntry.createMany({
-            data: worldBook.entries.map((entry) => ({
-              worldBookId: created.id,
-              title: entry.title,
-              content: entry.content,
-              keywordsJson: JSON.stringify(entry.keywords),
-              secondaryKeywordsJson: JSON.stringify(entry.secondaryKeywords),
-              isEnabled: entry.isEnabled,
-              priority: entry.priority,
-              position: entry.insertionOrder,
-              tokenBudget: entry.tokenBudget,
-              caseSensitive: entry.caseSensitive,
-              metadataJson: this.stringifyNullable(entry.metadata)
-            }))
-          });
+          for (const entry of worldBook.entries) {
+            const createdEntry = await tx.worldBookEntry.create({
+              data: {
+                worldBookId: created.id,
+                title: entry.title,
+                content: entry.content,
+                keywordsJson: JSON.stringify(entry.keywords),
+                secondaryKeywordsJson: JSON.stringify(entry.secondaryKeywords),
+                isEnabled: entry.isEnabled,
+                position: entry.insertionOrder,
+                tokenBudget: entry.tokenBudget,
+                caseSensitive: entry.caseSensitive,
+                metadataJson: this.stringifyNullable({
+                  ...(entry.metadata ?? {}),
+                  contextV2: entry.revisionConfig
+                })
+              }
+            });
+            const revision = await tx.worldBookEntryRevision.create({
+              data: {
+                entryId: createdEntry.id,
+                version: 1,
+                configJson: JSON.stringify(entry.revisionConfig),
+                content: entry.content,
+                compactContent: entry.revisionConfig.compactContent
+                  ? String(entry.revisionConfig.compactContent)
+                  : null,
+                contentHash: canonicalSha256(entry.content)
+              }
+            });
+            await tx.worldBookEntry.update({
+              where: { id: createdEntry.id },
+              data: { activeRevisionId: revision.id }
+            });
+          }
         }
       }
 
@@ -543,10 +596,46 @@ export class ContentPacksService {
         `${path}.description`,
         warnings
       ),
+      coreIdentity: this.optionalLimitedString(
+        record,
+        'coreIdentity',
+        `${path}.coreIdentity`,
+        warnings
+      ),
       personality: this.optionalLimitedString(
         record,
         'personality',
         `${path}.personality`,
+        warnings
+      ),
+      persistentPremise: this.optionalLimitedString(
+        record,
+        'persistentPremise',
+        `${path}.persistentPremise`,
+        warnings
+      ),
+      initialScenario: this.optionalLimitedString(
+        record,
+        'initialScenario',
+        `${path}.initialScenario`,
+        warnings
+      ),
+      extendedBackground: this.optionalLimitedString(
+        record,
+        'extendedBackground',
+        `${path}.extendedBackground`,
+        warnings
+      ),
+      characterRules: this.optionalLimitedString(
+        record,
+        'characterRules',
+        `${path}.characterRules`,
+        warnings
+      ),
+      speechStyle: this.optionalLimitedString(
+        record,
+        'speechStyle',
+        `${path}.speechStyle`,
         warnings
       ),
       scenario: this.optionalLimitedString(record, 'scenario', `${path}.scenario`, warnings),
@@ -578,6 +667,19 @@ export class ContentPacksService {
       name,
       finalName: name,
       content: this.optionalLimitedString(record, 'content', `${path}.content`, warnings),
+      coreIdentity: this.optionalLimitedString(
+        record,
+        'coreIdentity',
+        `${path}.coreIdentity`,
+        warnings
+      ),
+      background: this.optionalLimitedString(record, 'background', `${path}.background`, warnings),
+      interactionPreferences: this.optionalLimitedString(
+        record,
+        'interactionPreferences',
+        `${path}.interactionPreferences`,
+        warnings
+      ),
       metadata: this.optionalRecord(record, 'metadata', `${path}.metadata`),
       isDefault: this.optionalBoolean(record, 'isDefault', false, `${path}.isDefault`),
       skipped: false
@@ -613,6 +715,17 @@ export class ContentPacksService {
         `${path}.outputRules`,
         warnings
       ),
+      instructions: this.optionalStringArray(record, 'instructions', `${path}.instructions`),
+      outputRuleOperations: Array.isArray(record.outputRuleOperations)
+        ? (record.outputRuleOperations as ContentPackPresetRule[])
+        : [],
+      generationPurposes: this.optionalStringArray(
+        record,
+        'generationPurposes',
+        `${path}.generationPurposes`
+      ).length
+        ? this.optionalStringArray(record, 'generationPurposes', `${path}.generationPurposes`)
+        : ['chat_reply', 'regenerate', 'continue'],
       parameters: this.normalizeParameters(record.parameters, `${path}.parameters`),
       metadata: this.optionalRecord(record, 'metadata', `${path}.metadata`),
       isDefault: this.optionalBoolean(record, 'isDefault', false, `${path}.isDefault`),
@@ -671,7 +784,8 @@ export class ContentPacksService {
         `${path}.secondaryKeywords`
       ),
       isEnabled: this.optionalBoolean(record, 'isEnabled', true, `${path}.isEnabled`),
-      priority: this.optionalInteger(record, 'priority', 0, `${path}.priority`),
+      budgetPriority: this.optionalInteger(record, 'budgetPriority', 0, `${path}.budgetPriority`),
+      sortOrder: this.optionalInteger(record, 'sortOrder', 0, `${path}.sortOrder`),
       insertionOrder: this.normalizeInsertionOrder(
         record.insertionOrder,
         `${path}.insertionOrder`,
@@ -679,7 +793,64 @@ export class ContentPacksService {
       ),
       tokenBudget: this.optionalNullableInteger(record, 'tokenBudget', `${path}.tokenBudget`),
       caseSensitive: this.optionalBoolean(record, 'caseSensitive', false, `${path}.caseSensitive`),
-      metadata: this.optionalRecord(record, 'metadata', `${path}.metadata`)
+      metadata: this.optionalRecord(record, 'metadata', `${path}.metadata`),
+      revisionConfig: {
+        contentType:
+          record.contentType === 'behavior_rule' ? 'lore' : (record.contentType ?? 'lore'),
+        trustLevel: 'imported_untrusted',
+        activationMode: record.activationMode ?? 'keyword',
+        matchMode: record.matchMode ?? 'normalized_phrase',
+        primaryKeywords: keywords,
+        primaryLogic: record.primaryLogic ?? 'any',
+        secondaryKeywords: this.optionalStringArray(
+          record,
+          'secondaryKeywords',
+          `${path}.secondaryKeywords`
+        ),
+        secondaryLogic: record.secondaryLogic ?? 'and_any',
+        excludeKeywords: this.optionalStringArray(
+          record,
+          'excludeKeywords',
+          `${path}.excludeKeywords`
+        ),
+        sameMessageOnly: this.optionalBoolean(
+          record,
+          'sameMessageOnly',
+          true,
+          `${path}.sameMessageOnly`
+        ),
+        scanSources: this.optionalStringArray(record, 'scanSources', `${path}.scanSources`).length
+          ? this.optionalStringArray(record, 'scanSources', `${path}.scanSources`)
+          : ['current_user', 'user_history', 'assistant_latest'],
+        userHistoryScanDepth: this.optionalInteger(
+          record,
+          'userHistoryScanDepth',
+          6,
+          `${path}.userHistoryScanDepth`
+        ),
+        stickyTurns: this.optionalInteger(record, 'stickyTurns', 0, `${path}.stickyTurns`),
+        continuationTurns: this.optionalInteger(
+          record,
+          'continuationTurns',
+          1,
+          `${path}.continuationTurns`
+        ),
+        cooldownTurns: this.optionalInteger(record, 'cooldownTurns', 0, `${path}.cooldownTurns`),
+        delayTurns: this.optionalInteger(record, 'delayTurns', 0, `${path}.delayTurns`),
+        cooldownPolicy: record.cooldownPolicy ?? 'strict',
+        generationPurposes: this.optionalStringArray(
+          record,
+          'generationPurposes',
+          `${path}.generationPurposes`
+        ).length
+          ? this.optionalStringArray(record, 'generationPurposes', `${path}.generationPurposes`)
+          : ['chat_reply', 'regenerate', 'continue'],
+        budgetPriority: this.optionalInteger(record, 'budgetPriority', 0, `${path}.budgetPriority`),
+        sortOrder: this.optionalInteger(record, 'sortOrder', 0, `${path}.sortOrder`),
+        placement: record.insertionOrder ?? 'before_history',
+        maxTokens: record.tokenBudget ?? null,
+        compactContent: this.optionalString(record, 'compactContent', `${path}.compactContent`)
+      }
     };
   }
 

@@ -146,6 +146,17 @@ export async function fetchPersonaImportTemplate(): Promise<ModuleImportTemplate
   return response.data;
 }
 
+export async function exportPersonaJson(
+  id: string
+): Promise<{ fileName: string; card: Record<string, unknown> }> {
+  const response = await requestJson<{ fileName: string; card: Record<string, unknown> }>(
+    `/personas/${id}/export`
+  );
+  if (!response.success)
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  return response.data;
+}
+
 /**
  * 更新 Persona。PUT /personas/:id
  * @param id Persona ID。

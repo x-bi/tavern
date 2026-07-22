@@ -15,8 +15,14 @@ export type CharacterResponse = {
   /** 头像访问 URL，未设置头像时为 null。 */
   avatarUrl: string | null;
   name: string;
+  coreIdentity: string;
   description: string;
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   scenario: string;
   /** 角色的开场白。 */
   firstMessage: string;
@@ -66,8 +72,14 @@ export type CharacterImportWarning = {
  */
 export type CharacterImportPreview = {
   name: string;
+  coreIdentity: string;
   description: string;
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   scenario: string;
   firstMessage: string;
   exampleMessages: ExampleMessage[];
@@ -90,8 +102,14 @@ export type CharacterImportResponse = {
 /** 角色卡 v2 的 data 部分（遵循 chara_card_v2 规范字段名）。 */
 export type CharacterExportCardData = {
   name: string;
+  coreIdentity: string;
   description: string;
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   scenario: string;
   /** 开场白（v2 规范字段名）。 */
   first_mes: string;

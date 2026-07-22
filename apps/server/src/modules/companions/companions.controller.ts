@@ -21,6 +21,7 @@ import { CreateCompanionDto } from './dto/create-companion.dto';
 import { UpdateCompanionDto } from './dto/update-companion.dto';
 import { QueryCompanionsDto } from './dto/query-companions.dto';
 import { ImportCompanionDto } from './dto/import-companion.dto';
+import { UpdateCompanionRuntimeStateDto } from './dto/update-companion-runtime-state.dto';
 
 @Controller('companions')
 @UseGuards(AuthGuard)
@@ -71,5 +72,13 @@ export class CompanionsController {
     @Param('id') id: string
   ) {
     return this.service.remove(user, id);
+  }
+  @Put(':id/runtime-state')
+  updateRuntimeState(
+    @CurrentUser() user: CurrentUserType,
+    @Param('id') id: string,
+    @Body(new DtoValidationPipe(UpdateCompanionRuntimeStateDto)) dto: UpdateCompanionRuntimeStateDto
+  ) {
+    return this.service.updateRuntimeState(user, id, dto);
   }
 }

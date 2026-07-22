@@ -108,7 +108,7 @@ export class BackupsService {
             where: {
               deletedAt: null
             },
-            orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+            orderBy: { createdAt: 'asc' }
           }
         },
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
@@ -969,7 +969,6 @@ export class BackupsService {
         `${path}.secondaryKeywordsJson`
       ),
       isEnabled: this.requiredBoolean(record, 'isEnabled', `${path}.isEnabled`),
-      priority: this.requiredInteger(record, 'priority', `${path}.priority`),
       position: this.requiredString(record, 'position', `${path}.position`),
       tokenBudget: this.optionalInteger(record, 'tokenBudget', `${path}.tokenBudget`),
       caseSensitive: this.requiredBoolean(record, 'caseSensitive', `${path}.caseSensitive`),

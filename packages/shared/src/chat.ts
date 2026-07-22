@@ -6,12 +6,16 @@
  * - 重新生成某条 assistant 消息时传 `regenerateMessageId`，不传 `userMessage`。
  */
 export type ChatStreamPayload = {
+  /** Client idempotency key; transparent retries must reuse it. */
+  requestId: string;
   /** 会话 ID。 */
   conversationId: string;
   /** 用户输入的明文消息；重新生成时不传。 */
   userMessage?: string;
   /** 要重新生成的 assistant 消息 ID；发新消息时不传。 */
   regenerateMessageId?: string;
+  /** Logical turn reused by regenerate/retry. */
+  turnId?: string;
   /** 本次会话覆盖使用的模型链 ID；未传时用会话绑定的模型链。 */
   modelFallbackGroupId?: string | null;
   /** 本次会话覆盖使用的 Prompt 预设 ID；未传时用会话绑定的预设。 */
@@ -25,7 +29,7 @@ export type ChatStreamPayload = {
 /** 聊天候选用户发言请求入参（POST /chat/suggestions）。 */
 export type ChatSuggestionPayload = Omit<
   ChatStreamPayload,
-  'userMessage' | 'regenerateMessageId'
+  'requestId' | 'turnId' | 'userMessage' | 'regenerateMessageId'
 > & {
   /** 希望生成的候选条数，默认 3。 */
   count?: number;
@@ -59,6 +63,8 @@ export type ChatStreamDoneEvent = {
   messageId: string;
   /** 结束原因（如 `stop`、`length`）；流被中断或异常时为 null。 */
   finishReason: string | null;
+  /** True when the server returned an already committed request without replaying deltas. */
+  idempotentReplay?: boolean;
 };
 
 /** SSE 错误帧：流异常中断。 */

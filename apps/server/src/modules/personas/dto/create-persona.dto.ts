@@ -12,6 +12,9 @@ export class CreatePersonaDto {
   @IsString()
   @MaxLength(8000)
   content?: string;
+  @IsOptional() @IsString() @MaxLength(8000) coreIdentity?: string;
+  @IsOptional() @IsString() @MaxLength(12000) background?: string;
+  @IsOptional() @IsString() @MaxLength(8000) interactionPreferences?: string;
 
   /** 扩展元数据，可选任意对象。 */
   @IsOptional()

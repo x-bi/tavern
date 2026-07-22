@@ -250,6 +250,7 @@ export class SharesService {
           });
     return rows.map((row) => ({
       messageId: row.id,
+      turnId: row.turnId,
       role: row.role,
       content: row.content,
       status: row.status,
@@ -258,15 +259,15 @@ export class SharesService {
     }));
   }
 
-  async assertPublicRegenerateTarget(context: ShareContext, messageId: string) {
+  async assertPublicRegenerateTarget(context: ShareContext, messageId: string, turnId: string) {
     const row =
       context.targetType === 'conversation'
         ? await this.prisma.message.findFirst({
-            where: { id: messageId, conversationId: context.targetId, deletedAt: null },
+            where: { id: messageId, turnId, conversationId: context.targetId, deletedAt: null },
             select: { id: true }
           })
         : await this.prisma.companionMessage.findFirst({
-            where: { id: messageId, companionId: context.targetId, deletedAt: null },
+            where: { id: messageId, turnId, companionId: context.targetId, deletedAt: null },
             select: { id: true }
           });
     if (!row) throw this.publicNotFound();

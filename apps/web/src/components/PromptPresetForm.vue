@@ -35,6 +35,39 @@
         />
       </n-form-item>
 
+      <n-form-item label="原子 Instructions（每行一条）">
+        <n-input
+          v-model:value="form.instructionsText"
+          type="textarea"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+          placeholder="每行一条可追踪规则"
+        />
+      </n-form-item>
+
+      <n-form-item label="输出规则操作（JSON 数组）">
+        <n-input
+          v-model:value="form.outputRuleOperationsText"
+          type="textarea"
+          :autosize="{ minRows: 4, maxRows: 10 }"
+          placeholder='[{"key":"style","content":"自然口语","operation":"add","sortOrder":0}]'
+        />
+      </n-form-item>
+
+      <n-form-item label="生效用途">
+        <n-checkbox-group v-model:value="form.generationPurposes">
+          <n-space>
+            <n-checkbox value="chat_reply">普通回复</n-checkbox>
+            <n-checkbox value="regenerate">重新生成</n-checkbox>
+            <n-checkbox value="continue">继续生成</n-checkbox>
+            <n-checkbox value="user_suggestions">用户建议</n-checkbox>
+            <n-checkbox value="memory_summary">记忆总结</n-checkbox>
+          </n-space>
+        </n-checkbox-group>
+      </n-form-item>
+      <n-alert v-if="structuredError" type="warning" :bordered="false">{{
+        structuredError
+      }}</n-alert>
+
       <div class="prompt-preset-form__grid">
         <n-form-item label="Temperature" path="temperature">
           <n-input-number
@@ -149,6 +182,9 @@ type PromptPresetFormState = {
   description: string;
   systemPrompt: string;
   outputRules: string;
+  instructionsText: string;
+  outputRuleOperationsText: string;
+  generationPurposes: string[];
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
@@ -183,6 +219,7 @@ const emit = defineEmits<{
 const formRef = ref<FormInst | null>(null);
 const form = reactive<PromptPresetFormState>(createEmptyForm());
 const isAdmin = getStoredCurrentUser()?.role === 'admin';
+const structuredError = ref<string | null>(null);
 
 const rules: FormRules = {
   name: [
@@ -250,17 +287,33 @@ watch(
 );
 
 async function handleSubmit() {
+  structuredError.value = null;
   try {
     await formRef.value?.validate();
   } catch {
     return;
   }
 
+  let outputRuleOperations: PromptPresetPayload['outputRuleOperations'];
+  try {
+    const parsed = JSON.parse(form.outputRuleOperationsText || '[]') as unknown;
+    if (!Array.isArray(parsed)) throw new Error('必须是数组');
+    outputRuleOperations = parsed as PromptPresetPayload['outputRuleOperations'];
+  } catch (cause) {
+    structuredError.value = `输出规则操作 JSON 无效：${cause instanceof Error ? cause.message : '格式错误'}`;
+    return;
+  }
   emit('submit', {
     name: form.name.trim(),
     description: form.description.trim(),
     systemPrompt: form.systemPrompt.trim(),
     outputRules: form.outputRules.trim(),
+    instructions: form.instructionsText
+      .split('\n')
+      .map((item) => item.trim())
+      .filter(Boolean),
+    outputRuleOperations,
+    generationPurposes: form.generationPurposes,
     temperature: form.temperature,
     topP: form.topP,
     maxTokens: form.maxTokens,
@@ -279,6 +332,9 @@ function createEmptyForm(): PromptPresetFormState {
     description: '',
     systemPrompt: '',
     outputRules: '',
+    instructionsText: '',
+    outputRuleOperationsText: '[]',
+    generationPurposes: ['chat_reply', 'regenerate', 'continue'],
     temperature: null,
     topP: null,
     maxTokens: null,
@@ -297,6 +353,9 @@ function toForm(preset: PromptPreset): PromptPresetFormState {
     description: preset.description,
     systemPrompt: preset.systemPrompt,
     outputRules: preset.outputRules,
+    instructionsText: preset.instructions.join('\n'),
+    outputRuleOperationsText: JSON.stringify(preset.outputRuleOperations, null, 2),
+    generationPurposes: [...preset.generationPurposes],
     temperature: preset.temperature,
     topP: preset.topP,
     maxTokens: preset.maxTokens,

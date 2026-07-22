@@ -26,6 +26,24 @@ export class CreateWorldBookDto {
   @IsString({ each: true })
   characterIds?: string[];
 
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  personaIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  conversationIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  companionIds?: string[];
+
   /** 描述，可选，最长 4000。 */
   @IsOptional()
   @IsString()

@@ -24,10 +24,16 @@ export type ContentPackCharacter = {
   ref: string;
   /** 角色名。 */
   name: string;
+  coreIdentity?: string;
   /** 角色描述。 */
   description?: string;
   /** 性格设定。 */
   personality?: string;
+  persistentPremise?: string;
+  initialScenario?: string;
+  extendedBackground?: string;
+  characterRules?: string;
+  speechStyle?: string;
   /** 场景设定。 */
   scenario?: string;
   /** 首条消息。 */
@@ -46,6 +52,9 @@ export type ContentPackPersona = {
   name: string;
   /** Persona 正文。 */
   content?: string;
+  coreIdentity?: string;
+  background?: string;
+  interactionPreferences?: string;
   /** 扩展元数据。 */
   metadata?: Record<string, unknown> | null;
   /** 是否设为默认。 */
@@ -64,6 +73,14 @@ export type ContentPackPromptPreset = {
   systemPrompt?: string;
   /** 输出规则。 */
   outputRules?: string;
+  instructions?: string[];
+  outputRuleOperations?: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+  generationPurposes?: string[];
   /** 模型参数。 */
   parameters?: Record<string, unknown> | null;
   /** 扩展元数据。 */
@@ -84,8 +101,16 @@ export type ContentPackWorldBookEntry = {
   secondaryKeywords?: string[];
   /** 是否启用。 */
   isEnabled?: boolean;
-  /** 优先级。 */
-  priority?: number;
+  primaryLogic?: 'any' | 'all';
+  secondaryLogic?: 'and_any' | 'and_all' | 'not_any' | 'not_all';
+  excludeKeywords?: string[];
+  sameMessageOnly?: boolean;
+  scanSources?: Array<'current_user' | 'user_history' | 'assistant_latest'>;
+  userHistoryScanDepth?: number;
+  cooldownPolicy?: 'strict' | 'current_user_override';
+  budgetPriority?: number;
+  sortOrder?: number;
+  compactContent?: string;
   /** 注入位置。 */
   insertionOrder?: WorldBookEntryPosition;
   /** 条目 token 预算上限。 */
@@ -94,6 +119,14 @@ export type ContentPackWorldBookEntry = {
   caseSensitive?: boolean;
   /** 扩展元数据。 */
   metadata?: Record<string, unknown> | null;
+  contentType?: 'lore' | 'state' | 'behavior_rule' | 'reference';
+  activationMode?: 'constant' | 'keyword' | 'manual';
+  matchMode?: 'contains' | 'normalized_phrase';
+  stickyTurns?: number;
+  continuationTurns?: number;
+  cooldownTurns?: number;
+  delayTurns?: number;
+  generationPurposes?: string[];
 };
 
 /** 内容包世界书定义。 */

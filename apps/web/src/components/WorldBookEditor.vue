@@ -48,6 +48,45 @@
                 placeholder="可多选；留空且启用时为全局世界书"
               />
             </n-form-item>
+
+            <n-form-item label="关联 Persona">
+              <n-select
+                v-model:value="bookForm.personaIds"
+                multiple
+                filterable
+                clearable
+                :loading="bindingsLoading"
+                :options="personaOptions"
+                max-tag-count="responsive"
+                placeholder="可多选；仅在指定 Persona 下生效"
+              />
+            </n-form-item>
+
+            <n-form-item label="关联会话">
+              <n-select
+                v-model:value="bookForm.conversationIds"
+                multiple
+                filterable
+                clearable
+                :loading="bindingsLoading"
+                :options="conversationOptions"
+                max-tag-count="responsive"
+                placeholder="可多选；仅在指定会话中生效"
+              />
+            </n-form-item>
+
+            <n-form-item label="关联 AI 角色">
+              <n-select
+                v-model:value="bookForm.companionIds"
+                multiple
+                filterable
+                clearable
+                :loading="bindingsLoading"
+                :options="companionOptions"
+                max-tag-count="responsive"
+                placeholder="可多选；仅在指定 AI 角色中生效"
+              />
+            </n-form-item>
           </div>
 
           <n-form-item label="描述">
@@ -92,6 +131,9 @@
           </div>
 
           <n-space justify="end">
+            <n-button secondary :loading="exporting" @click="exportCurrentWorldBook">
+              导出 JSON
+            </n-button>
             <n-button type="primary" :loading="submitting" attr-type="submit">保存世界书</n-button>
           </n-space>
         </n-form>
@@ -101,7 +143,7 @@
         <div class="world-book-editor__section-header">
           <div>
             <h3>条目</h3>
-            <p>维护关键词、正文、优先级、启用状态和插入位置。</p>
+            <p>维护世界书 V2 的触发、持续、冷却、预算和插入规则。</p>
           </div>
           <n-button secondary type="primary" @click="openCreateEntry">新建条目</n-button>
         </div>
@@ -133,15 +175,43 @@
                 />
               </n-form-item>
 
-              <n-form-item label="优先级" path="priority">
+              <n-form-item label="预算优先级" path="budgetPriority">
                 <n-input-number
-                  v-model:value="entryForm.priority"
+                  v-model:value="entryForm.budgetPriority"
                   :min="-10000"
                   :max="10000"
                   :step="1"
                   placeholder="0"
                 />
               </n-form-item>
+            </div>
+            <div class="world-book-editor__grid world-book-editor__grid--compact">
+              <n-form-item label="排序值">
+                <n-input-number v-model:value="entryForm.sortOrder" :min="-10000" :max="10000" />
+              </n-form-item>
+              <n-form-item label="主关键词逻辑">
+                <NSelect v-model:value="entryForm.primaryLogic" :options="primaryLogicOptions" />
+              </n-form-item>
+              <n-form-item label="二级关键词逻辑">
+                <NSelect
+                  v-model:value="entryForm.secondaryLogic"
+                  :options="secondaryLogicOptions"
+                />
+              </n-form-item>
+            </div>
+            <div class="world-book-editor__grid">
+              <n-form-item label="内容类型"
+                ><NSelect v-model:value="entryForm.contentType" :options="contentTypeOptions"
+              /></n-form-item>
+              <n-form-item label="信任级别"
+                ><NSelect v-model:value="entryForm.trustLevel" :options="trustLevelOptions"
+              /></n-form-item>
+              <n-form-item label="激活方式"
+                ><NSelect v-model:value="entryForm.activationMode" :options="activationModeOptions"
+              /></n-form-item>
+              <n-form-item label="匹配方式"
+                ><NSelect v-model:value="entryForm.matchMode" :options="matchModeOptions"
+              /></n-form-item>
             </div>
 
             <n-form-item label="关键词" path="keywordsText">
@@ -166,6 +236,60 @@
               />
             </n-form-item>
 
+            <n-form-item label="排除关键词">
+              <n-input
+                v-model:value="entryForm.excludeKeywordsText"
+                type="textarea"
+                :autosize="{ minRows: 2, maxRows: 4 }"
+                placeholder="命中后阻止激活；每行一个或用英文逗号分隔。"
+              />
+            </n-form-item>
+
+            <div class="world-book-editor__grid">
+              <n-form-item label="扫描来源">
+                <NSelect
+                  v-model:value="entryForm.scanSources"
+                  multiple
+                  :options="scanSourceOptions"
+                />
+              </n-form-item>
+              <n-form-item label="生成用途">
+                <NSelect
+                  v-model:value="entryForm.generationPurposes"
+                  multiple
+                  :options="generationPurposeOptions"
+                />
+              </n-form-item>
+            </div>
+
+            <div class="world-book-editor__grid world-book-editor__grid--compact">
+              <n-form-item label="历史扫描深度">
+                <n-input-number
+                  v-model:value="entryForm.userHistoryScanDepth"
+                  :min="0"
+                  :max="100"
+                />
+              </n-form-item>
+              <n-form-item label="Sticky 回合">
+                <n-input-number v-model:value="entryForm.stickyTurns" :min="0" :max="100" />
+              </n-form-item>
+              <n-form-item label="Continuation 回合">
+                <n-input-number v-model:value="entryForm.continuationTurns" :min="0" :max="100" />
+              </n-form-item>
+              <n-form-item label="Delay 回合">
+                <n-input-number v-model:value="entryForm.delayTurns" :min="0" :max="100" />
+              </n-form-item>
+              <n-form-item label="Cooldown 回合">
+                <n-input-number v-model:value="entryForm.cooldownTurns" :min="0" :max="100" />
+              </n-form-item>
+              <n-form-item label="Cooldown 策略">
+                <NSelect
+                  v-model:value="entryForm.cooldownPolicy"
+                  :options="cooldownPolicyOptions"
+                />
+              </n-form-item>
+            </div>
+
             <n-form-item label="条目正文" path="content">
               <n-input
                 v-model:value="entryForm.content"
@@ -175,6 +299,25 @@
                 :autosize="{ minRows: 8, maxRows: 18 }"
                 placeholder="写入世界设定、地点、人物关系或背景信息。"
               />
+            </n-form-item>
+
+            <n-form-item label="压缩正文（可选）">
+              <n-input
+                v-model:value="entryForm.compactContent"
+                type="textarea"
+                maxlength="20000"
+                show-count
+                :autosize="{ minRows: 3, maxRows: 8 }"
+                placeholder="预算紧张时可使用的精简内容。"
+              />
+              <n-alert
+                v-if="editingEntry?.compactStale"
+                type="warning"
+                :bordered="false"
+                class="world-book-editor__compact-warning"
+              >
+                正文已变化，当前压缩正文已失效；请同步更新或清空压缩正文。
+              </n-alert>
             </n-form-item>
 
             <div class="world-book-editor__grid world-book-editor__grid--compact">
@@ -208,6 +351,7 @@
             <div class="world-book-editor__switches">
               <n-checkbox v-model:checked="entryForm.isEnabled">启用条目</n-checkbox>
               <n-checkbox v-model:checked="entryForm.caseSensitive">区分大小写</n-checkbox>
+              <n-checkbox v-model:checked="entryForm.sameMessageOnly">二级词限同一消息</n-checkbox>
             </div>
 
             <n-space justify="end">
@@ -253,12 +397,14 @@
             </header>
 
             <div class="entry-item__meta">
-              <n-tag size="small">priority {{ entry.priority }}</n-tag>
+              <n-tag size="small">budget {{ entry.budgetPriority }}</n-tag>
+              <n-tag size="small">sort {{ entry.sortOrder }}</n-tag>
               <n-tag size="small">{{ insertionOrderLabel(entry.insertionOrder) }}</n-tag>
               <n-tag v-if="entry.tokenBudget !== null" size="small">
                 budget {{ entry.tokenBudget }}
               </n-tag>
               <n-tag v-if="entry.caseSensitive" size="small">case sensitive</n-tag>
+              <n-tag v-if="entry.compactStale" size="small" type="warning">压缩正文已失效</n-tag>
             </div>
 
             <div class="entry-item__keywords">
@@ -275,10 +421,12 @@
 
 <script setup lang="ts">
 import type { FormInst, FormRules } from 'naive-ui';
-import { reactive, ref, watch } from 'vue';
+import { useMessage } from 'naive-ui';
+import { computed, reactive, ref, watch } from 'vue';
 
-import type { WorldBook, WorldBookEntry } from '../api/worldBooks';
+import { exportWorldBookJson, type WorldBook, type WorldBookEntry } from '../api/worldBooks';
 import { getStoredCurrentUser } from '../api/auth';
+import { downloadJson } from '../utils/downloadJson';
 import EmptyState from './EmptyState.vue';
 import type {
   WorldBookEntryInsertionOrder,
@@ -291,6 +439,9 @@ import type {
 type WorldBookFormState = {
   name: string;
   characterIds: string[];
+  personaIds: string[];
+  conversationIds: string[];
+  companionIds: string[];
   description: string;
   scanDepth: number;
   tokenBudget: number;
@@ -304,11 +455,29 @@ type EntryFormState = {
   content: string;
   keywordsText: string;
   secondaryKeywordsText: string;
-  priority: number;
+  excludeKeywordsText: string;
+  budgetPriority: number;
   tokenBudget: number | null;
   insertionOrder: WorldBookEntryInsertionOrder;
   isEnabled: boolean;
   caseSensitive: boolean;
+  contentType: WorldBookEntry['contentType'];
+  trustLevel: WorldBookEntry['trustLevel'];
+  activationMode: WorldBookEntry['activationMode'];
+  matchMode: WorldBookEntry['matchMode'];
+  primaryLogic: WorldBookEntry['primaryLogic'];
+  secondaryLogic: WorldBookEntry['secondaryLogic'];
+  sameMessageOnly: boolean;
+  scanSources: WorldBookEntry['scanSources'];
+  userHistoryScanDepth: number;
+  stickyTurns: number;
+  continuationTurns: number;
+  cooldownTurns: number;
+  delayTurns: number;
+  cooldownPolicy: WorldBookEntry['cooldownPolicy'];
+  generationPurposes: WorldBookEntry['generationPurposes'];
+  compactContent: string;
+  sortOrder: number;
 };
 
 const props = withDefaults(
@@ -321,6 +490,10 @@ const props = withDefaults(
     entryError?: string | null;
     characterOptions?: Array<{ label: string; value: string }>;
     charactersLoading?: boolean;
+    personaOptions?: Array<{ label: string; value: string }>;
+    conversationOptions?: Array<{ label: string; value: string }>;
+    companionOptions?: Array<{ label: string; value: string }>;
+    bindingsLoading?: boolean;
   }>(),
   {
     worldBook: null,
@@ -330,7 +503,11 @@ const props = withDefaults(
     saveError: null,
     entryError: null,
     characterOptions: () => [],
-    charactersLoading: false
+    charactersLoading: false,
+    personaOptions: () => [],
+    conversationOptions: () => [],
+    companionOptions: () => [],
+    bindingsLoading: false
   }
 );
 
@@ -340,6 +517,21 @@ const emit = defineEmits<{
   updateEntry: [id: string, payload: WorldBookEntryUpdatePayload];
   deleteEntry: [entry: WorldBookEntry];
 }>();
+const message = useMessage();
+const exporting = ref(false);
+
+async function exportCurrentWorldBook() {
+  if (!props.worldBook) return;
+  exporting.value = true;
+  try {
+    const result = await exportWorldBookJson(props.worldBook.id);
+    downloadJson(result.fileName, result.card);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '世界书导出失败。');
+  } finally {
+    exporting.value = false;
+  }
+}
 
 const insertionOrderOptions: { value: WorldBookEntryInsertionOrder; label: string }[] = [
   { value: 'before_history', label: '历史前' },
@@ -347,11 +539,49 @@ const insertionOrderOptions: { value: WorldBookEntryInsertionOrder; label: strin
   { value: 'before_current_user_input', label: '用户输入前' },
   { value: 'after_current_user_input', label: '用户输入后' }
 ];
+const contentTypeOptions = ['lore', 'state', 'behavior_rule', 'reference'].map((value) => ({
+  label: value,
+  value
+}));
+const trustLevelOptions = ['user_authored', 'imported_untrusted', 'user_confirmed_import'].map(
+  (value) => ({ label: value, value })
+);
+const activationModeOptions = ['keyword', 'constant', 'manual'].map((value) => ({
+  label: value,
+  value
+}));
+const matchModeOptions = ['normalized_phrase', 'contains'].map((value) => ({
+  label: value,
+  value
+}));
+const primaryLogicOptions = ['any', 'all'].map((value) => ({ label: value, value }));
+const secondaryLogicOptions = ['and_any', 'and_all', 'not_any', 'not_all'].map((value) => ({
+  label: value,
+  value
+}));
+const scanSourceOptions = ['current_user', 'user_history', 'assistant_latest'].map((value) => ({
+  label: value,
+  value
+}));
+const generationPurposeOptions = [
+  'chat_reply',
+  'regenerate',
+  'continue',
+  'user_suggestions',
+  'memory_summary'
+].map((value) => ({ label: value, value }));
+const cooldownPolicyOptions = ['strict', 'current_user_override'].map((value) => ({
+  label: value,
+  value
+}));
 
 const bookFormRef = ref<FormInst | null>(null);
 const entryFormRef = ref<FormInst | null>(null);
 const entryFormVisible = ref(false);
 const editingEntryId = ref<string | null>(null);
+const editingEntry = computed(() =>
+  props.worldBook?.entries.find((entry) => entry.id === editingEntryId.value)
+);
 const bookForm = reactive<WorldBookFormState>(createEmptyBookForm());
 const isAdmin = getStoredCurrentUser()?.role === 'admin';
 const entryForm = reactive<EntryFormState>(createEmptyEntryForm());
@@ -408,7 +638,7 @@ const entryRules: FormRules = {
     message: '至少填写一个关键词',
     trigger: ['blur', 'input']
   },
-  priority: {
+  budgetPriority: {
     type: 'number',
     min: -10000,
     max: 10000,
@@ -436,6 +666,9 @@ async function submitBook() {
   emit('submitBook', {
     name: bookForm.name.trim(),
     characterIds: [...bookForm.characterIds],
+    personaIds: [...bookForm.personaIds],
+    conversationIds: [...bookForm.conversationIds],
+    companionIds: [...bookForm.companionIds],
     description: bookForm.description.trim(),
     scanDepth: bookForm.scanDepth,
     tokenBudget: bookForm.tokenBudget,
@@ -483,6 +716,9 @@ function createEmptyBookForm(): WorldBookFormState {
   return {
     name: '',
     characterIds: [],
+    personaIds: [],
+    conversationIds: [],
+    companionIds: [],
     description: '',
     scanDepth: 6,
     tokenBudget: 1000,
@@ -496,6 +732,9 @@ function toBookForm(worldBook: WorldBook): WorldBookFormState {
   return {
     name: worldBook.name,
     characterIds: [...worldBook.characterIds],
+    personaIds: [...worldBook.personaIds],
+    conversationIds: [...worldBook.conversationIds],
+    companionIds: [...worldBook.companionIds],
     description: worldBook.description,
     scanDepth: worldBook.scanDepth,
     tokenBudget: worldBook.tokenBudget,
@@ -511,11 +750,29 @@ function createEmptyEntryForm(): EntryFormState {
     content: '',
     keywordsText: '',
     secondaryKeywordsText: '',
-    priority: 0,
+    excludeKeywordsText: '',
+    budgetPriority: 0,
     tokenBudget: null,
     insertionOrder: 'before_history',
     isEnabled: true,
-    caseSensitive: false
+    caseSensitive: false,
+    contentType: 'lore',
+    trustLevel: 'user_authored',
+    activationMode: 'keyword',
+    matchMode: 'normalized_phrase',
+    primaryLogic: 'any',
+    secondaryLogic: 'and_any',
+    sameMessageOnly: true,
+    scanSources: ['current_user', 'user_history', 'assistant_latest'],
+    userHistoryScanDepth: 6,
+    stickyTurns: 0,
+    continuationTurns: 1,
+    cooldownTurns: 0,
+    delayTurns: 0,
+    cooldownPolicy: 'strict',
+    generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+    compactContent: '',
+    sortOrder: 0
   };
 }
 
@@ -525,11 +782,29 @@ function toEntryForm(entry: WorldBookEntry): EntryFormState {
     content: entry.content,
     keywordsText: entry.keywords.join('\n'),
     secondaryKeywordsText: entry.secondaryKeywords.join('\n'),
-    priority: entry.priority,
+    excludeKeywordsText: entry.excludeKeywords.join('\n'),
+    budgetPriority: entry.budgetPriority,
     tokenBudget: entry.tokenBudget,
     insertionOrder: entry.insertionOrder,
     isEnabled: entry.isEnabled,
-    caseSensitive: entry.caseSensitive
+    caseSensitive: entry.caseSensitive,
+    contentType: entry.contentType,
+    trustLevel: entry.trustLevel,
+    activationMode: entry.activationMode,
+    matchMode: entry.matchMode,
+    primaryLogic: entry.primaryLogic,
+    secondaryLogic: entry.secondaryLogic,
+    sameMessageOnly: entry.sameMessageOnly,
+    scanSources: [...entry.scanSources],
+    userHistoryScanDepth: entry.userHistoryScanDepth,
+    stickyTurns: entry.stickyTurns,
+    continuationTurns: entry.continuationTurns,
+    cooldownTurns: entry.cooldownTurns,
+    delayTurns: entry.delayTurns,
+    cooldownPolicy: entry.cooldownPolicy,
+    generationPurposes: [...entry.generationPurposes],
+    compactContent: entry.compactContent ?? '',
+    sortOrder: entry.sortOrder
   };
 }
 
@@ -539,7 +814,25 @@ function toEntryPayload(): WorldBookEntryPayload | WorldBookEntryUpdatePayload {
     content: entryForm.content.trim(),
     keywords: parseKeywords(entryForm.keywordsText),
     secondaryKeywords: parseKeywords(entryForm.secondaryKeywordsText),
-    priority: entryForm.priority,
+    excludeKeywords: parseKeywords(entryForm.excludeKeywordsText),
+    budgetPriority: entryForm.budgetPriority,
+    sortOrder: entryForm.sortOrder,
+    contentType: entryForm.contentType,
+    trustLevel: entryForm.trustLevel,
+    activationMode: entryForm.activationMode,
+    matchMode: entryForm.matchMode,
+    primaryLogic: entryForm.primaryLogic,
+    secondaryLogic: entryForm.secondaryLogic,
+    sameMessageOnly: entryForm.sameMessageOnly,
+    scanSources: [...entryForm.scanSources],
+    userHistoryScanDepth: entryForm.userHistoryScanDepth,
+    stickyTurns: entryForm.stickyTurns,
+    continuationTurns: entryForm.continuationTurns,
+    cooldownTurns: entryForm.cooldownTurns,
+    delayTurns: entryForm.delayTurns,
+    cooldownPolicy: entryForm.cooldownPolicy,
+    generationPurposes: [...entryForm.generationPurposes],
+    compactContent: entryForm.compactContent.trim() || null,
     tokenBudget: entryForm.tokenBudget ?? null,
     insertionOrder: entryForm.insertionOrder,
     isEnabled: entryForm.isEnabled,

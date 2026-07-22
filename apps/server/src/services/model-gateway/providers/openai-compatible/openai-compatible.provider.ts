@@ -1090,7 +1090,8 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
   }
 
   /** 记录调用日志（预留，当前空实现，未来接非敏感调用日志）。 */
-  private recordCall(_entry: OpenAICompatibleLogEntry): void {
+  private recordCall(entry: OpenAICompatibleLogEntry): void {
+    void entry;
     // Reserved for a future non-secret call log sink.
   }
 }

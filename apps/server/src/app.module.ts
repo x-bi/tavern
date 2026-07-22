@@ -24,6 +24,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { WorldBooksModule } from './modules/world-books/world-books.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { ContextEngineModule } from './services/context-engine/context-engine.module';
 import { TargetEventsModule } from './services/target-events/target-events.module';
 
 /**
@@ -42,6 +43,7 @@ import { TargetEventsModule } from './services/target-events/target-events.modul
       validate: validateEnv
     }),
     PrismaModule,
+    ContextEngineModule,
     TargetEventsModule,
     AssetsModule,
     AuthModule,

@@ -41,8 +41,14 @@ export class CharacterCardJsonExporter {
     // 构建 data：核心字段直接写入；以下可选字段有值才写入卡片（避免空字段）
     const data = {
       name: character.name,
+      coreIdentity: character.coreIdentity,
       description: character.description,
       personality: character.personality,
+      persistentPremise: character.persistentPremise,
+      initialScenario: character.initialScenario,
+      extendedBackground: character.extendedBackground,
+      characterRules: character.characterRules,
+      speechStyle: character.speechStyle,
       scenario: character.scenario,
       first_mes: character.firstMessage,
       mes_example: this.formatExampleMessages(character.name, exampleMessages),
@@ -199,9 +205,11 @@ export class CharacterCardJsonExporter {
    * @returns 清理后的文件名，空则用默认 `character-card`。
    */
   private toSafeFileName(name: string): string {
-    const normalized = name
+    const normalized = Array.from(name)
+      .filter((character) => character.charCodeAt(0) >= 32)
+      .join('')
       .trim()
-      .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '-')
+      .replace(/[<>:"/\\|?*]/g, '-')
       .replace(/\s+/g, ' ')
       .slice(0, 80);
 

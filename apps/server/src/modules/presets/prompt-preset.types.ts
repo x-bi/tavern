@@ -17,6 +17,14 @@ export type PromptPresetResponse = {
   systemPrompt: string;
   /** 输出规则（引导模型输出风格的指令）。 */
   outputRules: string;
+  instructions: string[];
+  outputRuleOperations: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+  generationPurposes: string[];
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;

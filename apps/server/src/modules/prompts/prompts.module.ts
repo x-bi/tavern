@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 
-import { PromptBuilderModule } from '../../services/prompt-builder/prompt-builder.module';
 import { AuthModule } from '../auth/auth.module';
 import { ModelsModule } from '../models/models.module';
 import { SettingsModule } from '../settings/settings.module';
@@ -11,11 +10,11 @@ import { PromptsService } from './prompts.service';
 /**
  * Prompt 预览模块。
  *
- * imports PromptBuilderModule（构建 prompt）、ModelsModule（解析真实模型预算）和
- * WorldBooksModule（取世界书上下文）。
+ * 使用 Context Engine V2 构建并编译 prompt；ModelsModule 解析真实模型预算，
+ * WorldBooksModule 提供世界书上下文。
  */
 @Module({
-  imports: [AuthModule, ModelsModule, PromptBuilderModule, SettingsModule, WorldBooksModule],
+  imports: [AuthModule, ModelsModule, SettingsModule, WorldBooksModule],
   controllers: [PromptsController],
   providers: [PromptsService],
   exports: [PromptsService]

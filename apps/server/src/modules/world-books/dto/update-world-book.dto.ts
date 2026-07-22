@@ -27,6 +27,24 @@ export class UpdateWorldBookDto {
   @IsString({ each: true })
   characterIds?: string[];
 
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  personaIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  conversationIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsString({ each: true })
+  companionIds?: string[];
+
   /** 描述。 */
   @IsOptional()
   @IsString()

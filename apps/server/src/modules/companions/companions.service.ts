@@ -52,7 +52,7 @@ export class CompanionsService {
     const [items, total] = await this.prisma.$transaction([
       this.prisma.companion.findMany({
         where,
-        include: { avatarAsset: true, memory: true },
+        include: { avatarAsset: true, memory: true, runtimeState: true },
         orderBy: { updatedAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize
@@ -87,15 +87,20 @@ export class CompanionsService {
         userId: currentUser.id,
         name: dto.name.trim(),
         identityPrompt: dto.identityPrompt?.trim() ?? '',
+        coreIdentity: dto.coreIdentity?.trim() ?? dto.identityPrompt?.trim() ?? '',
+        personality: dto.personality?.trim() ?? '',
+        speechStyle: dto.speechStyle?.trim() ?? '',
+        relationshipDefaults: dto.relationshipDefaults?.trim() ?? '',
         avatarAssetId: dto.avatarAssetId ?? null,
         modelFallbackGroupId: dto.modelFallbackGroupId ?? null,
         promptPresetId: dto.promptPresetId ?? null,
         personaId: dto.personaId ?? null,
         isSensitive: dto.isSensitive ?? false,
         isShared: dto.isShared ?? false,
-        memory: { create: {} }
+        memory: { create: {} },
+        runtimeState: { create: {} }
       },
-      include: { avatarAsset: true, memory: true }
+      include: { avatarAsset: true, memory: true, runtimeState: true }
     });
     return this.toResponse(item, currentUser);
   }
@@ -123,11 +128,13 @@ export class CompanionsService {
         userId: currentUser.id,
         name: preview.nameConflict ? preview.suggestedName! : preview.name,
         identityPrompt: preview.identityPrompt,
+        coreIdentity: preview.identityPrompt,
         isSensitive: false,
         isShared: false,
-        memory: { create: {} }
+        memory: { create: {} },
+        runtimeState: { create: {} }
       },
-      include: { avatarAsset: true, memory: true }
+      include: { avatarAsset: true, memory: true, runtimeState: true }
     });
 
     return {
@@ -143,7 +150,11 @@ export class CompanionsService {
       template: {
         formatVersion: 'tavern-lite.companion.v1',
         name: '示例 AI 角色',
-        identityPrompt: '性格温柔、真诚，表达克制而有耐心。'
+        identityPrompt: '性格温柔、真诚，表达克制而有耐心。',
+        coreIdentity: '温柔、真诚的长期陪伴者',
+        personality: '克制而有耐心',
+        speechStyle: '自然私聊',
+        relationshipDefaults: ''
       }
     };
   }
@@ -158,6 +169,10 @@ export class CompanionsService {
         formatVersion: 'tavern-lite.companion.v1',
         name: item.name,
         identityPrompt: item.identityPrompt,
+        coreIdentity: item.coreIdentity,
+        personality: item.personality,
+        speechStyle: item.speechStyle,
+        relationshipDefaults: item.relationshipDefaults,
         exportedAt
       }
     };
@@ -231,15 +246,20 @@ export class CompanionsService {
             userId: currentUser.id,
             name: source.name,
             identityPrompt: source.identityPrompt,
+            coreIdentity: source.coreIdentity,
+            personality: source.personality,
+            speechStyle: source.speechStyle,
+            relationshipDefaults: source.relationshipDefaults,
             avatarAssetId,
             modelFallbackGroupId: source.modelFallbackGroupId,
             promptPresetId,
             personaId,
             isSensitive: source.isSensitive,
             isShared: false,
-            memory: { create: {} }
+            memory: { create: {} },
+            runtimeState: { create: {} }
           },
-          include: { avatarAsset: true, memory: true }
+          include: { avatarAsset: true, memory: true, runtimeState: true }
         });
       });
       return this.toResponse(item, currentUser);
@@ -269,15 +289,20 @@ export class CompanionsService {
         userId: currentUser.id,
         name,
         identityPrompt: source.identityPrompt,
+        coreIdentity: source.coreIdentity,
+        personality: source.personality,
+        speechStyle: source.speechStyle,
+        relationshipDefaults: source.relationshipDefaults,
         avatarAssetId: source.avatarAssetId,
         modelFallbackGroupId: source.modelFallbackGroupId,
         promptPresetId: source.promptPresetId,
         personaId: source.personaId,
         isSensitive: source.isSensitive,
         isShared: false,
-        memory: { create: {} }
+        memory: { create: {} },
+        runtimeState: { create: {} }
       },
-      include: { avatarAsset: true, memory: true }
+      include: { avatarAsset: true, memory: true, runtimeState: true }
     });
     return this.toResponse(item, currentUser);
   }
@@ -295,6 +320,13 @@ export class CompanionsService {
       data: {
         ...(dto.name === undefined ? {} : { name: dto.name.trim() }),
         ...(dto.identityPrompt === undefined ? {} : { identityPrompt: dto.identityPrompt.trim() }),
+        ...(dto.coreIdentity === undefined ? {} : { coreIdentity: dto.coreIdentity.trim() }),
+        ...(dto.personality === undefined ? {} : { personality: dto.personality.trim() }),
+        ...(dto.speechStyle === undefined ? {} : { speechStyle: dto.speechStyle.trim() }),
+        ...(dto.relationshipDefaults === undefined
+          ? {}
+          : { relationshipDefaults: dto.relationshipDefaults.trim() }),
+        version: { increment: 1 },
         ...(dto.avatarAssetId === undefined ? {} : { avatarAssetId: dto.avatarAssetId }),
         ...(dto.modelFallbackGroupId === undefined
           ? {}
@@ -304,7 +336,7 @@ export class CompanionsService {
         ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
         ...(dto.isShared === undefined ? {} : { isShared: dto.isShared })
       },
-      include: { avatarAsset: true, memory: true }
+      include: { avatarAsset: true, memory: true, runtimeState: true }
     });
     return this.toResponse(item, currentUser);
   }
@@ -313,6 +345,40 @@ export class CompanionsService {
     await this.findOwned(currentUser, id);
     await this.prisma.companion.update({ where: { id }, data: { deletedAt: new Date() } });
     return { deleted: true, id };
+  }
+
+  async updateRuntimeState(
+    currentUser: CurrentUser,
+    id: string,
+    dto: { currentMood?: string | null; currentSituation?: string | null }
+  ) {
+    await this.findOwned(currentUser, id);
+    return this.prisma.$transaction(async (tx) => {
+      const state = await tx.companionRuntimeState.upsert({
+        where: { companionId: id },
+        create: {
+          companionId: id,
+          currentMood: dto.currentMood?.trim() || null,
+          currentSituation: dto.currentSituation?.trim() || null,
+          version: 1
+        },
+        update: {
+          ...(dto.currentMood === undefined
+            ? {}
+            : { currentMood: dto.currentMood?.trim() || null }),
+          ...(dto.currentSituation === undefined
+            ? {}
+            : { currentSituation: dto.currentSituation?.trim() || null }),
+          version: { increment: 1 }
+        }
+      });
+      await tx.companion.update({ where: { id }, data: { version: { increment: 1 } } });
+      return {
+        ...state,
+        createdAt: state.createdAt.toISOString(),
+        updatedAt: state.updatedAt.toISOString()
+      };
+    });
   }
 
   private async findOwned(currentUser: CurrentUser, id: string) {
@@ -324,7 +390,7 @@ export class CompanionsService {
         deletedAt: null,
         ...(showSensitiveContent ? {} : { isSensitive: false })
       },
-      include: { avatarAsset: true, memory: true }
+      include: { avatarAsset: true, memory: true, runtimeState: true }
     });
     if (!item)
       throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
@@ -341,7 +407,7 @@ export class CompanionsService {
         ...(showSensitiveContent ? {} : { isSensitive: false }),
         OR: [{ userId: currentUser.id }, { userId: owner.id, isShared: true }]
       },
-      include: { avatarAsset: true, memory: true }
+      include: { avatarAsset: true, memory: true, runtimeState: true }
     });
     if (!item)
       throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
@@ -359,7 +425,13 @@ export class CompanionsService {
         deletedAt: null,
         ...(showSensitiveContent ? {} : { isSensitive: false })
       },
-      include: { avatarAsset: true, memory: true, promptPreset: true, persona: true }
+      include: {
+        avatarAsset: true,
+        memory: true,
+        runtimeState: true,
+        promptPreset: true,
+        persona: true
+      }
     });
     if (!item)
       throw new NotFoundException({
@@ -506,7 +578,9 @@ export class CompanionsService {
   }
 
   private toResponse(
-    item: Prisma.CompanionGetPayload<{ include: { avatarAsset: true; memory: true } }>,
+    item: Prisma.CompanionGetPayload<{
+      include: { avatarAsset: true; memory: true; runtimeState: true };
+    }>,
     currentUser: CurrentUser,
     ownerName: string | null = null
   ): CompanionResponse {
@@ -516,6 +590,10 @@ export class CompanionsService {
       userId: item.userId,
       name: item.name,
       identityPrompt: item.identityPrompt,
+      coreIdentity: item.coreIdentity,
+      personality: item.personality,
+      speechStyle: item.speechStyle,
+      relationshipDefaults: item.relationshipDefaults,
       avatarAssetId: item.avatarAssetId,
       avatarUrl: item.avatarAsset?.publicPath ?? null,
       modelFallbackGroupId: item.modelFallbackGroupId,
@@ -523,6 +601,15 @@ export class CompanionsService {
       personaId: item.personaId,
       memoryEnabled: item.memory?.isEnabled ?? false,
       memoryPaused: item.memory?.isPaused ?? false,
+      runtimeState: item.runtimeState
+        ? {
+            currentMood: item.runtimeState.currentMood,
+            currentSituation: item.runtimeState.currentSituation,
+            version: item.runtimeState.version,
+            createdAt: item.runtimeState.createdAt.toISOString(),
+            updatedAt: item.runtimeState.updatedAt.toISOString()
+          }
+        : null,
       isSensitive: item.isSensitive,
       isShared: item.isShared,
       isOwner,

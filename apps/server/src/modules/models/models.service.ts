@@ -334,6 +334,11 @@ export class ModelsService {
           model: dto.modelName,
           defaultParamsJson: this.stringifyParams(this.pickProviderModelParams(dto)),
           contextLength: dto.contextLength ?? null,
+          supportsDeveloperRole: dto.supportsDeveloperRole ?? false,
+          systemPlacement: dto.systemPlacement ?? 'initial_only',
+          supportsMultipleSystemMessages: dto.supportsMultipleSystemMessages ?? false,
+          requiresAlternatingRoles: dto.requiresAlternatingRoles ?? true,
+          tokenizerType: dto.tokenizerType ?? 'estimated_chars_v1',
           notes: dto.notes ?? null,
           sortOrder: dto.sortOrder ?? 0,
           isEnabled: dto.isEnabled ?? true
@@ -371,6 +376,17 @@ export class ModelsService {
             ? { defaultParamsJson: this.stringifyParams(params) }
             : {}),
           ...(dto.contextLength === undefined ? {} : { contextLength: dto.contextLength }),
+          ...(dto.supportsDeveloperRole === undefined
+            ? {}
+            : { supportsDeveloperRole: dto.supportsDeveloperRole }),
+          ...(dto.systemPlacement === undefined ? {} : { systemPlacement: dto.systemPlacement }),
+          ...(dto.supportsMultipleSystemMessages === undefined
+            ? {}
+            : { supportsMultipleSystemMessages: dto.supportsMultipleSystemMessages }),
+          ...(dto.requiresAlternatingRoles === undefined
+            ? {}
+            : { requiresAlternatingRoles: dto.requiresAlternatingRoles }),
+          ...(dto.tokenizerType === undefined ? {} : { tokenizerType: dto.tokenizerType }),
           ...(dto.notes === undefined ? {} : { notes: dto.notes }),
           ...(dto.sortOrder === undefined ? {} : { sortOrder: dto.sortOrder }),
           ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled })
@@ -811,6 +827,11 @@ export class ModelsService {
       frequencyPenalty: params.frequencyPenalty ?? null,
       presencePenalty: params.presencePenalty ?? null,
       contextLength: model.contextLength,
+      supportsDeveloperRole: model.supportsDeveloperRole,
+      systemPlacement: model.systemPlacement as 'initial_only' | 'midstream_allowed',
+      supportsMultipleSystemMessages: model.supportsMultipleSystemMessages,
+      requiresAlternatingRoles: model.requiresAlternatingRoles,
+      tokenizerType: model.tokenizerType,
       notes: model.notes,
       sortOrder: model.sortOrder,
       isEnabled: model.isEnabled,
@@ -863,6 +884,14 @@ export class ModelsService {
       modelName: model.model,
       apiKey: this.decryptApiKey(model.provider.apiKeyCiphertext),
       contextLength: model.contextLength,
+      capabilities: {
+        supportsDeveloperRole: model.supportsDeveloperRole,
+        systemPlacement: model.systemPlacement as 'initial_only' | 'midstream_allowed',
+        supportsMultipleSystemMessages: model.supportsMultipleSystemMessages,
+        requiresAlternatingRoles: model.requiresAlternatingRoles,
+        contextWindowTokens: model.contextLength ?? 8192,
+        tokenizerType: model.tokenizerType
+      },
       params
     };
   }

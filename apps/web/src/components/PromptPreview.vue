@@ -41,7 +41,7 @@
         </div>
         <div>
           <span>分段</span>
-          <strong>{{ preview.sections.length }}</strong>
+          <strong>{{ preview.compiledSections.length }}</strong>
         </div>
         <div>
           <span>历史裁剪</span>
@@ -49,114 +49,149 @@
         </div>
         <div>
           <span>世界书命中</span>
-          <strong>{{ worldBookDebug.matchedCount }}</strong>
+          <strong>{{ includedWorldBookSections.length }}</strong>
         </div>
         <div>
           <span>Token 估算</span>
           <strong>{{ preview.tokenEstimate ?? 0 }}</strong>
         </div>
+        <div>
+          <span>编译器</span>
+          <strong>{{ preview.compilerVersion }}</strong>
+        </div>
       </section>
+      <n-alert type="info" :bordered="false">
+        Dry-run：未写入消息、Attempt 或 Trace。快照 {{ preview.promptSnapshotHash.slice(0, 12) }}；
+        编译纳入 {{ includedCompiledCount }} / {{ preview.compiledSections.length }} 个 section。
+      </n-alert>
+      <n-alert
+        v-for="warning in preview.debug.warnings"
+        :key="`${warning.code}-${JSON.stringify(warning.details ?? {})}`"
+        type="warning"
+        :bordered="false"
+      >
+        {{ warning.message }}
+        <template v-if="warning.details?.fields">
+          （{{ (warning.details.fields as string[]).join('、') }}）
+        </template>
+      </n-alert>
 
       <section class="prompt-preview-worldbook" aria-label="世界书命中调试">
         <header>
           <div>
             <h3>世界书命中</h3>
-            <p>展示 Prompt Builder 已插入的世界书条目和预算使用情况。</p>
+            <p>展示 V2 运行时匹配、激活来源和 Provider 编译后的真实纳入结果。</p>
           </div>
-          <n-tag size="small" :bordered="false">
-            {{ worldBookDebug.usedTokenEstimate }} / {{ worldBookDebug.tokenBudget }} tokens
-          </n-tag>
+          <n-tag size="small" :bordered="false"> {{ worldBookTokenEstimate }} tokens </n-tag>
         </header>
 
         <dl class="prompt-preview-worldbook__stats">
           <div>
-            <dt>扫描深度</dt>
-            <dd>{{ worldBookDebug.scanDepth }}</dd>
+            <dt>运行决策</dt>
+            <dd>{{ worldBookDecisions.length }}</dd>
           </div>
           <div>
-            <dt>扫描消息</dt>
-            <dd>{{ worldBookDebug.scannedMessageIds.length }}</dd>
+            <dt>编译条目</dt>
+            <dd>{{ worldBookSections.length }}</dd>
           </div>
           <div>
             <dt>命中条目</dt>
-            <dd>{{ worldBookDebug.matchedCount }}</dd>
+            <dd>{{ includedWorldBookSections.length }}</dd>
           </div>
           <div>
-            <dt>跳过条目</dt>
-            <dd>{{ worldBookDebug.skippedCount }}</dd>
+            <dt>排除条目</dt>
+            <dd>{{ excludedWorldBookSections.length }}</dd>
           </div>
         </dl>
 
-        <div v-if="matchedWorldBookEntries.length > 0" class="prompt-preview-worldbook__list">
+        <div v-if="worldBookSections.length > 0" class="prompt-preview-worldbook__list">
           <article
-            v-for="entry in matchedWorldBookEntries"
-            :key="entry.entryId"
+            v-for="item in worldBookSections"
+            :key="item.section.id"
             class="prompt-preview-worldbook-entry"
           >
             <header>
               <div>
-                <n-tag size="small" type="success" :bordered="false">
-                  {{ insertionOrderLabel(entry.insertionOrder) }}
+                <n-tag size="small" :type="item.included ? 'success' : 'warning'" :bordered="false">
+                  {{ item.included ? '已纳入' : '已排除' }}
                 </n-tag>
-                <h4>{{ entry.title }}</h4>
+                <h4>{{ item.section.sourceId ?? item.section.id }}</h4>
               </div>
-              <span>#{{ sectionOrderByEntryId.get(entry.entryId) ?? '-' }}</span>
+              <span>{{ item.section.contentType ?? 'lore' }}</span>
             </header>
             <dl>
               <div>
-                <dt>世界书</dt>
-                <dd>{{ entry.worldBookName }}</dd>
+                <dt>激活来源</dt>
+                <dd>
+                  {{ decisionByEntryId.get(item.section.sourceId ?? '')?.activationSource ?? '-' }}
+                </dd>
               </div>
               <div>
-                <dt>Priority</dt>
-                <dd>{{ entry.priority }}</dd>
+                <dt>位置</dt>
+                <dd>{{ insertionOrderLabel(item.section.placement) }}</dd>
               </div>
               <div>
-                <dt>命中关键词</dt>
-                <dd>{{ formatKeywords(entry.matchedKeywords) }}</dd>
+                <dt>信任级别</dt>
+                <dd>{{ item.section.trustLevel ?? '-' }}</dd>
               </div>
               <div>
                 <dt>预算</dt>
-                <dd>{{ entry.tokenEstimate ?? 0 }} / {{ entry.tokenBudget ?? '全局' }}</dd>
+                <dd>{{ item.tokenEstimate }}</dd>
               </div>
             </dl>
-            <p>{{ contentSummary(entry.content) }}</p>
+            <p v-if="!item.included">
+              排除原因：{{
+                item.excludedReason ??
+                decisionByEntryId.get(item.section.sourceId ?? '')?.reason ??
+                '-'
+              }}
+            </p>
+            <p>{{ contentSummary(item.section.content) }}</p>
           </article>
         </div>
 
         <div v-else class="prompt-preview-worldbook__empty">
-          当前输入和扫描范围内的历史消息没有命中世界书条目，Prompt 中不会插入 worldbook 分段。
+          当前输入和运行状态没有产生可编译的 V2 世界书条目。
         </div>
       </section>
 
       <section v-if="viewMode === 'sections'" class="prompt-preview__grid">
         <article
-          v-for="section in preview.sections"
-          :key="section.id"
+          v-for="item in preview.compiledSections"
+          :key="item.section.id"
           class="prompt-preview-section"
         >
           <header>
             <div>
-              <n-tag size="small" :bordered="false">{{ section.kind }}</n-tag>
-              <h3>{{ section.title }}</h3>
+              <n-tag size="small" :type="item.included ? 'success' : 'warning'" :bordered="false">
+                {{ item.section.kind }}
+              </n-tag>
+              <h3>{{ item.section.sourceType }}</h3>
             </div>
-            <n-button size="tiny" secondary @click="copyText(section.content)">复制</n-button>
+            <n-button size="tiny" secondary @click="copyText(item.section.content)">复制</n-button>
           </header>
           <dl>
             <div>
               <dt>来源</dt>
-              <dd>{{ section.source }}</dd>
+              <dd>{{ item.section.sourceId ?? '-' }}</dd>
             </div>
             <div>
-              <dt>顺序</dt>
-              <dd>{{ section.order }}</dd>
+              <dt>位置</dt>
+              <dd>{{ item.section.placement }}</dd>
             </div>
             <div>
               <dt>估算</dt>
-              <dd>{{ section.tokenEstimate ?? 0 }}</dd>
+              <dd>{{ item.tokenEstimate }}</dd>
+            </div>
+            <div>
+              <dt>Provider Role</dt>
+              <dd>{{ item.finalProviderRole ?? '-' }}</dd>
             </div>
           </dl>
-          <pre>{{ section.content }}</pre>
+          <n-alert v-if="!item.included" type="warning" :bordered="false">
+            {{ item.excludedReason ?? '未纳入 Provider Prompt' }}
+          </n-alert>
+          <pre>{{ item.section.content }}</pre>
         </article>
       </section>
 
@@ -241,40 +276,36 @@ const viewOptions: Array<{ label: string; value: ViewMode }> = [
   { label: 'JSON', value: 'json' }
 ];
 const previewJson = computed(() => JSON.stringify(props.preview, null, 2));
-const worldBookDebug = computed(() => {
-  return (
-    props.preview?.worldBookDebug ?? {
-      scanDepth: 0,
-      tokenBudget: 0,
-      usedTokenEstimate: 0,
-      scannedMessageIds: [],
-      matchedCount: 0,
-      skippedCount: 0,
-      matchedEntries: [],
-      skippedEntries: [],
-      insertedSections: []
-    }
-  );
-});
-const matchedWorldBookEntries = computed(() => worldBookDebug.value.matchedEntries);
-const sectionOrderByEntryId = computed(() => {
-  return new Map(
-    worldBookDebug.value.insertedSections
-      .filter((section) => section.entryId)
-      .map((section) => [section.entryId as string, section.order])
-  );
-});
-
-function formatKeywords(keywords: string[]) {
-  return keywords.length > 0 ? keywords.join('、') : '-';
-}
+const includedCompiledCount = computed(
+  () => props.preview?.compiledSections.filter((item) => item.included).length ?? 0
+);
+const worldBookSections = computed(() =>
+  (props.preview?.compiledSections ?? []).filter((item) => item.section.kind === 'world_book')
+);
+const includedWorldBookSections = computed(() =>
+  worldBookSections.value.filter((item) => item.included)
+);
+const excludedWorldBookSections = computed(() =>
+  worldBookSections.value.filter((item) => !item.included)
+);
+const worldBookTokenEstimate = computed(() =>
+  includedWorldBookSections.value.reduce((sum, item) => sum + item.tokenEstimate, 0)
+);
+const worldBookDecisions = computed(() => props.preview?.debug.worldBookDecisions ?? []);
+const decisionByEntryId = computed(
+  () => new Map(worldBookDecisions.value.map((decision) => [decision.entryId, decision]))
+);
 
 function insertionOrderLabel(value: string) {
   const labels: Record<string, string> = {
     before_history: '历史前',
     after_history: '历史后',
     before_current_user_input: '本轮前',
-    after_current_user_input: '本轮后'
+    after_current_user_input: '本轮后',
+    before_current_user: '本轮前',
+    instruction: '指令区',
+    history: '历史区',
+    current_user: '当前输入'
   };
 
   return labels[value] ?? value;

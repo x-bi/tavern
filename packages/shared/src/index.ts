@@ -40,6 +40,12 @@ export type {
   ChatStreamErrorEvent,
   ChatStreamPayload
 } from './chat';
+export {
+  createGenerationRequestId,
+  createProvisionalAssistant,
+  reduceProvisionalAssistant
+} from './chat-provisional';
+export type { ProvisionalAssistantEvent, ProvisionalAssistantState } from './chat-provisional';
 export { CONTENT_PACK_FORMAT_VERSION } from './content-pack';
 export type {
   ContentPackCharacter,
@@ -76,7 +82,6 @@ export type {
   CompanionMessageStatus,
   CompanionPayload,
   CompanionPromptPreviewResponse,
-  CompanionPromptSectionKind,
   CompanionResponse
 } from './companion';
 export type {
@@ -91,6 +96,19 @@ export type {
   ConversationStatus,
   ConversationUpdatePayload
 } from './conversation';
+export type {
+  CompiledPrompt,
+  CompiledPromptSection,
+  ContentTrustLevel,
+  ExecutionMode,
+  GenerationPurpose,
+  PromptCapabilities,
+  PromptImportance,
+  PromptPlacementV2,
+  PromptSectionKindV2,
+  PromptSectionV2,
+  WorldBookContentType
+} from './context-engine';
 export type {
   ModelConnectionTestResponse,
   ModelFallbackCandidatePayload,
@@ -141,6 +159,17 @@ export type {
   MessageStatus,
   MessageUpdatePayload
 } from './message';
+export { resolveTimelineTurns } from './timeline';
+export type {
+  ResolvedTimelineMessage,
+  ResolvedTurn,
+  TimelineMessage,
+  TimelinePolicy,
+  TimelineResolver,
+  TimelineTarget,
+  TimelineTurn,
+  TimelineTurnStatus
+} from './timeline';
 export type { PageQuery, PageResult } from './pagination';
 export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
 export type { ApplicationSettings, ApplicationSettingsPayload } from './settings';
@@ -202,6 +231,8 @@ export type {
   WorldBookEntryUpdatePayload,
   WorldBookListResponse,
   WorldBookPayload,
+  WorldBookRuntimeEntry,
+  WorldBookRuntimeResponse,
   WorldBookResponse,
   WorldBookUpdatePayload
 } from './world-book';

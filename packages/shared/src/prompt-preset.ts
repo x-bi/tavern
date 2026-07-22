@@ -14,6 +14,14 @@ export type PromptPresetResponse = {
   systemPrompt: string;
   /** 输出约束规则文本（注入到 output_rules 段）。 */
   outputRules: string;
+  instructions: string[];
+  outputRuleOperations: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+  generationPurposes: string[];
   /** 采样温度；未设置时为 null，表示沿用模型默认。 */
   temperature: number | null;
   /** top_p；未设置时为 null。 */
@@ -53,6 +61,9 @@ export type PromptPresetPayload = {
   systemPrompt?: string;
   /** 输出约束规则文本。 */
   outputRules?: string;
+  instructions?: string[];
+  outputRuleOperations?: PromptPresetResponse['outputRuleOperations'];
+  generationPurposes?: string[];
   /** 采样温度。 */
   temperature?: number | null;
   /** top_p。 */

@@ -108,6 +108,7 @@
             <n-tag type="info" :bordered="false">只读</n-tag>
           </n-space>
           <n-space v-else justify="end">
+            <n-button size="small" secondary @click="exportPreset(preset)">导出</n-button>
             <n-button
               v-if="!preset.isDefault"
               size="small"
@@ -165,6 +166,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 
 import {
+  exportPromptPresetJson,
   fetchPromptPresetImportTemplate,
   importPromptPresetJson,
   type PromptPreset,
@@ -260,6 +262,15 @@ function openEdit(preset: PromptPreset) {
   editingPreset.value = preset;
   presetStore.saveError = null;
   drawerVisible.value = true;
+}
+
+async function exportPreset(preset: PromptPreset) {
+  try {
+    const result = await exportPromptPresetJson(preset.id);
+    downloadJson(result.fileName, result.card);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '参数预设导出失败。');
+  }
 }
 
 function closeDrawer() {

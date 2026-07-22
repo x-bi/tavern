@@ -51,6 +51,9 @@ type NormalizedPromptPresetImport = {
   description: string;
   systemPrompt: string;
   outputRules: string;
+  instructions: string[];
+  outputRuleOperations: PromptPresetResponse['outputRuleOperations'];
+  generationPurposes: string[];
   parameters: PromptPresetParams;
   metadata: Record<string, unknown> | null;
   isDefault: boolean;
@@ -156,6 +159,11 @@ export class PresetsService {
       description: dto.description ?? '',
       systemPrompt: dto.systemPrompt ?? '',
       outputRules: dto.outputRules ?? '',
+      instructionsJson: JSON.stringify(dto.instructions ?? []),
+      outputRulesJson: JSON.stringify(dto.outputRuleOperations ?? []),
+      generationPurposesJson: JSON.stringify(
+        dto.generationPurposes ?? ['chat_reply', 'regenerate', 'continue']
+      ),
       // 参数提取后序列化成 JSON 存储
       parametersJson: this.stringifyParams(this.pickParams(dto)),
       isDefault: dto.isDefault ?? false,
@@ -241,6 +249,9 @@ export class PresetsService {
         description: normalized.description,
         systemPrompt: normalized.systemPrompt,
         outputRules: normalized.outputRules,
+        instructionsJson: JSON.stringify(normalized.instructions),
+        outputRulesJson: JSON.stringify(normalized.outputRuleOperations),
+        generationPurposesJson: JSON.stringify(normalized.generationPurposes),
         parametersJson: this.stringifyParams(normalized.parameters),
         metadataJson: this.stringifyNullable(normalized.metadata),
         isDefault: normalized.isDefault,
@@ -285,6 +296,27 @@ export class PresetsService {
     return this.toResponse(preset, currentUser, owner?.displayName ?? null);
   }
 
+  async exportJson(currentUser: CurrentUser, id: string) {
+    const preset = await this.findOwnedActivePromptPreset(currentUser, id);
+    return {
+      fileName: `${safeExportFileName(preset.name)}-prompt-preset.json`,
+      card: {
+        formatVersion: 'tavern-lite.prompt-preset.v1',
+        name: preset.name,
+        description: preset.description,
+        systemPrompt: preset.systemPrompt,
+        outputRules: preset.outputRules,
+        instructions: this.parseStringArray(preset.instructionsJson),
+        outputRuleOperations: this.parseOutputRuleOperations(preset.outputRulesJson),
+        generationPurposes: this.parseStringArray(preset.generationPurposesJson),
+        parameters: this.parseParams(preset.parametersJson),
+        metadata: this.parseRecord(preset.metadataJson),
+        isDefault: preset.isDefault,
+        exportedAt: new Date().toISOString()
+      }
+    };
+  }
+
   async fork(currentUser: CurrentUser, id: string): Promise<PromptPresetResponse> {
     const source = await this.findLibraryPromptPreset(currentUser, id);
     const names = await this.loadExistingNames(currentUser);
@@ -295,6 +327,9 @@ export class PresetsService {
         description: source.description,
         systemPrompt: source.systemPrompt,
         outputRules: source.outputRules,
+        instructionsJson: source.instructionsJson,
+        outputRulesJson: source.outputRulesJson,
+        generationPurposesJson: source.generationPurposesJson,
         parametersJson: source.parametersJson,
         metadataJson: source.metadataJson,
         isSensitive: source.isSensitive,
@@ -315,6 +350,11 @@ export class PresetsService {
         description: '适用于自然、稳定的日常角色对话。',
         systemPrompt: '',
         outputRules: '使用自然简洁的中文表达，并根据当前场景控制回复长度。',
+        instructions: ['遵循当前角色身份与最新对话事实。'],
+        outputRuleOperations: [
+          { key: 'style', content: '使用自然口语。', operation: 'add', sortOrder: 0 }
+        ],
+        generationPurposes: ['chat_reply', 'regenerate', 'continue'],
         parameters: {
           temperature: 0.8,
           topP: 0.9,
@@ -352,6 +392,15 @@ export class PresetsService {
       ...(dto.description === undefined ? {} : { description: dto.description }),
       ...(dto.systemPrompt === undefined ? {} : { systemPrompt: dto.systemPrompt }),
       ...(dto.outputRules === undefined ? {} : { outputRules: dto.outputRules }),
+      ...(dto.instructions === undefined
+        ? {}
+        : { instructionsJson: JSON.stringify(dto.instructions) }),
+      ...(dto.outputRuleOperations === undefined
+        ? {}
+        : { outputRulesJson: JSON.stringify(dto.outputRuleOperations) }),
+      ...(dto.generationPurposes === undefined
+        ? {}
+        : { generationPurposesJson: JSON.stringify(dto.generationPurposes) }),
       ...(this.hasParamUpdate(dto) ? { parametersJson: this.stringifyParams(params) } : {}),
       ...(dto.isSensitive === undefined ? {} : { isSensitive: dto.isSensitive }),
       ...(dto.isShared === undefined ? {} : { isShared: dto.isShared }),
@@ -451,6 +500,17 @@ export class PresetsService {
         'outputRules',
         warnings
       ),
+      instructions: Array.isArray(record.instructions)
+        ? record.instructions.filter((item): item is string => typeof item === 'string')
+        : [],
+      outputRuleOperations: this.parseOutputRuleOperations(
+        JSON.stringify(
+          Array.isArray(record.outputRuleOperations) ? record.outputRuleOperations : []
+        )
+      ),
+      generationPurposes: Array.isArray(record.generationPurposes)
+        ? record.generationPurposes.filter((item): item is string => typeof item === 'string')
+        : ['chat_reply', 'regenerate', 'continue'],
       parameters: this.normalizeImportParams(optionalRecord(record, 'parameters', 'parameters')),
       metadata: optionalRecord(record, 'metadata', 'metadata'),
       isDefault: optionalBoolean(record, 'isDefault', false, 'isDefault'),
@@ -576,6 +636,9 @@ export class PresetsService {
       description: preset.description,
       systemPrompt: preset.systemPrompt,
       outputRules: preset.outputRules,
+      instructions: this.parseStringArray(preset.instructionsJson),
+      outputRuleOperations: this.parseOutputRuleOperations(preset.outputRulesJson),
+      generationPurposes: this.parseStringArray(preset.generationPurposesJson),
       temperature: params.temperature ?? null,
       topP: params.topP ?? null,
       maxTokens: params.maxTokens ?? null,
@@ -742,6 +805,18 @@ export class PresetsService {
     }
   }
 
+  private parseRecord(value: string | null): Record<string, unknown> | null {
+    if (!value) return null;
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * 若是 Prisma 唯一约束冲突（P2002），转成 409 预设名重复；否则什么都不做。
    * @param error 捕获的异常。
@@ -792,4 +867,54 @@ export class PresetsService {
       }
     });
   }
+
+  private parseStringArray(value: string): string[] {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return Array.isArray(parsed)
+        ? parsed.filter((item): item is string => typeof item === 'string')
+        : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private parseOutputRuleOperations(value: string): PromptPresetResponse['outputRuleOperations'] {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (!Array.isArray(parsed)) return [];
+      return parsed.flatMap((item) => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+        const rule = item as Record<string, unknown>;
+        if (
+          typeof rule.key !== 'string' ||
+          typeof rule.content !== 'string' ||
+          !['add', 'replace_optional', 'disable_optional'].includes(String(rule.operation))
+        )
+          return [];
+        return [
+          {
+            key: rule.key,
+            content: rule.content,
+            operation: rule.operation as 'add' | 'replace_optional' | 'disable_optional',
+            sortOrder: typeof rule.sortOrder === 'number' ? rule.sortOrder : 0
+          }
+        ];
+      });
+    } catch {
+      return [];
+    }
+  }
+}
+
+function safeExportFileName(value: string): string {
+  return (
+    Array.from(value)
+      .filter((character) => character.charCodeAt(0) >= 32)
+      .join('')
+      .trim()
+      .replace(/[<>:"/\\|?*]+/g, '-')
+      .replace(/\s+/g, '-')
+      .slice(0, 80) || 'prompt-preset'
+  );
 }

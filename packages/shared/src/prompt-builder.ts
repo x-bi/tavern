@@ -1,4 +1,5 @@
 import type { MessageRole } from './message';
+import type { CompiledPromptSection } from './context-engine';
 
 /** Prompt 构建模式：真实聊天或预览。 */
 export type PromptBuildMode = 'chat' | 'preview';
@@ -160,10 +161,16 @@ export type PromptCharacterContext = {
   id: string;
   /** 角色名。 */
   name: string;
+  coreIdentity: string;
   /** 角色描述。 */
   description: string;
   /** 性格。 */
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   /** 场景设定。 */
   scenario: string;
   /** 首条消息（开场白）。 */
@@ -182,6 +189,9 @@ export type PromptPersonaContext = {
   name: string;
   /** Persona 正文。 */
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   /** 附加元数据。 */
   metadata?: Record<string, unknown> | null;
 };
@@ -198,6 +208,16 @@ export type PromptPresetContext = {
   systemPrompt: string;
   /** 输出约束规则文本。 */
   outputRules: string;
+  instructions: string[];
+  outputRuleOperations: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+  generationPurposes: Array<
+    'chat_reply' | 'regenerate' | 'continue' | 'user_suggestions' | 'memory_summary'
+  >;
   /** 生成参数；未设置时为 null。 */
   parameters?: PromptModelParameters | null;
   /** 附加元数据。 */
@@ -242,6 +262,7 @@ export type PromptModelGatewayContext = {
 export type WorldBookEntryContext = {
   /** 条目 ID。 */
   id: string;
+  activeRevisionId?: string | null;
   /** 所属世界书 ID。 */
   worldBookId: string;
   /** 条目标题。 */
@@ -254,8 +275,10 @@ export type WorldBookEntryContext = {
   secondaryKeywords?: string[];
   /** 是否启用。 */
   isEnabled: boolean;
-  /** 优先级。 */
-  priority: number;
+  /** 世界书 V2 预算优先级。 */
+  budgetPriority: number;
+  /** 同一插入位置内的稳定顺序。 */
+  sortOrder: number;
   /** 注入位置。 */
   position: WorldBookEntryPosition;
   /** 条目 token 预算上限；未设置时为 null。 */
@@ -274,6 +297,12 @@ export type WorldBookContext = {
   userId: string;
   /** 关联角色 ID 列表；为空时为全局世界书。 */
   characterIds?: string[];
+  /** 关联 Persona ID 列表。 */
+  personaIds?: string[];
+  /** 关联会话 ID 列表。 */
+  conversationIds?: string[];
+  /** 关联 AI 角色 ID 列表。 */
+  companionIds?: string[];
   /** 世界书名称。 */
   name: string;
   /** 世界书描述。 */
@@ -300,6 +329,7 @@ export type WorldBookMatchedEntry = {
   worldBookName: string;
   /** 条目 ID。 */
   entryId: string;
+  revisionId?: string | null;
   /** 条目标题。 */
   title: string;
   /** 条目正文。 */
@@ -312,8 +342,10 @@ export type WorldBookMatchedEntry = {
   secondaryKeywords?: string[];
   /** 实际命中的次关键词子集。 */
   matchedSecondaryKeywords?: string[];
-  /** 优先级。 */
-  priority: number;
+  /** 世界书 V2 预算优先级。 */
+  budgetPriority: number;
+  /** 同一插入位置内的稳定顺序。 */
+  sortOrder: number;
   /** 注入位置。 */
   position: WorldBookEntryPosition;
   /** 实际插入顺序（可能与 position 不同，受排序策略影响）。 */
@@ -406,6 +438,15 @@ export type BuildPromptDebugInfo = {
   };
   /** 实际解析出的 Preset 参数；不存在 Preset 时为 null。 */
   presetParameters: PromptModelParameters | null;
+  /** V2 世界书逐条运行决策；旧响应可不提供。 */
+  worldBookDecisions?: Array<{
+    entryId: string;
+    revisionId: string;
+    included: boolean;
+    activationSource: string | null;
+    reason: string | null;
+    sourceMessageId: string | null;
+  }>;
 };
 
 /** Builder 的构建选项。 */
@@ -551,6 +592,14 @@ export type PromptPreviewResponse = {
   conversationId: string;
   /** 生成时间（ISO 字符串）。 */
   generatedAt: string;
+  /** 预览只执行编译，不创建消息、请求、Attempt 或 Trace。 */
+  dryRun: true;
+  /** Provider Prompt Compiler 版本。 */
+  compilerVersion: string;
+  /** 对最终消息、能力快照和 section 选择结果的规范化哈希。 */
+  promptSnapshotHash: string;
+  /** Provider 编译后的 section 决策与血缘。 */
+  compiledSections: CompiledPromptSection[];
   /** 组成段落列表。 */
   sections: PromptSection[];
   /** 内部逻辑消息列表。 */

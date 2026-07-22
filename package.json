@@ -27,6 +27,10 @@
     "verify:prompt-builder": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-prompt-builder.ts",
     "verify:field-alignment": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.field-alignment.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-field-alignment.ts",
     "verify:companion-memory": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.companion-memory.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-companion-memory.ts",
+    "test": "vitest run",
+    "test:unit": "vitest run --project server-unit --project web --project share-web",
+    "test:integration": "vitest run --project server-integration",
+    "test:watch": "vitest",
     "check": "pnpm lint && pnpm typecheck && pnpm format:check",
     "workspace:list": "pnpm -r list --depth -1"
   },
@@ -35,12 +39,19 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@nestjs/testing": "^10.4.22",
     "@prisma/client": "^6.19.3",
+    "@types/jsdom": "^28.0.3",
+    "@types/supertest": "^7.2.1",
+    "@vue/test-utils": "^2.4.11",
     "eslint": "^9.0.0",
     "globals": "^15.0.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.0.0",
     "prisma": "^6.19.3",
+    "supertest": "^7.2.2",
     "typescript": "^5.5.0",
-    "typescript-eslint": "^8.0.0"
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^4.1.10"
   }
 }

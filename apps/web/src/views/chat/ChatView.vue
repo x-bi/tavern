@@ -144,13 +144,18 @@
             </n-button>
           </n-space>
         </n-form>
+        <WorldBookRuntimePanel
+          v-if="conversationId"
+          target-type="conversation"
+          :target-id="conversationId"
+        />
       </n-drawer-content>
     </n-drawer>
   </main>
 </template>
 
 <script setup lang="ts">
-import type { ChatStreamPayload } from '@tavern/shared';
+import { createGenerationRequestId, type ChatStreamPayload } from '@tavern/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 import { useRoute, useRouter } from 'vue-router';
@@ -159,6 +164,7 @@ import { regenerateMessage, type Message } from '../../api/messages';
 import ChatRoom from '../../components/ChatRoom.vue';
 import EmptyState from '../../components/EmptyState.vue';
 import ShareManager from '../../components/ShareManager.vue';
+import WorldBookRuntimePanel from '../../components/WorldBookRuntimePanel.vue';
 import { useChatStream } from '../../composables/useChatStream';
 import { useTargetEvents } from '../../composables/useTargetEvents';
 import { useChatStore } from '../../stores/chat';
@@ -357,6 +363,7 @@ async function handleSend() {
   chatStore.beginStreaming(activeConversationId, userMessage);
 
   await runChatStream(activeConversationId, {
+    requestId: createGenerationRequestId(),
     conversationId: activeConversationId,
     userMessage,
     modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
@@ -388,8 +395,10 @@ async function handleRegenerate(target: Message) {
 
     chatStore.beginRegenerateStreaming(activeConversationId, target);
     await runChatStream(activeConversationId, {
+      requestId: createGenerationRequestId(),
       conversationId: activeConversationId,
       regenerateMessageId: regenerate.regenerateMessageId,
+      turnId: regenerate.turnId,
       modelFallbackGroupId: currentConversation.value?.modelFallbackGroupId ?? undefined,
       presetId: currentConversation.value?.promptPresetId ?? undefined
     });

@@ -8,10 +8,16 @@ import type { CharacterImportExampleMessage } from './character-import';
 export type CharacterExportCardData = {
   /** 角色名。 */
   name: string;
+  coreIdentity: string;
   /** 角色描述。 */
   description: string;
   /** 性格。 */
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   /** 场景设定。 */
   scenario: string;
   /** 角色首条消息（对话开场白）。 */

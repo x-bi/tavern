@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { CompanionPromptBuilderModule } from '../../services/companion-prompt-builder/companion-prompt-builder.module';
 import { ModelGatewayModule } from '../../services/model-gateway';
 import { AuthModule } from '../auth/auth.module';
 import { CompanionMemoryModule } from '../companion-memory/companion-memory.module';
 import { ModelsModule } from '../models/models.module';
 import { SettingsModule } from '../settings/settings.module';
+import { WorldBooksModule } from '../world-books/world-books.module';
 import { CompanionChatController } from './companion-chat.controller';
 import { CompanionChatService } from './companion-chat.service';
 
@@ -13,9 +13,9 @@ import { CompanionChatService } from './companion-chat.service';
     AuthModule,
     ModelsModule,
     ModelGatewayModule,
-    CompanionPromptBuilderModule,
     CompanionMemoryModule,
-    SettingsModule
+    SettingsModule,
+    WorldBooksModule
   ],
   controllers: [CompanionChatController],
   providers: [CompanionChatService],

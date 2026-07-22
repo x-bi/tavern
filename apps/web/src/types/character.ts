@@ -33,12 +33,18 @@ export type CharacterEditorForm = {
   avatarUrl: string;
   /** 角色名。 */
   name: string;
+  coreIdentity: string;
   /** 标签文本（逗号分隔，提交时拆成数组）。 */
   tagsText: string;
   /** 角色描述。 */
   description: string;
   /** 性格。 */
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   /** 场景设定。 */
   scenario: string;
   /** 首条消息。 */
@@ -63,10 +69,16 @@ export type CharacterMutationPayload = {
   avatarAssetId?: string | null;
   /** 角色名。 */
   name: string;
+  coreIdentity: string;
   /** 角色描述。 */
   description: string;
   /** 性格。 */
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   /** 场景设定。 */
   scenario: string;
   /** 首条消息。 */

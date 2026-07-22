@@ -3,6 +3,10 @@ import type { PromptModelParameters, ProviderChatMessage } from './prompt-builde
 export type CompanionPayload = {
   name: string;
   identityPrompt?: string;
+  coreIdentity?: string;
+  personality?: string;
+  speechStyle?: string;
+  relationshipDefaults?: string;
   avatarAssetId?: string | null;
   modelFallbackGroupId?: string | null;
   promptPresetId?: string | null;
@@ -16,6 +20,10 @@ export type CompanionResponse = {
   userId: string;
   name: string;
   identityPrompt: string;
+  coreIdentity: string;
+  personality: string;
+  speechStyle: string;
+  relationshipDefaults: string;
   avatarAssetId: string | null;
   avatarUrl: string | null;
   modelFallbackGroupId: string | null;
@@ -23,6 +31,13 @@ export type CompanionResponse = {
   personaId: string | null;
   memoryEnabled: boolean;
   memoryPaused: boolean;
+  runtimeState: {
+    currentMood: string | null;
+    currentSituation: string | null;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
   isSensitive: boolean;
   isShared: boolean;
   isOwner: boolean;
@@ -48,6 +63,7 @@ export type CompanionMessageStatus =
 export type CompanionMessageResponse = {
   id: string;
   companionId: string;
+  turnId: string | null;
   role: 'user' | 'assistant';
   content: string;
   status: CompanionMessageStatus;
@@ -89,7 +105,12 @@ export type CompanionMemoryPayload = {
   relationshipState?: string;
   currentArc?: string;
 };
-export type CompanionChatStreamPayload = { userMessage?: string; regenerateMessageId?: string };
+export type CompanionChatStreamPayload = {
+  requestId: string;
+  userMessage?: string;
+  regenerateMessageId?: string;
+  turnId?: string;
+};
 export type CompanionImportPreview = {
   format: 'tavern-lite.companion.v1' | 'chara_card_v2' | 'generic-json';
   name: string;
@@ -109,6 +130,10 @@ export type CompanionExportResponse = {
     formatVersion: 'tavern-lite.companion.v1';
     name: string;
     identityPrompt: string;
+    coreIdentity: string;
+    personality: string;
+    speechStyle: string;
+    relationshipDefaults: string;
     exportedAt: string;
   };
 };
@@ -120,32 +145,16 @@ export type CompanionImportTemplateResponse = {
     identityPrompt: string;
   };
 };
-export type CompanionPromptSectionKind =
-  | 'platform'
-  | 'companion_identity'
-  | 'persona'
-  | 'prompt_preset'
-  | 'output_rules'
-  | 'companion_style'
-  | 'companion_memory'
-  | 'history'
-  | 'anti_repeat'
-  | 'current_user_input';
 export type CompanionPromptPreviewResponse = {
   messages: ProviderChatMessage[];
+  dryRun: true;
+  compilerVersion: string;
+  promptSnapshotHash: string;
+  compiledSections: import('./context-engine').CompiledPromptSection[];
+  warnings: Array<{ code: string; message: string; details?: Record<string, unknown> }>;
   parameters: PromptModelParameters | null;
-  sections: Array<{
-    kind: CompanionPromptSectionKind;
-    content: string;
-    included: boolean;
-    tokenEstimate: number;
-  }>;
-  includedMemory: boolean;
-  memorySkipReason: string | null;
   memoryVersion: number | null;
-  historyTrimmed: number;
   promptBudget: number;
-  historyBudget: number;
   tokenEstimate: number;
   generatedAt: string;
 };

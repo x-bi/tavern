@@ -61,10 +61,16 @@ export type CharacterImportWarning = {
 export type CharacterImportPreview = {
   /** 角色名。 */
   name: string;
+  coreIdentity: string;
   /** 角色描述。 */
   description: string;
   /** 性格。 */
   personality: string;
+  persistentPremise: string;
+  initialScenario: string;
+  extendedBackground: string;
+  characterRules: string;
+  speechStyle: string;
   /** 场景设定。 */
   scenario: string;
   /** 首条消息。 */

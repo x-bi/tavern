@@ -18,6 +18,16 @@ export default [
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    files: ['scripts/**/*.{js,mjs,cjs}', 'prisma/**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      globals: globals.node
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-redeclare': 'off'
+    }
+  },
+  {
     files: ['**/*.ts'],
     languageOptions: {
       globals: {

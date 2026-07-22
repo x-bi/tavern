@@ -15,6 +15,31 @@
         <n-input v-model:value="form.name" maxlength="120" show-count placeholder="我的 Persona" />
       </n-form-item>
 
+      <n-form-item label="核心身份">
+        <n-input
+          v-model:value="form.coreIdentity"
+          type="textarea"
+          maxlength="8000"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+        />
+      </n-form-item>
+      <n-form-item label="背景">
+        <n-input
+          v-model:value="form.background"
+          type="textarea"
+          maxlength="12000"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+        />
+      </n-form-item>
+      <n-form-item label="互动偏好">
+        <n-input
+          v-model:value="form.interactionPreferences"
+          type="textarea"
+          maxlength="8000"
+          :autosize="{ minRows: 3, maxRows: 8 }"
+        />
+      </n-form-item>
+
       <n-form-item label="Persona 内容" path="content">
         <n-input
           v-model:value="form.content"
@@ -53,6 +78,9 @@ import { getStoredCurrentUser } from '../api/auth';
 type PersonaFormState = {
   name: string;
   content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   isDefault: boolean;
   isSensitive: boolean;
   isShared: boolean;
@@ -120,6 +148,9 @@ async function handleSubmit() {
   emit('submit', {
     name: form.name.trim(),
     content: form.content.trim(),
+    coreIdentity: form.coreIdentity.trim(),
+    background: form.background.trim(),
+    interactionPreferences: form.interactionPreferences.trim(),
     isDefault: form.isDefault,
     isSensitive: form.isSensitive,
     ...(isAdmin ? { isShared: form.isShared } : {})
@@ -130,6 +161,9 @@ function createEmptyForm(): PersonaFormState {
   return {
     name: '',
     content: '',
+    coreIdentity: '',
+    background: '',
+    interactionPreferences: '',
     isDefault: false,
     isSensitive: false,
     isShared: false
@@ -140,6 +174,9 @@ function toForm(persona: Persona): PersonaFormState {
   return {
     name: persona.name,
     content: persona.content,
+    coreIdentity: persona.coreIdentity,
+    background: persona.background,
+    interactionPreferences: persona.interactionPreferences,
     isDefault: persona.isDefault,
     isSensitive: persona.isSensitive,
     isShared: persona.isShared

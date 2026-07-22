@@ -5,9 +5,11 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import type { WorldBook, WorldBookEntry } from '@prisma/client';
+import type { Prisma, WorldBook, WorldBookEntry, WorldBookEntryRevision } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
+import { canonicalJson, canonicalSha256 } from '../../common/canonical-json';
 import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
 import {
   createAvailableName,
@@ -35,6 +37,7 @@ import type { CreateWorldBookDto } from './dto/create-world-book.dto';
 import type { QueryWorldBooksDto } from './dto/query-world-books.dto';
 import type { UpdateWorldBookEntryDto } from './dto/update-world-book-entry.dto';
 import type { UpdateWorldBookDto } from './dto/update-world-book.dto';
+import type { SetManualWorldBookActivationDto } from './dto/set-manual-world-book-activation.dto';
 import { WORLD_BOOK_ENTRY_INSERTION_ORDERS } from './world-books.constants';
 import type {
   WorldBookEntryInsertionOrder,
@@ -49,17 +52,38 @@ type WorldBookEntryImportPreview = {
   keywords: string[];
   secondaryKeywords: string[];
   isEnabled: boolean;
-  priority: number;
   insertionOrder: WorldBookEntryInsertionOrder;
   tokenBudget: number | null;
   caseSensitive: boolean;
   metadata: Record<string, unknown> | null;
+  contentType: string;
+  trustLevel: string;
+  activationMode: string;
+  matchMode: string;
+  primaryLogic: string;
+  secondaryLogic: string;
+  excludeKeywords: string[];
+  sameMessageOnly: boolean;
+  scanSources: string[];
+  userHistoryScanDepth: number;
+  stickyTurns: number;
+  continuationTurns: number;
+  cooldownTurns: number;
+  delayTurns: number;
+  cooldownPolicy: string;
+  generationPurposes: string[];
+  budgetPriority: number;
+  sortOrder: number;
+  compactContent: string | null;
 };
 
 type WorldBookImportPreview = {
   name: string;
   description: string;
   characterIds: string[];
+  personaIds: string[];
+  conversationIds: string[];
+  companionIds: string[];
   isEnabled: boolean;
   scanDepth: number;
   tokenBudget: number;
@@ -80,8 +104,11 @@ type NormalizedWorldBookImport = Omit<WorldBookImportPreview, 'nameConflict' | '
 
 /** 世界书 + 其条目（include 后的形态）。 */
 type WorldBookWithEntries = WorldBook & {
-  entries: WorldBookEntry[];
+  entries: Array<WorldBookEntry & { activeRevision: WorldBookEntryRevision | null }>;
   characterLinks: Array<{ characterId: string }>;
+  personaLinks: Array<{ personaId: string }>;
+  conversationLinks: Array<{ conversationId: string }>;
+  companionLinks: Array<{ companionId: string }>;
 };
 
 /** 条目 + 其世界书（include 后的形态）。 */
@@ -149,11 +176,18 @@ export class WorldBooksService {
             select: { characterId: true },
             orderBy: { createdAt: 'asc' }
           },
+          personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+          conversationLinks: {
+            select: { conversationId: true },
+            orderBy: { createdAt: 'asc' }
+          },
+          companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
           entries: {
             where: {
               deletedAt: null
             },
-            orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+            orderBy: { createdAt: 'asc' },
+            include: { activeRevision: true }
           }
         },
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }],
@@ -192,7 +226,12 @@ export class WorldBooksService {
    */
   async listPromptContexts(
     currentUser: CurrentUser,
-    characterId: string | null
+    characterId: string | null,
+    scope: {
+      conversationId?: string | null;
+      personaId?: string | null;
+      companionId?: string | null;
+    } = {}
   ): Promise<WorldBookContext[]> {
     const worldBooks = await this.prisma.worldBook.findMany({
       where: {
@@ -202,8 +241,22 @@ export class WorldBooksService {
           ? {}
           : { isSensitive: false }),
         OR: [
-          { characterLinks: { none: {} } },
-          ...(characterId ? [{ characterLinks: { some: { characterId } } }] : [])
+          {
+            AND: [
+              { characterLinks: { none: {} } },
+              { personaLinks: { none: {} } },
+              { conversationLinks: { none: {} } },
+              { companionLinks: { none: {} } }
+            ]
+          },
+          ...(characterId ? [{ characterLinks: { some: { characterId } } }] : []),
+          ...(scope.personaId ? [{ personaLinks: { some: { personaId: scope.personaId } } }] : []),
+          ...(scope.conversationId
+            ? [{ conversationLinks: { some: { conversationId: scope.conversationId } } }]
+            : []),
+          ...(scope.companionId
+            ? [{ companionLinks: { some: { companionId: scope.companionId } } }]
+            : [])
         ]
       },
       include: {
@@ -211,11 +264,18 @@ export class WorldBooksService {
           select: { characterId: true },
           orderBy: { createdAt: 'asc' }
         },
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
         entries: {
           where: {
             deletedAt: null
           },
-          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          orderBy: { createdAt: 'asc' },
+          include: { activeRevision: true }
         }
       },
       orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
@@ -233,7 +293,12 @@ export class WorldBooksService {
    */
   async create(currentUser: CurrentUser, dto: CreateWorldBookDto): Promise<WorldBookResponse> {
     await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
-    const characterIds = await this.resolveCharacterIds(currentUser, dto.characterIds ?? []);
+    const [characterIds, personaIds, conversationIds, companionIds] = await Promise.all([
+      this.resolveCharacterIds(currentUser, dto.characterIds ?? []),
+      this.resolvePersonaIds(currentUser, dto.personaIds ?? []),
+      this.resolveConversationIds(currentUser, dto.conversationIds ?? []),
+      this.resolveCompanionIds(currentUser, dto.companionIds ?? [])
+    ]);
     const worldBook = await this.prisma.worldBook.create({
       data: {
         userId: currentUser.id,
@@ -247,6 +312,15 @@ export class WorldBooksService {
         metadataJson: this.stringifyNullable(dto.metadata),
         characterLinks: {
           create: characterIds.map((characterId) => ({ characterId }))
+        },
+        personaLinks: {
+          create: personaIds.map((personaId) => ({ personaId }))
+        },
+        conversationLinks: {
+          create: conversationIds.map((conversationId) => ({ conversationId }))
+        },
+        companionLinks: {
+          create: companionIds.map((companionId) => ({ companionId }))
         }
       },
       include: {
@@ -254,7 +328,13 @@ export class WorldBooksService {
           select: { characterId: true },
           orderBy: { createdAt: 'asc' }
         },
-        entries: true
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
+        entries: { include: { activeRevision: true } }
       }
     });
 
@@ -314,7 +394,17 @@ export class WorldBooksService {
           isShared: false,
           scanDepth: normalized.scanDepth,
           tokenBudget: normalized.tokenBudget,
-          metadataJson: this.stringifyNullable(normalized.metadata)
+          metadataJson: this.stringifyNullable(normalized.metadata),
+          characterLinks: {
+            create: normalized.characterIds.map((characterId) => ({ characterId }))
+          },
+          personaLinks: { create: normalized.personaIds.map((personaId) => ({ personaId })) },
+          conversationLinks: {
+            create: normalized.conversationIds.map((conversationId) => ({ conversationId }))
+          },
+          companionLinks: {
+            create: normalized.companionIds.map((companionId) => ({ companionId }))
+          }
         }
       });
 
@@ -327,13 +417,17 @@ export class WorldBooksService {
             keywordsJson: JSON.stringify(entry.keywords),
             secondaryKeywordsJson: this.stringifyNullable(entry.secondaryKeywords),
             isEnabled: entry.isEnabled,
-            priority: entry.priority,
             position: entry.insertionOrder,
             tokenBudget: entry.tokenBudget,
             caseSensitive: entry.caseSensitive,
             metadataJson: this.stringifyNullable(entry.metadata)
           }))
         });
+        const importedEntries = await tx.worldBookEntry.findMany({
+          where: { worldBookId: created.id }
+        });
+        for (const entry of importedEntries)
+          await this.createInitialEntryRevision(tx, entry, 'imported_untrusted');
       }
 
       return tx.worldBook.findFirstOrThrow({
@@ -345,11 +439,18 @@ export class WorldBooksService {
             select: { characterId: true },
             orderBy: { createdAt: 'asc' }
           },
+          personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+          conversationLinks: {
+            select: { conversationId: true },
+            orderBy: { createdAt: 'asc' }
+          },
+          companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
           entries: {
             where: {
               deletedAt: null
             },
-            orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+            orderBy: { createdAt: 'asc' },
+            include: { activeRevision: true }
           }
         }
       });
@@ -374,6 +475,9 @@ export class WorldBooksService {
         name: '示例世界书',
         description: '描述这本世界书适用的角色、场景或背景设定。',
         characterIds: [],
+        personaIds: [],
+        conversationIds: [],
+        companionIds: [],
         isEnabled: false,
         scanDepth: 6,
         tokenBudget: 1000,
@@ -382,10 +486,27 @@ export class WorldBooksService {
           {
             title: '示例条目',
             content: '关键词命中后注入 Prompt 的设定内容。',
+            contentType: 'lore',
+            trustLevel: 'imported_untrusted',
+            activationMode: 'keyword',
+            matchMode: 'normalized_phrase',
             keywords: ['示例关键词'],
             secondaryKeywords: [],
+            primaryLogic: 'any',
+            secondaryLogic: 'and_any',
+            excludeKeywords: [],
+            sameMessageOnly: true,
+            scanSources: ['current_user', 'user_history', 'assistant_latest'],
+            userHistoryScanDepth: 6,
+            stickyTurns: 0,
+            continuationTurns: 1,
+            cooldownTurns: 0,
+            delayTurns: 0,
+            cooldownPolicy: 'strict',
+            generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+            budgetPriority: 0,
+            sortOrder: 0,
             isEnabled: true,
-            priority: 0,
             insertionOrder: 'before_history',
             tokenBudget: null,
             caseSensitive: false,
@@ -408,6 +529,81 @@ export class WorldBooksService {
     const owner =
       worldBook.userId === currentUser.id ? null : await this.contentLibraryService.getOwner();
     return this.toWorldBookResponse(worldBook, currentUser, owner?.displayName ?? null);
+  }
+
+  async exportJson(currentUser: CurrentUser, id: string) {
+    await this.findOwnedActiveWorldBook(currentUser, id);
+    const worldBook = await this.prisma.worldBook.findUniqueOrThrow({
+      where: { id },
+      include: {
+        characterLinks: { select: { characterId: true }, orderBy: { createdAt: 'asc' } },
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
+        entries: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'asc' },
+          include: { activeRevision: true }
+        }
+      }
+    });
+    return {
+      fileName: `${safeExportFileName(worldBook.name)}-world-book.json`,
+      card: {
+        formatVersion: 'tavern-lite.world-book.v1',
+        name: worldBook.name,
+        description: worldBook.description,
+        characterIds: worldBook.characterLinks.map((link) => link.characterId),
+        personaIds: worldBook.personaLinks.map((link) => link.personaId),
+        conversationIds: worldBook.conversationLinks.map((link) => link.conversationId),
+        companionIds: worldBook.companionLinks.map((link) => link.companionId),
+        isEnabled: worldBook.isEnabled,
+        scanDepth: worldBook.scanDepth,
+        tokenBudget: worldBook.tokenBudget,
+        metadata: this.parseRecord(worldBook.metadataJson),
+        entries: worldBook.entries.map((entry) => {
+          const config = this.parseRecord(entry.activeRevision?.configJson ?? null) ?? {};
+          return {
+            title: entry.title,
+            content: entry.content,
+            compactContent: entry.activeRevision?.compactContent ?? null,
+            contentType: config.contentType ?? 'lore',
+            trustLevel: config.trustLevel ?? 'user_authored',
+            activationMode: config.activationMode ?? 'keyword',
+            matchMode: config.matchMode ?? 'normalized_phrase',
+            keywords: this.parseStringArray(entry.keywordsJson),
+            primaryLogic: config.primaryLogic ?? 'any',
+            secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+            secondaryLogic: config.secondaryLogic ?? 'and_any',
+            excludeKeywords: config.excludeKeywords ?? [],
+            sameMessageOnly: config.sameMessageOnly ?? true,
+            scanSources: config.scanSources ?? ['current_user', 'user_history', 'assistant_latest'],
+            userHistoryScanDepth: config.userHistoryScanDepth ?? 6,
+            stickyTurns: config.stickyTurns ?? 0,
+            continuationTurns: config.continuationTurns ?? 1,
+            cooldownTurns: config.cooldownTurns ?? 0,
+            delayTurns: config.delayTurns ?? 0,
+            cooldownPolicy: config.cooldownPolicy ?? 'strict',
+            generationPurposes: config.generationPurposes ?? [
+              'chat_reply',
+              'regenerate',
+              'continue'
+            ],
+            budgetPriority: config.budgetPriority ?? 0,
+            sortOrder: config.sortOrder ?? 0,
+            isEnabled: entry.isEnabled,
+            insertionOrder: entry.position,
+            tokenBudget: entry.tokenBudget,
+            caseSensitive: entry.caseSensitive,
+            metadata: this.parseRecord(entry.metadataJson)
+          };
+        }),
+        exportedAt: new Date().toISOString()
+      }
+    };
   }
 
   async fork(
@@ -453,13 +649,17 @@ export class WorldBooksService {
             keywordsJson: entry.keywordsJson,
             secondaryKeywordsJson: entry.secondaryKeywordsJson,
             isEnabled: entry.isEnabled,
-            priority: entry.priority,
             position: entry.position,
             tokenBudget: entry.tokenBudget,
             caseSensitive: entry.caseSensitive,
             metadataJson: entry.metadataJson
           }))
         });
+        const forkedEntries = await tx.worldBookEntry.findMany({
+          where: { worldBookId: created.id }
+        });
+        for (const entry of forkedEntries)
+          await this.createInitialEntryRevision(tx, entry, 'user_authored');
       }
       return tx.worldBook.findFirstOrThrow({
         where: { id: created.id },
@@ -468,9 +668,16 @@ export class WorldBooksService {
             select: { characterId: true },
             orderBy: { createdAt: 'asc' }
           },
+          personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+          conversationLinks: {
+            select: { conversationId: true },
+            orderBy: { createdAt: 'asc' }
+          },
+          companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
           entries: {
             where: { deletedAt: null },
-            orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+            orderBy: { createdAt: 'asc' },
+            include: { activeRevision: true }
           }
         }
       });
@@ -495,10 +702,20 @@ export class WorldBooksService {
     await this.contentLibraryService.assertCanSetShared(currentUser, dto.isShared);
     // 先校验世界书存在且属于当前用户
     await this.findOwnedActiveWorldBook(currentUser, id);
-    const characterIds =
+    const [characterIds, personaIds, conversationIds, companionIds] = await Promise.all([
       dto.characterIds === undefined
         ? undefined
-        : await this.resolveCharacterIds(currentUser, dto.characterIds);
+        : this.resolveCharacterIds(currentUser, dto.characterIds),
+      dto.personaIds === undefined
+        ? undefined
+        : this.resolvePersonaIds(currentUser, dto.personaIds),
+      dto.conversationIds === undefined
+        ? undefined
+        : this.resolveConversationIds(currentUser, dto.conversationIds),
+      dto.companionIds === undefined
+        ? undefined
+        : this.resolveCompanionIds(currentUser, dto.companionIds)
+    ]);
 
     // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
     const worldBook = await this.prisma.worldBook.update({
@@ -511,6 +728,30 @@ export class WorldBooksService {
               characterLinks: {
                 deleteMany: {},
                 create: characterIds.map((characterId) => ({ characterId }))
+              }
+            }),
+        ...(personaIds === undefined
+          ? {}
+          : {
+              personaLinks: {
+                deleteMany: {},
+                create: personaIds.map((personaId) => ({ personaId }))
+              }
+            }),
+        ...(conversationIds === undefined
+          ? {}
+          : {
+              conversationLinks: {
+                deleteMany: {},
+                create: conversationIds.map((conversationId) => ({ conversationId }))
+              }
+            }),
+        ...(companionIds === undefined
+          ? {}
+          : {
+              companionLinks: {
+                deleteMany: {},
+                create: companionIds.map((companionId) => ({ companionId }))
               }
             }),
         ...(dto.description === undefined ? {} : { description: dto.description }),
@@ -528,11 +769,18 @@ export class WorldBooksService {
           select: { characterId: true },
           orderBy: { createdAt: 'asc' }
         },
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
         entries: {
           where: {
             deletedAt: null
           },
-          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          orderBy: { createdAt: 'asc' },
+          include: { activeRevision: true }
         }
       }
     });
@@ -593,21 +841,43 @@ export class WorldBooksService {
     // 校验世界书存在且属于当前用户
     await this.findOwnedActiveWorldBook(currentUser, worldBookId);
 
-    const entry = await this.prisma.worldBookEntry.create({
-      data: {
-        worldBookId,
-        title: dto.title,
-        content: dto.content,
-        // 关键词序列化成 JSON 存储；position 字段存 insertionOrder
-        keywordsJson: JSON.stringify(dto.keywords),
-        secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords),
-        isEnabled: dto.isEnabled ?? true,
-        priority: dto.priority ?? 0,
-        position: dto.insertionOrder ?? 'before_history',
-        tokenBudget: dto.tokenBudget ?? null,
-        caseSensitive: dto.caseSensitive ?? false,
-        metadataJson: this.stringifyNullable(dto.metadata)
-      }
+    const entryId = randomUUID();
+    const revisionId = randomUUID();
+    const config = this.toEntryRevisionConfig(dto);
+    const entry = await this.prisma.$transaction(async (tx) => {
+      await tx.worldBookEntry.create({
+        data: {
+          id: entryId,
+          worldBookId,
+          title: dto.title,
+          content: dto.content,
+          // 关键词序列化成 JSON 存储；position 字段存 insertionOrder
+          keywordsJson: JSON.stringify(dto.keywords),
+          secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords),
+          isEnabled: dto.isEnabled ?? true,
+          position: dto.insertionOrder ?? 'before_history',
+          tokenBudget: dto.tokenBudget ?? null,
+          caseSensitive: dto.caseSensitive ?? false,
+          metadataJson: canonicalJson({ ...(dto.metadata ?? {}), contextV2: config })
+        }
+      });
+      await tx.worldBookEntryRevision.create({
+        data: {
+          id: revisionId,
+          entryId,
+          version: 1,
+          configJson: canonicalJson(config),
+          content: dto.content,
+          compactContent: dto.compactContent?.trim() || null,
+          compactSourceHash: dto.compactContent?.trim() ? canonicalSha256(dto.content) : null,
+          contentHash: canonicalSha256(dto.content)
+        }
+      });
+      return tx.worldBookEntry.update({
+        where: { id: entryId },
+        data: { activeRevisionId: revisionId },
+        include: { activeRevision: true }
+      });
     });
 
     return this.toEntryResponse(entry);
@@ -627,27 +897,89 @@ export class WorldBooksService {
     dto: UpdateWorldBookEntryDto
   ): Promise<WorldBookEntryResponse> {
     // 先校验条目存在且属于当前用户（通过世界书关联校验）
-    await this.findOwnedActiveEntry(currentUser, id);
+    const current = await this.findOwnedActiveEntry(currentUser, id);
 
     // 部分更新：仅写入 DTO 中实际传入的字段；keywords/insertionOrder 需转换存储格式
-    const entry = await this.prisma.worldBookEntry.update({
-      where: { id },
-      data: {
-        ...(dto.title === undefined ? {} : { title: dto.title }),
-        ...(dto.content === undefined ? {} : { content: dto.content }),
-        ...(dto.keywords === undefined ? {} : { keywordsJson: JSON.stringify(dto.keywords) }),
-        ...(dto.secondaryKeywords === undefined
-          ? {}
-          : { secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords) }),
-        ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled }),
-        ...(dto.priority === undefined ? {} : { priority: dto.priority }),
-        ...(dto.insertionOrder === undefined ? {} : { position: dto.insertionOrder }),
-        ...(dto.tokenBudget === undefined ? {} : { tokenBudget: dto.tokenBudget }),
-        ...(dto.caseSensitive === undefined ? {} : { caseSensitive: dto.caseSensitive }),
-        ...(dto.metadata === undefined
-          ? {}
-          : { metadataJson: this.stringifyNullable(dto.metadata) })
-      }
+    const previousRevision = current.activeRevisionId
+      ? await this.prisma.worldBookEntryRevision.findUnique({
+          where: { id: current.activeRevisionId }
+        })
+      : null;
+    const config = this.toEntryRevisionConfig(dto, previousRevision?.configJson);
+    const revisionId = randomUUID();
+    const nextVersion =
+      (
+        await this.prisma.worldBookEntryRevision.aggregate({
+          where: { entryId: id },
+          _max: { version: true }
+        })
+      )._max.version ?? 0;
+    const entry = await this.prisma.$transaction(async (tx) => {
+      await tx.worldBookEntryRevision.create({
+        data: {
+          id: revisionId,
+          entryId: id,
+          version: nextVersion + 1,
+          configJson: canonicalJson(config),
+          content: dto.content ?? current.content,
+          compactContent:
+            dto.compactContent === undefined
+              ? (previousRevision?.compactContent ?? null)
+              : dto.compactContent.trim() || null,
+          compactSourceHash:
+            dto.compactContent === undefined
+              ? (previousRevision?.compactSourceHash ?? null)
+              : dto.compactContent.trim()
+                ? canonicalSha256(dto.content ?? current.content)
+                : null,
+          contentHash: canonicalSha256(dto.content ?? current.content)
+        }
+      });
+      const [conversationStates, companionStates] = await Promise.all([
+        tx.conversationWorldBookActivationState.findMany({
+          where: { entryId: id },
+          select: { conversationId: true }
+        }),
+        tx.companionWorldBookActivationState.findMany({
+          where: { entryId: id },
+          select: { companionId: true }
+        })
+      ]);
+      await tx.conversationWorldBookActivationState.deleteMany({ where: { entryId: id } });
+      await tx.companionWorldBookActivationState.deleteMany({ where: { entryId: id } });
+      const conversationIds = [...new Set(conversationStates.map((item) => item.conversationId))];
+      const companionIds = [...new Set(companionStates.map((item) => item.companionId))];
+      if (conversationIds.length)
+        await tx.conversation.updateMany({
+          where: { id: { in: conversationIds } },
+          data: { version: { increment: 1 } }
+        });
+      if (companionIds.length)
+        await tx.companion.updateMany({
+          where: { id: { in: companionIds } },
+          data: { version: { increment: 1 } }
+        });
+      return tx.worldBookEntry.update({
+        where: { id },
+        data: {
+          activeRevisionId: revisionId,
+          ...(dto.title === undefined ? {} : { title: dto.title }),
+          ...(dto.content === undefined ? {} : { content: dto.content }),
+          ...(dto.keywords === undefined ? {} : { keywordsJson: JSON.stringify(dto.keywords) }),
+          ...(dto.secondaryKeywords === undefined
+            ? {}
+            : { secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords) }),
+          ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled }),
+          ...(dto.insertionOrder === undefined ? {} : { position: dto.insertionOrder }),
+          ...(dto.tokenBudget === undefined ? {} : { tokenBudget: dto.tokenBudget }),
+          ...(dto.caseSensitive === undefined ? {} : { caseSensitive: dto.caseSensitive }),
+          metadataJson: canonicalJson({
+            ...(dto.metadata ?? this.parseRecord(current.metadataJson) ?? {}),
+            contextV2: config
+          })
+        },
+        include: { activeRevision: true }
+      });
     });
 
     return this.toEntryResponse(entry);
@@ -677,6 +1009,286 @@ export class WorldBooksService {
     };
   }
 
+  async setManualActivation(
+    currentUser: CurrentUser,
+    entryId: string,
+    dto: SetManualWorldBookActivationDto
+  ) {
+    const entry = await this.findOwnedActiveEntry(currentUser, entryId);
+    if (!entry.activeRevisionId) {
+      throw new ConflictException({
+        code: 'WORLD_BOOK_REVISION_REQUIRED',
+        message: 'Entry has no active revision.'
+      });
+    }
+    if (dto.targetType === 'conversation') {
+      const target = await this.prisma.conversation.findFirst({
+        where: { id: dto.targetId, userId: currentUser.id, deletedAt: null },
+        select: { id: true }
+      });
+      if (!target)
+        throw new NotFoundException({
+          code: ERROR_CODES.CONVERSATION_NOT_FOUND,
+          message: 'Conversation not found.'
+        });
+      const latestTurn = await this.prisma.conversationTurn.aggregate({
+        where: { conversationId: target.id },
+        _max: { completedOrdinal: true }
+      });
+      return this.prisma.$transaction(async (tx) => {
+        const sourceKey = `manual:${dto.operationId}`;
+        const existingEvent = await tx.conversationWorldBookActivationEvent.findUnique({
+          where: {
+            conversationId_entryId_entryRevisionId_sourceKey: {
+              conversationId: target.id,
+              entryId,
+              entryRevisionId: entry.activeRevisionId!,
+              sourceKey
+            }
+          }
+        });
+        if (existingEvent) {
+          const existingState = await tx.conversationWorldBookActivationState.findUnique({
+            where: { conversationId_entryId: { conversationId: target.id, entryId } }
+          });
+          if (!existingState) {
+            throw new ConflictException({
+              code: 'WORLD_BOOK_STATE_MISSING',
+              message: 'Idempotent activation event exists without runtime state.'
+            });
+          }
+          return {
+            targetType: dto.targetType,
+            targetId: target.id,
+            entryId,
+            active: existingState.manualActive,
+            stateVersion: existingState.stateVersion
+          };
+        }
+        const state = await tx.conversationWorldBookActivationState.upsert({
+          where: { conversationId_entryId: { conversationId: target.id, entryId } },
+          create: {
+            conversationId: target.id,
+            entryId,
+            entryRevisionId: entry.activeRevisionId!,
+            lineageJson: JSON.stringify([entryId]),
+            bridgeDepth: 0,
+            manualActive: dto.active
+          },
+          update: {
+            entryRevisionId: entry.activeRevisionId!,
+            manualActive: dto.active,
+            stateVersion: { increment: 1 }
+          }
+        });
+        await tx.conversationWorldBookActivationEvent.upsert({
+          where: {
+            conversationId_entryId_entryRevisionId_sourceKey: {
+              conversationId: target.id,
+              entryId,
+              entryRevisionId: entry.activeRevisionId!,
+              sourceKey
+            }
+          },
+          create: {
+            conversationId: target.id,
+            entryId,
+            entryRevisionId: entry.activeRevisionId!,
+            sourceType: dto.active ? 'manual' : 'manual_cancel',
+            sourceKey,
+            lineageJson: JSON.stringify([entryId]),
+            bridgeDepth: 0,
+            completedTurn: latestTurn._max.completedOrdinal ?? 0
+          },
+          update: {}
+        });
+        await tx.conversation.update({
+          where: { id: target.id },
+          data: { version: { increment: 1 } }
+        });
+        return {
+          targetType: dto.targetType,
+          targetId: target.id,
+          entryId,
+          active: state.manualActive,
+          stateVersion: state.stateVersion
+        };
+      });
+    }
+    const target = await this.prisma.companion.findFirst({
+      where: { id: dto.targetId, userId: currentUser.id, deletedAt: null },
+      select: { id: true }
+    });
+    if (!target)
+      throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
+    const latestTurn = await this.prisma.companionTurn.aggregate({
+      where: { companionId: target.id },
+      _max: { completedOrdinal: true }
+    });
+    return this.prisma.$transaction(async (tx) => {
+      const sourceKey = `manual:${dto.operationId}`;
+      const existingEvent = await tx.companionWorldBookActivationEvent.findUnique({
+        where: {
+          companionId_entryId_entryRevisionId_sourceKey: {
+            companionId: target.id,
+            entryId,
+            entryRevisionId: entry.activeRevisionId!,
+            sourceKey
+          }
+        }
+      });
+      if (existingEvent) {
+        const existingState = await tx.companionWorldBookActivationState.findUnique({
+          where: { companionId_entryId: { companionId: target.id, entryId } }
+        });
+        if (!existingState) {
+          throw new ConflictException({
+            code: 'WORLD_BOOK_STATE_MISSING',
+            message: 'Idempotent activation event exists without runtime state.'
+          });
+        }
+        return {
+          targetType: dto.targetType,
+          targetId: target.id,
+          entryId,
+          active: existingState.manualActive,
+          stateVersion: existingState.stateVersion
+        };
+      }
+      const state = await tx.companionWorldBookActivationState.upsert({
+        where: { companionId_entryId: { companionId: target.id, entryId } },
+        create: {
+          companionId: target.id,
+          entryId,
+          entryRevisionId: entry.activeRevisionId!,
+          lineageJson: JSON.stringify([entryId]),
+          bridgeDepth: 0,
+          manualActive: dto.active
+        },
+        update: {
+          entryRevisionId: entry.activeRevisionId!,
+          manualActive: dto.active,
+          stateVersion: { increment: 1 }
+        }
+      });
+      await tx.companionWorldBookActivationEvent.upsert({
+        where: {
+          companionId_entryId_entryRevisionId_sourceKey: {
+            companionId: target.id,
+            entryId,
+            entryRevisionId: entry.activeRevisionId!,
+            sourceKey
+          }
+        },
+        create: {
+          companionId: target.id,
+          entryId,
+          entryRevisionId: entry.activeRevisionId!,
+          sourceType: dto.active ? 'manual' : 'manual_cancel',
+          sourceKey,
+          lineageJson: JSON.stringify([entryId]),
+          bridgeDepth: 0,
+          completedTurn: latestTurn._max.completedOrdinal ?? 0
+        },
+        update: {}
+      });
+      await tx.companion.update({ where: { id: target.id }, data: { version: { increment: 1 } } });
+      return {
+        targetType: dto.targetType,
+        targetId: target.id,
+        entryId,
+        active: state.manualActive,
+        stateVersion: state.stateVersion
+      };
+    });
+  }
+
+  async listRuntimeStates(
+    currentUser: CurrentUser,
+    targetType: 'conversation' | 'companion',
+    targetId: string
+  ) {
+    if (targetType === 'conversation') {
+      const target = await this.prisma.conversation.findFirst({
+        where: { id: targetId, userId: currentUser.id, deletedAt: null },
+        select: { id: true, characterId: true, personaId: true }
+      });
+      if (!target)
+        throw new NotFoundException({
+          code: ERROR_CODES.CONVERSATION_NOT_FOUND,
+          message: 'Conversation not found.'
+        });
+      const [books, states] = await Promise.all([
+        this.listPromptContexts(currentUser, target.characterId, {
+          conversationId: target.id,
+          personaId: target.personaId
+        }),
+        this.prisma.conversationWorldBookActivationState.findMany({
+          where: { conversationId: target.id }
+        })
+      ]);
+      return this.toRuntimeStateResponse(targetType, target.id, books, states);
+    }
+    const target = await this.prisma.companion.findFirst({
+      where: { id: targetId, userId: currentUser.id, deletedAt: null },
+      select: { id: true, personaId: true }
+    });
+    if (!target)
+      throw new NotFoundException({ code: 'COMPANION_NOT_FOUND', message: 'Companion not found.' });
+    const [books, states] = await Promise.all([
+      this.listPromptContexts(currentUser, null, {
+        companionId: target.id,
+        personaId: target.personaId
+      }),
+      this.prisma.companionWorldBookActivationState.findMany({
+        where: { companionId: target.id }
+      })
+    ]);
+    return this.toRuntimeStateResponse(targetType, target.id, books, states);
+  }
+
+  private toRuntimeStateResponse(
+    targetType: 'conversation' | 'companion',
+    targetId: string,
+    books: WorldBookContext[],
+    states: Array<{
+      entryId: string;
+      entryRevisionId: string;
+      activatedAtCompletedTurn: number | null;
+      stickyUntilCompletedTurn: number | null;
+      continuationUntilCompletedTurn: number | null;
+      cooldownUntilCompletedTurn: number | null;
+      pendingUntilCompletedTurn: number | null;
+      manualActive: boolean;
+      stateVersion: number;
+    }>
+  ) {
+    const stateByEntry = new Map(states.map((state) => [state.entryId, state]));
+    return {
+      targetType,
+      targetId,
+      entries: books.flatMap((book) =>
+        book.entries.map((entry) => {
+          const context = this.isRecord(entry.metadata?.contextV2) ? entry.metadata.contextV2 : {};
+          const state = stateByEntry.get(entry.id) ?? null;
+          return {
+            worldBookId: book.id,
+            worldBookName: book.name,
+            entryId: entry.id,
+            entryRevisionId: entry.activeRevisionId ?? null,
+            title: entry.title,
+            activationMode:
+              typeof context.activationMode === 'string' ? context.activationMode : 'keyword',
+            contentType: typeof context.contentType === 'string' ? context.contentType : 'lore',
+            trustLevel:
+              typeof context.trustLevel === 'string' ? context.trustLevel : 'user_authored',
+            state
+          };
+        })
+      )
+    };
+  }
+
   /**
    * 归一化世界书导入 JSON。
    * @param currentUser 当前登录用户。
@@ -684,12 +1296,27 @@ export class WorldBooksService {
    * @returns 可写入数据库的世界书导入数据。
    */
   private async normalizeWorldBookImport(
-    _currentUser: CurrentUser,
+    currentUser: CurrentUser,
     record: JsonRecord
   ): Promise<NormalizedWorldBookImport> {
     const warnings: ModuleJsonImportWarning[] = [];
     const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
 
+    const [characterIds, personaIds, conversationIds, companionIds] = await Promise.all([
+      this.resolveCharacterIds(
+        currentUser,
+        optionalStringArray(record, 'characterIds', 'characterIds')
+      ),
+      this.resolvePersonaIds(currentUser, optionalStringArray(record, 'personaIds', 'personaIds')),
+      this.resolveConversationIds(
+        currentUser,
+        optionalStringArray(record, 'conversationIds', 'conversationIds')
+      ),
+      this.resolveCompanionIds(
+        currentUser,
+        optionalStringArray(record, 'companionIds', 'companionIds')
+      )
+    ]);
     return {
       name,
       description: limitText(
@@ -698,7 +1325,10 @@ export class WorldBooksService {
         'description',
         warnings
       ),
-      characterIds: [],
+      characterIds,
+      personaIds,
+      conversationIds,
+      companionIds,
       isEnabled: false,
       scanDepth: optionalInteger(record, 'scanDepth', 6, 'scanDepth'),
       tokenBudget: optionalInteger(record, 'tokenBudget', 1000, 'tokenBudget'),
@@ -738,6 +1368,128 @@ export class WorldBooksService {
         throw invalidModuleFormat(`entries[${index}].keywords must contain at least one string.`);
       }
 
+      const tokenBudget = optionalNullableInteger(
+        record,
+        'tokenBudget',
+        `entries[${index}].tokenBudget`
+      );
+      const insertionOrder = this.normalizeInsertionOrder(
+        record.insertionOrder,
+        `entries[${index}].insertionOrder`,
+        warnings
+      );
+      const requestedContentType = importEnum(
+        record.contentType,
+        ['lore', 'state', 'behavior_rule', 'reference'],
+        'lore',
+        `entries[${index}].contentType`
+      );
+      const contentType = requestedContentType === 'behavior_rule' ? 'lore' : requestedContentType;
+      if (requestedContentType === 'behavior_rule') {
+        warnings.push({
+          code: 'IMPORTED_BEHAVIOR_RULE_DOWNGRADED',
+          field: `entries[${index}].contentType`,
+          message: '未确认的导入行为规则已降级为 lore。'
+        });
+      }
+      const scanSources = optionalStringArray(
+        record,
+        'scanSources',
+        `entries[${index}].scanSources`
+      );
+      const generationPurposes = optionalStringArray(
+        record,
+        'generationPurposes',
+        `entries[${index}].generationPurposes`
+      );
+      const contextV2 = {
+        title: requiredString(record, 'title', `entries[${index}].title`),
+        contentType,
+        trustLevel: 'imported_untrusted',
+        activationMode: importEnum(
+          record.activationMode,
+          ['constant', 'keyword', 'manual'],
+          'keyword',
+          `entries[${index}].activationMode`
+        ),
+        matchMode: importEnum(
+          record.matchMode,
+          ['contains', 'normalized_phrase'],
+          'normalized_phrase',
+          `entries[${index}].matchMode`
+        ),
+        primaryKeywords: keywords,
+        primaryLogic: importEnum(
+          record.primaryLogic,
+          ['any', 'all'],
+          'any',
+          `entries[${index}].primaryLogic`
+        ),
+        secondaryKeywords: optionalStringArray(
+          record,
+          'secondaryKeywords',
+          `entries[${index}].secondaryKeywords`
+        ),
+        secondaryLogic: importEnum(
+          record.secondaryLogic,
+          ['and_any', 'and_all', 'not_any', 'not_all'],
+          'and_any',
+          `entries[${index}].secondaryLogic`
+        ),
+        excludeKeywords: optionalStringArray(
+          record,
+          'excludeKeywords',
+          `entries[${index}].excludeKeywords`
+        ),
+        sameMessageOnly: optionalBoolean(
+          record,
+          'sameMessageOnly',
+          true,
+          `entries[${index}].sameMessageOnly`
+        ),
+        scanSources: scanSources.length
+          ? scanSources
+          : ['current_user', 'user_history', 'assistant_latest'],
+        userHistoryScanDepth: optionalInteger(
+          record,
+          'userHistoryScanDepth',
+          6,
+          `entries[${index}].userHistoryScanDepth`
+        ),
+        stickyTurns: optionalInteger(record, 'stickyTurns', 0, `entries[${index}].stickyTurns`),
+        continuationTurns: optionalInteger(
+          record,
+          'continuationTurns',
+          1,
+          `entries[${index}].continuationTurns`
+        ),
+        cooldownTurns: optionalInteger(
+          record,
+          'cooldownTurns',
+          0,
+          `entries[${index}].cooldownTurns`
+        ),
+        delayTurns: optionalInteger(record, 'delayTurns', 0, `entries[${index}].delayTurns`),
+        cooldownPolicy: importEnum(
+          record.cooldownPolicy,
+          ['strict', 'current_user_override'],
+          'strict',
+          `entries[${index}].cooldownPolicy`
+        ),
+        generationPurposes: generationPurposes.length
+          ? generationPurposes
+          : ['chat_reply', 'regenerate', 'continue'],
+        budgetPriority: optionalInteger(
+          record,
+          'budgetPriority',
+          0,
+          `entries[${index}].budgetPriority`
+        ),
+        sortOrder: optionalInteger(record, 'sortOrder', 0, `entries[${index}].sortOrder`),
+        placement: importPlacement(insertionOrder),
+        maxTokens: tokenBudget,
+        compactContent: optionalString(record, 'compactContent', `entries[${index}].compactContent`)
+      };
       return {
         title: limitText(
           requiredString(record, 'title', `entries[${index}].title`),
@@ -758,24 +1510,37 @@ export class WorldBooksService {
           `entries[${index}].secondaryKeywords`
         ),
         isEnabled: optionalBoolean(record, 'isEnabled', true, `entries[${index}].isEnabled`),
-        priority: optionalInteger(record, 'priority', 0, `entries[${index}].priority`),
-        insertionOrder: this.normalizeInsertionOrder(
-          record.insertionOrder,
-          `entries[${index}].insertionOrder`,
-          warnings
-        ),
-        tokenBudget: optionalNullableInteger(
-          record,
-          'tokenBudget',
-          `entries[${index}].tokenBudget`
-        ),
+        insertionOrder,
+        tokenBudget,
         caseSensitive: optionalBoolean(
           record,
           'caseSensitive',
           false,
           `entries[${index}].caseSensitive`
         ),
-        metadata: optionalRecord(record, 'metadata', `entries[${index}].metadata`)
+        metadata: {
+          ...(optionalRecord(record, 'metadata', `entries[${index}].metadata`) ?? {}),
+          contextV2
+        },
+        contentType,
+        trustLevel: 'imported_untrusted',
+        activationMode: contextV2.activationMode,
+        matchMode: contextV2.matchMode,
+        primaryLogic: contextV2.primaryLogic,
+        secondaryLogic: contextV2.secondaryLogic,
+        excludeKeywords: contextV2.excludeKeywords,
+        sameMessageOnly: contextV2.sameMessageOnly,
+        scanSources: contextV2.scanSources,
+        userHistoryScanDepth: contextV2.userHistoryScanDepth,
+        stickyTurns: contextV2.stickyTurns,
+        continuationTurns: contextV2.continuationTurns,
+        cooldownTurns: contextV2.cooldownTurns,
+        delayTurns: contextV2.delayTurns,
+        cooldownPolicy: contextV2.cooldownPolicy,
+        generationPurposes: contextV2.generationPurposes,
+        budgetPriority: contextV2.budgetPriority,
+        sortOrder: contextV2.sortOrder,
+        compactContent: contextV2.compactContent || null
       };
     });
   }
@@ -869,11 +1634,18 @@ export class WorldBooksService {
           select: { characterId: true },
           orderBy: { createdAt: 'asc' }
         },
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
         entries: {
           where: {
             deletedAt: null
           },
-          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          orderBy: { createdAt: 'asc' },
+          include: { activeRevision: true }
         }
       }
     });
@@ -907,9 +1679,16 @@ export class WorldBooksService {
           select: { characterId: true },
           orderBy: { createdAt: 'asc' }
         },
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
         entries: {
           where: { deletedAt: null },
-          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          orderBy: { createdAt: 'asc' },
+          include: { activeRevision: true }
         }
       }
     });
@@ -941,9 +1720,16 @@ export class WorldBooksService {
           select: { characterId: true },
           orderBy: { createdAt: 'asc' }
         },
+        personaLinks: { select: { personaId: true }, orderBy: { createdAt: 'asc' } },
+        conversationLinks: {
+          select: { conversationId: true },
+          orderBy: { createdAt: 'asc' }
+        },
+        companionLinks: { select: { companionId: true }, orderBy: { createdAt: 'asc' } },
         entries: {
           where: { deletedAt: null },
-          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+          orderBy: { createdAt: 'asc' },
+          include: { activeRevision: true }
         }
       }
     });
@@ -1020,6 +1806,65 @@ export class WorldBooksService {
     return normalizedIds;
   }
 
+  private normalizeBindingIds(ids: string[]): string[] {
+    return [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  }
+
+  private async resolvePersonaIds(currentUser: CurrentUser, ids: string[]): Promise<string[]> {
+    const normalizedIds = this.normalizeBindingIds(ids);
+    if (!normalizedIds.length) return [];
+    const found = await this.prisma.userPersona.findMany({
+      where: { id: { in: normalizedIds }, userId: currentUser.id, deletedAt: null },
+      select: { id: true }
+    });
+    this.assertAllBindingsFound(normalizedIds, found, 'PERSONA_NOT_FOUND', 'Persona not found.');
+    return normalizedIds;
+  }
+
+  private async resolveConversationIds(currentUser: CurrentUser, ids: string[]): Promise<string[]> {
+    const normalizedIds = this.normalizeBindingIds(ids);
+    if (!normalizedIds.length) return [];
+    const found = await this.prisma.conversation.findMany({
+      where: { id: { in: normalizedIds }, userId: currentUser.id, deletedAt: null },
+      select: { id: true }
+    });
+    this.assertAllBindingsFound(
+      normalizedIds,
+      found,
+      'CONVERSATION_NOT_FOUND',
+      'Conversation not found.'
+    );
+    return normalizedIds;
+  }
+
+  private async resolveCompanionIds(currentUser: CurrentUser, ids: string[]): Promise<string[]> {
+    const normalizedIds = this.normalizeBindingIds(ids);
+    if (!normalizedIds.length) return [];
+    const found = await this.prisma.companion.findMany({
+      where: { id: { in: normalizedIds }, userId: currentUser.id, deletedAt: null },
+      select: { id: true }
+    });
+    this.assertAllBindingsFound(
+      normalizedIds,
+      found,
+      'COMPANION_NOT_FOUND',
+      'Companion not found.'
+    );
+    return normalizedIds;
+  }
+
+  private assertAllBindingsFound(
+    expectedIds: string[],
+    found: Array<{ id: string }>,
+    code: string,
+    message: string
+  ): void {
+    const foundIds = new Set(found.map((item) => item.id));
+    if (expectedIds.some((id) => !foundIds.has(id))) {
+      throw new BadRequestException({ code, message });
+    }
+  }
+
   /**
    * 世界书记录 → 对外响应（含条目、解析 metadata、格式化时间）。
    * @param worldBook 世界书记录（含条目）。
@@ -1035,6 +1880,9 @@ export class WorldBooksService {
       id: worldBook.id,
       userId: worldBook.userId,
       characterIds: worldBook.characterLinks.map((link) => link.characterId),
+      personaIds: worldBook.personaLinks.map((link) => link.personaId),
+      conversationIds: worldBook.conversationLinks.map((link) => link.conversationId),
+      companionIds: worldBook.companionLinks.map((link) => link.companionId),
       name: worldBook.name,
       description: worldBook.description,
       isEnabled: worldBook.isEnabled,
@@ -1062,6 +1910,9 @@ export class WorldBooksService {
       id: worldBook.id,
       userId: worldBook.userId,
       characterIds: worldBook.characterLinks.map((link) => link.characterId),
+      personaIds: worldBook.personaLinks.map((link) => link.personaId),
+      conversationIds: worldBook.conversationLinks.map((link) => link.conversationId),
+      companionIds: worldBook.companionLinks.map((link) => link.companionId),
       name: worldBook.name,
       description: worldBook.description,
       isEnabled: worldBook.isEnabled,
@@ -1078,16 +1929,22 @@ export class WorldBooksService {
    * @param entry 条目记录。
    * @returns 条目上下文。
    */
-  private toPromptEntryContext(entry: WorldBookEntry): WorldBookEntryContext {
+  private toPromptEntryContext(
+    entry: WorldBookEntry & { activeRevision: WorldBookEntryRevision | null }
+  ): WorldBookEntryContext {
     return {
       id: entry.id,
+      activeRevisionId: entry.activeRevisionId,
       worldBookId: entry.worldBookId,
       title: entry.title,
       content: entry.content,
+      compactContent: entry.activeRevision?.compactContent ?? null,
+      compactSourceHash: entry.activeRevision?.compactSourceHash ?? null,
       keywords: this.parseStringArray(entry.keywordsJson),
       secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
       isEnabled: entry.isEnabled,
-      priority: entry.priority,
+      budgetPriority: this.contextNumber(entry.metadataJson, 'budgetPriority', 0),
+      sortOrder: this.contextNumber(entry.metadataJson, 'sortOrder', 0),
       position: this.toInsertionOrder(entry.position),
       tokenBudget: entry.tokenBudget,
       caseSensitive: entry.caseSensitive,
@@ -1100,23 +1957,178 @@ export class WorldBooksService {
    * @param entry 条目记录。
    * @returns 条目响应。
    */
-  private toEntryResponse(entry: WorldBookEntry): WorldBookEntryResponse {
+  private toEntryResponse(
+    entry: WorldBookEntry & { activeRevision?: WorldBookEntryRevision | null }
+  ): WorldBookEntryResponse {
+    const metadata = this.parseRecord(entry.metadataJson);
+    const config = this.isRecord(metadata?.contextV2) ? metadata.contextV2 : {};
     return {
       id: entry.id,
+      activeRevisionId: entry.activeRevisionId,
       worldBookId: entry.worldBookId,
       title: entry.title,
       content: entry.content,
       keywords: this.parseStringArray(entry.keywordsJson),
       secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
       isEnabled: entry.isEnabled,
-      priority: entry.priority,
       insertionOrder: this.toInsertionOrder(entry.position),
       tokenBudget: entry.tokenBudget,
       caseSensitive: entry.caseSensitive,
-      metadata: this.parseRecord(entry.metadataJson),
+      metadata,
+      contentType: typeof config.contentType === 'string' ? config.contentType : 'lore',
+      trustLevel: typeof config.trustLevel === 'string' ? config.trustLevel : 'user_authored',
+      activationMode: typeof config.activationMode === 'string' ? config.activationMode : 'keyword',
+      matchMode: typeof config.matchMode === 'string' ? config.matchMode : 'normalized_phrase',
+      primaryLogic: typeof config.primaryLogic === 'string' ? config.primaryLogic : 'any',
+      secondaryLogic: typeof config.secondaryLogic === 'string' ? config.secondaryLogic : 'and_any',
+      excludeKeywords: this.arrayOfStrings(config.excludeKeywords),
+      sameMessageOnly: typeof config.sameMessageOnly === 'boolean' ? config.sameMessageOnly : true,
+      scanSources: this.arrayOfStrings(config.scanSources, [
+        'current_user',
+        'user_history',
+        'assistant_latest'
+      ]),
+      userHistoryScanDepth:
+        typeof config.userHistoryScanDepth === 'number' ? config.userHistoryScanDepth : 6,
+      stickyTurns: typeof config.stickyTurns === 'number' ? config.stickyTurns : 0,
+      continuationTurns:
+        typeof config.continuationTurns === 'number' ? config.continuationTurns : 1,
+      cooldownTurns: typeof config.cooldownTurns === 'number' ? config.cooldownTurns : 0,
+      delayTurns: typeof config.delayTurns === 'number' ? config.delayTurns : 0,
+      cooldownPolicy: typeof config.cooldownPolicy === 'string' ? config.cooldownPolicy : 'strict',
+      generationPurposes: this.arrayOfStrings(config.generationPurposes, [
+        'chat_reply',
+        'regenerate',
+        'continue'
+      ]),
+      budgetPriority: typeof config.budgetPriority === 'number' ? config.budgetPriority : 0,
+      sortOrder: typeof config.sortOrder === 'number' ? config.sortOrder : 0,
+      compactContent:
+        entry.activeRevision?.compactContent ??
+        (typeof config.compactContent === 'string' && config.compactContent.trim()
+          ? config.compactContent
+          : null),
+      compactSourceHash: entry.activeRevision?.compactSourceHash ?? null,
+      compactStale: Boolean(
+        entry.activeRevision?.compactContent &&
+        entry.activeRevision.compactSourceHash !== canonicalSha256(entry.content)
+      ),
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString()
     };
+  }
+
+  private toEntryRevisionConfig(
+    dto: CreateWorldBookEntryDto | UpdateWorldBookEntryDto,
+    previousJson?: string | null
+  ): Record<string, unknown> {
+    const previous = this.parseRecord(previousJson ?? null) ?? {};
+    const contentType = dto.contentType ?? previous.contentType ?? 'lore';
+    const placementDefaults: Record<string, string> = {
+      lore: 'before_history',
+      state: 'before_current_user',
+      behavior_rule: 'instruction',
+      reference: 'after_history'
+    };
+    const trustLevel = dto.trustLevel ?? previous.trustLevel ?? 'user_authored';
+    if (trustLevel === 'imported_untrusted' && contentType === 'behavior_rule') {
+      throw new BadRequestException({
+        code: 'WORLD_BOOK_TRUST_VIOLATION',
+        message: 'Unconfirmed imported content cannot be a behavior rule.'
+      });
+    }
+    const pick = (key: string, fallback: unknown) => {
+      const value = (dto as unknown as Record<string, unknown>)[key];
+      return value === undefined ? (previous[key] ?? fallback) : value;
+    };
+    return {
+      title: pick('title', ''),
+      contentType,
+      trustLevel,
+      activationMode: pick('activationMode', 'keyword'),
+      matchMode: pick('matchMode', 'normalized_phrase'),
+      primaryKeywords: pick('keywords', []),
+      primaryLogic: pick('primaryLogic', 'any'),
+      secondaryKeywords: pick('secondaryKeywords', []),
+      secondaryLogic: pick('secondaryLogic', 'and_any'),
+      excludeKeywords: pick('excludeKeywords', []),
+      sameMessageOnly: pick('sameMessageOnly', true),
+      scanSources: pick('scanSources', ['current_user', 'user_history', 'assistant_latest']),
+      userHistoryScanDepth: pick('userHistoryScanDepth', 6),
+      stickyTurns: pick('stickyTurns', 0),
+      continuationTurns: pick('continuationTurns', 1),
+      cooldownTurns: pick('cooldownTurns', 0),
+      delayTurns: pick('delayTurns', 0),
+      cooldownPolicy: pick('cooldownPolicy', 'strict'),
+      generationPurposes: pick('generationPurposes', ['chat_reply', 'regenerate', 'continue']),
+      budgetPriority: pick('budgetPriority', 0),
+      sortOrder: pick('sortOrder', 0),
+      compactContent: pick('compactContent', null),
+      placement: pick('insertionOrder', placementDefaults[String(contentType)] ?? 'before_history'),
+      maxTokens: pick('tokenBudget', null)
+    };
+  }
+
+  private async createInitialEntryRevision(
+    tx: Prisma.TransactionClient,
+    entry: WorldBookEntry,
+    trustLevel: 'imported_untrusted' | 'user_authored'
+  ) {
+    if (entry.activeRevisionId) return;
+    const revisionId = randomUUID();
+    const storedMetadata = this.parseRecord(entry.metadataJson) ?? {};
+    const storedContext = this.isRecord(storedMetadata.contextV2) ? storedMetadata.contextV2 : {};
+    const baseConfig = this.toEntryRevisionConfig({
+      title: entry.title,
+      content: entry.content,
+      keywords: this.parseStringArray(entry.keywordsJson),
+      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+      insertionOrder: entry.position,
+      tokenBudget: entry.tokenBudget,
+      caseSensitive: entry.caseSensitive,
+      trustLevel
+    });
+    const config = {
+      ...baseConfig,
+      ...storedContext,
+      title: entry.title,
+      trustLevel,
+      primaryKeywords: this.parseStringArray(entry.keywordsJson),
+      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+      placement:
+        typeof storedContext.placement === 'string'
+          ? storedContext.placement
+          : importPlacement(this.toInsertionOrder(entry.position)),
+      maxTokens: entry.tokenBudget
+    };
+    await tx.worldBookEntryRevision.create({
+      data: {
+        id: revisionId,
+        entryId: entry.id,
+        version: 1,
+        configJson: canonicalJson(config),
+        content: entry.content,
+        compactContent:
+          typeof storedContext.compactContent === 'string' && storedContext.compactContent.trim()
+            ? storedContext.compactContent.trim()
+            : null,
+        compactSourceHash:
+          typeof storedContext.compactContent === 'string' && storedContext.compactContent.trim()
+            ? canonicalSha256(entry.content)
+            : null,
+        contentHash: canonicalSha256(entry.content)
+      }
+    });
+    await tx.worldBookEntry.update({
+      where: { id: entry.id },
+      data: {
+        activeRevisionId: revisionId,
+        metadataJson: canonicalJson({
+          ...storedMetadata,
+          contextV2: config
+        })
+      }
+    });
   }
 
   /**
@@ -1137,6 +2149,10 @@ export class WorldBooksService {
    */
   private stringifyNullable(value: unknown): string | null {
     return value === undefined || value === null ? null : JSON.stringify(value);
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   /**
@@ -1160,6 +2176,18 @@ export class WorldBooksService {
     }
   }
 
+  private arrayOfStrings(value: unknown, fallback: string[] = []): string[] {
+    if (!Array.isArray(value)) return fallback;
+    const result = value.filter((item): item is string => typeof item === 'string');
+    return result.length ? result : fallback;
+  }
+
+  private contextNumber(metadataJson: string | null, key: string, fallback: number): number {
+    const metadata = this.parseRecord(metadataJson);
+    const config = this.isRecord(metadata?.contextV2) ? metadata.contextV2 : null;
+    return typeof config?.[key] === 'number' ? config[key] : fallback;
+  }
+
   /**
    * 解析 metadataJson 为对象；为空/非对象/解析失败返回 null。
    * @param value metadataJson 字符串。
@@ -1180,4 +2208,36 @@ export class WorldBooksService {
       return null;
     }
   }
+}
+
+function importEnum<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  fallback: T,
+  path: string
+): T {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value !== 'string' || !allowed.includes(value as T)) {
+    throw invalidModuleFormat(`${path} has an unsupported value.`);
+  }
+  return value as T;
+}
+
+function importPlacement(value: WorldBookEntryInsertionOrder): string {
+  if (value === 'before_current_user_input' || value === 'after_current_user_input') {
+    return 'before_current_user';
+  }
+  return value;
+}
+
+function safeExportFileName(value: string): string {
+  return (
+    Array.from(value)
+      .filter((character) => character.charCodeAt(0) >= 32)
+      .join('')
+      .trim()
+      .replace(/[<>:"/\\|?*]+/g, '-')
+      .replace(/\s+/g, '-')
+      .slice(0, 80) || 'world-book'
+  );
 }

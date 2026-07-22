@@ -14,6 +14,7 @@ export type MessageStatus =
 export type MessageResponse = {
   id: string;
   conversationId: string;
+  turnId: string | null;
   role: MessageRole | string;
   content: string;
   status: MessageStatus | string;
@@ -37,8 +38,9 @@ export type MessageRegenerateResponse = {
   id: string;
   conversationId: string;
   regenerateMessageId: string;
+  turnId: string;
   /** 替换策略：软删除目标消息后重新生成。 */
-  replaceStrategy: 'soft-delete-target';
+  replaceStrategy: 'switch-active-on-success';
   /** 实际执行重生成的接口路径。 */
   streamPath: '/chat/stream';
   message: string;

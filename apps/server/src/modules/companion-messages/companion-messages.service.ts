@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
+import { CompanionReplayService } from '../../services/context-engine/replay.service';
 import { CompanionMemoryService } from '../companion-memory/companion-memory.service';
 import type { CurrentUser } from '../users/user.types';
 import { SettingsService } from '../settings/settings.service';
@@ -10,7 +11,8 @@ export class CompanionMessagesService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(CompanionMemoryService) private readonly memoryService: CompanionMemoryService,
     @Inject(SettingsService) private readonly settingsService: SettingsService,
-    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService
+    @Inject(TargetEventsService) private readonly targetEvents: TargetEventsService,
+    @Inject(CompanionReplayService) private readonly replayService: CompanionReplayService
   ) {}
   async list(user: CurrentUser, companionId: string) {
     await this.assertCompanion(user, companionId);
@@ -35,6 +37,7 @@ export class CompanionMessagesService {
       return { updated, stale };
     });
     if (stale) void this.memoryService.maybeScheduleUpdate(user, message.companionId);
+    await this.replayService.replay(message.companionId);
     this.targetEvents.emit('companion', message.companionId, 'message_updated', { messageId: id });
     return updated;
   }
@@ -53,6 +56,7 @@ export class CompanionMessagesService {
       return this.memoryService.markStaleIfAffected(message.companionId, message, tx);
     });
     if (stale) void this.memoryService.maybeScheduleUpdate(user, message.companionId);
+    await this.replayService.replay(message.companionId);
     this.targetEvents.emit('companion', message.companionId, 'message_deleted', { messageId: id });
     return { deleted: true, id };
   }
@@ -83,6 +87,7 @@ export class CompanionMessagesService {
       id,
       companionId: message.companionId,
       regenerateMessageId: id,
+      turnId: message.turnId,
       streamPath: `/companions/${message.companionId}/chat/stream`
     };
   }

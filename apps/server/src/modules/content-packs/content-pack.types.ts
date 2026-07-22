@@ -27,11 +27,28 @@ export type ContentPackWorldBookEntry = {
   keywords: string[];
   secondaryKeywords?: string[];
   isEnabled?: boolean;
-  priority?: number;
+  primaryLogic?: 'any' | 'all';
+  secondaryLogic?: 'and_any' | 'and_all' | 'not_any' | 'not_all';
+  excludeKeywords?: string[];
+  sameMessageOnly?: boolean;
+  scanSources?: Array<'current_user' | 'user_history' | 'assistant_latest'>;
+  userHistoryScanDepth?: number;
+  cooldownPolicy?: 'strict' | 'current_user_override';
+  budgetPriority?: number;
+  sortOrder?: number;
+  compactContent?: string;
   insertionOrder?: ContentPackWorldBookEntryPosition;
   tokenBudget?: number | null;
   caseSensitive?: boolean;
   metadata?: Record<string, unknown> | null;
+  contentType?: 'lore' | 'state' | 'behavior_rule' | 'reference';
+  activationMode?: 'constant' | 'keyword' | 'manual';
+  matchMode?: 'contains' | 'normalized_phrase';
+  stickyTurns?: number;
+  continuationTurns?: number;
+  cooldownTurns?: number;
+  delayTurns?: number;
+  generationPurposes?: string[];
 };
 
 /** 内容包顶层结构。 */

@@ -170,7 +170,7 @@ try {
     data: {
       userId: root.id,
       name: `Share Companion ${suffix}`,
-      identityPrompt: 'INTERNAL_IDENTITY_MUST_NOT_LEAK',
+      coreIdentity: 'INTERNAL_IDENTITY_MUST_NOT_LEAK',
       memory: { create: {} }
     }
   });

@@ -1,6 +1,6 @@
 <template>
   <main class="not-found">
-    <n-result status="404" title="页面不存在" description="请从左侧导航进入已有占位页面。">
+    <n-result status="404" title="页面不存在" description="请从左侧导航进入已有页面。">
       <template #footer>
         <n-button type="primary" @click="router.push('/characters')">返回角色页</n-button>
       </template>

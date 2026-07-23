@@ -2,7 +2,7 @@
 
 ## 1. 产品定义
 
-AI 角色（`Companion`）是独立于酒馆的长期陪伴对象：角色卡 / `identityPrompt` 只定义她最初是谁；角色自己的持续消息与后台记忆，形成用户和她长期相处后的关系。
+AI 角色（`Companion`）是独立于酒馆的长期陪伴对象：`coreIdentity`、`personality`、`speechStyle`、`relationshipDefaults` 只定义她最初是谁；角色自己的持续消息与后台记忆，形成用户和她长期相处后的关系。
 
 AI 角色没有用户可见或数据层面的“会话”实体。用户从 `/companion` 的角色列表点击某个角色后直接聊天；下次回来继续同一段关系。角色不会自动新建、切换或销毁聊天线程。
 
@@ -19,7 +19,7 @@ AI 角色与酒馆严格隔离：不复用酒馆 `Character`、`Conversation`、
 
 ## 2. 沉浸体验
 
-用户创建 AI 女友角色时填写名字、`identityPrompt`、头像和聊天模型链；进入角色后即直接聊天。系统不询问“这条要不要记住”，也不在聊天中展示总结过程。
+用户创建 AI 女友角色时填写名字、核心身份、性格、说话风格、关系默认设定、头像和聊天模型链；进入角色后即直接聊天。系统不询问“这条要不要记住”，也不在聊天中展示总结过程。
 
 AI 角色独立 Builder 永远注入受管的 `companion_style`：自然、简短的中文微信私聊；避免客服开场、标题、项目符号、夸张旁白、动作括号堆叠和模板式安慰。它不得虚构共同现实经历、身份信息、身体接触、承诺或用户未表达的情绪，也不伪装为真人。
 
@@ -29,7 +29,7 @@ AI 角色独立 Builder 永远注入受管的 `companion_style`：自然、简�
 
 ### 3.1 Companion
 
-`Companion`：`userId`、`name`、`identityPrompt`、`avatarAssetId`、聊天 `modelFallbackGroupId`、`promptPresetId`、`personaId`、审计时间与软删除字段。创建角色时，必须在同一短事务内创建唯一的 `CompanionMemory`，初始 `isEnabled=false`；不采用懒创建或“无记忆记录”的分支。
+`Companion`：`userId`、`name`、`coreIdentity`、`personality`、`speechStyle`、`relationshipDefaults`、`avatarAssetId`、聊天 `modelFallbackGroupId`、`promptPresetId`、`personaId`、审计时间与软删除字段。创建角色时，必须在同一短事务内创建唯一的 `CompanionMemory`，初始 `isEnabled=false`；不采用懒创建或“无记忆记录”的分支。
 
 聊天模型归属角色：同一个 AI 女友始终使用这条配置，除非用户主动在角色设置中修改。
 
@@ -91,7 +91,7 @@ POST                  /api/companions/:id/memory/restore/:revisionId
 
 前端仅有独立 `/companion` 角色列表、角色设置和直达聊天页；不显示会话列表或新建会话入口。记忆管理放在角色聊天菜单中，默认不打扰用户。
 
-AI 角色支持下载 `tavern-lite.companion.v1` 导入模板、预览后导入和导出为同格式 JSON；同时接受常见 `chara_card_v2` 的 `name`、`description`、`personality`、`scenario`、`system_prompt` 并合成为 `identityPrompt`。模型链、Persona、头像和记忆配置属于当前用户本地资源，不随导入导出迁移。聊天页复用酒馆消息操作语义：复制、编辑 user 消息、软删除和仅最新 assistant 消息重新生成。
+AI 角色支持下载 `tavern-lite.companion.v2` 导入模板、预览后导入和导出为同格式 JSON；同时接受外部标准 `chara_card_v2`，并将其字段一次性转换为 Companion V2 的核心身份、性格、说话风格和关系默认设定。模型链、Persona、头像和记忆配置属于当前用户本地资源，不随导入导出迁移。聊天页复用酒馆消息操作语义：复制、编辑 user 消息、软删除和仅最新 assistant 消息重新生成。
 
 记忆 API 契约：
 

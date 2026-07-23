@@ -147,11 +147,11 @@ const previewItems = computed(() => {
     ];
   }
 
-  if ('outputRules' in props.preview) {
+  if ('outputRuleOperations' in props.preview) {
     return [
       { label: '默认预设', value: props.preview.isDefault ? '是' : '否' },
-      { label: '系统 Prompt', value: `${props.preview.systemPrompt.length} 字符` },
-      { label: '输出约束', value: `${props.preview.outputRules.length} 字符` },
+      { label: '原子指令', value: `${props.preview.instructions.length} 条` },
+      { label: '输出规则操作', value: `${props.preview.outputRuleOperations.length} 条` },
       {
         label: '参数',
         value: props.preview.parameters ? JSON.stringify(props.preview.parameters) : '未设置'
@@ -167,16 +167,17 @@ const previewItems = computed(() => {
     ];
   }
 
-  if ('identityPrompt' in props.preview) {
+  if ('format' in props.preview) {
     return [
       { label: '来源格式', value: props.preview.format },
-      { label: '身份设定', value: `${props.preview.identityPrompt.length} 字符` }
+      { label: '核心身份', value: `${props.preview.coreIdentity.length} 字符` },
+      { label: '人格', value: `${props.preview.personality.length} 字符` }
     ];
   }
 
   return [
     { label: '默认 Persona', value: props.preview.isDefault ? '是' : '否' },
-    { label: '正文长度', value: `${props.preview.content.length} 字符` }
+    { label: '核心身份', value: `${props.preview.coreIdentity.length} 字符` }
   ];
 });
 

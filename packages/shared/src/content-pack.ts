@@ -2,7 +2,7 @@ import type { MessageRole } from './message';
 import type { WorldBookEntryPosition } from './prompt-builder';
 
 /** 内容包格式版本标识，供 AI 生成设定包和 Tavern Lite 增量导入使用。 */
-export const CONTENT_PACK_FORMAT_VERSION = 'tavern-lite.content-pack.v1';
+export const CONTENT_PACK_FORMAT_VERSION = 'tavern-lite.content-pack.v2';
 
 /** 内容包导入时遇到同名资源的处理策略。 */
 export type ContentPackDuplicateStrategy = 'reject' | 'rename' | 'skip';
@@ -25,8 +25,6 @@ export type ContentPackCharacter = {
   /** 角色名。 */
   name: string;
   coreIdentity?: string;
-  /** 角色描述。 */
-  description?: string;
   /** 性格设定。 */
   personality?: string;
   persistentPremise?: string;
@@ -34,8 +32,6 @@ export type ContentPackCharacter = {
   extendedBackground?: string;
   characterRules?: string;
   speechStyle?: string;
-  /** 场景设定。 */
-  scenario?: string;
   /** 首条消息。 */
   firstMessage?: string;
   /** 示例对话。 */
@@ -50,8 +46,6 @@ export type ContentPackPersona = {
   ref: string;
   /** Persona 名称。 */
   name: string;
-  /** Persona 正文。 */
-  content?: string;
   coreIdentity?: string;
   background?: string;
   interactionPreferences?: string;
@@ -69,10 +63,6 @@ export type ContentPackPromptPreset = {
   name: string;
   /** 预设说明。 */
   description?: string;
-  /** 系统 Prompt。 */
-  systemPrompt?: string;
-  /** 输出规则。 */
-  outputRules?: string;
   instructions?: string[];
   outputRuleOperations?: Array<{
     key: string;
@@ -115,10 +105,6 @@ export type ContentPackWorldBookEntry = {
   insertionOrder?: WorldBookEntryPosition;
   /** 条目 token 预算上限。 */
   tokenBudget?: number | null;
-  /** 是否区分大小写。 */
-  caseSensitive?: boolean;
-  /** 扩展元数据。 */
-  metadata?: Record<string, unknown> | null;
   contentType?: 'lore' | 'state' | 'behavior_rule' | 'reference';
   activationMode?: 'constant' | 'keyword' | 'manual';
   matchMode?: 'contains' | 'normalized_phrase';
@@ -171,7 +157,7 @@ export type ContentPackStarterConversation = {
 
 /** AI 生成内容包的顶层结构。 */
 export type ContentPackDocument = {
-  /** 格式版本，固定为 tavern-lite.content-pack.v1。 */
+  /** 格式版本，固定为 tavern-lite.content-pack.v2。 */
   format: typeof CONTENT_PACK_FORMAT_VERSION;
   /** 内容包标题。 */
   title: string;

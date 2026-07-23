@@ -42,22 +42,22 @@ export class CharacterCardJsonExporter {
     const data = {
       name: character.name,
       coreIdentity: character.coreIdentity,
-      description: character.description,
+      description: [character.coreIdentity, character.extendedBackground]
+        .filter(Boolean)
+        .join('\n\n'),
       personality: character.personality,
       persistentPremise: character.persistentPremise,
       initialScenario: character.initialScenario,
       extendedBackground: character.extendedBackground,
       characterRules: character.characterRules,
       speechStyle: character.speechStyle,
-      scenario: character.scenario,
+      scenario: character.initialScenario || character.persistentPremise,
       first_mes: character.firstMessage,
       mes_example: this.formatExampleMessages(character.name, exampleMessages),
       ...(this.pickString(metadata, 'creatorNotes')
         ? { creator_notes: this.pickString(metadata, 'creatorNotes') }
         : {}),
-      ...(this.pickString(metadata, 'systemPrompt')
-        ? { system_prompt: this.pickString(metadata, 'systemPrompt') }
-        : {}),
+      ...(character.characterRules ? { system_prompt: character.characterRules } : {}),
       ...(this.pickStringArray(metadata, 'tags').length > 0
         ? { tags: this.pickStringArray(metadata, 'tags') }
         : {}),

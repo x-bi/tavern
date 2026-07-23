@@ -24,12 +24,6 @@ export class CreateCharacterDto {
   name!: string;
   @IsOptional() @IsString() @MaxLength(10000) coreIdentity?: string;
 
-  /** 角色描述，可选，最长 10000。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(10000)
-  description?: string;
-
   /** 性格设定，可选。 */
   @IsOptional()
   @IsString()
@@ -40,12 +34,6 @@ export class CreateCharacterDto {
   @IsOptional() @IsString() @MaxLength(20000) extendedBackground?: string;
   @IsOptional() @IsString() @MaxLength(10000) characterRules?: string;
   @IsOptional() @IsString() @MaxLength(10000) speechStyle?: string;
-
-  /** 场景设定，可选。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(10000)
-  scenario?: string;
 
   /** 开场白，可选。 */
   @IsOptional()

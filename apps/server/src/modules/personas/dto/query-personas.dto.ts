@@ -19,7 +19,7 @@ export class QueryPersonasDto extends QueryContentLibraryDto {
   @Max(100)
   pageSize?: number = 20;
 
-  /** 搜索关键字，匹配 name/content 任一包含。 */
+  /** 搜索关键字，匹配 V2 Persona 的名称与结构化正文。 */
   @IsOptional()
   @IsString()
   @MaxLength(120)

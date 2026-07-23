@@ -86,8 +86,7 @@ export class CompanionsService {
       data: {
         userId: currentUser.id,
         name: dto.name.trim(),
-        identityPrompt: dto.identityPrompt?.trim() ?? '',
-        coreIdentity: dto.coreIdentity?.trim() ?? dto.identityPrompt?.trim() ?? '',
+        coreIdentity: dto.coreIdentity?.trim() ?? '',
         personality: dto.personality?.trim() ?? '',
         speechStyle: dto.speechStyle?.trim() ?? '',
         relationshipDefaults: dto.relationshipDefaults?.trim() ?? '',
@@ -127,8 +126,10 @@ export class CompanionsService {
       data: {
         userId: currentUser.id,
         name: preview.nameConflict ? preview.suggestedName! : preview.name,
-        identityPrompt: preview.identityPrompt,
-        coreIdentity: preview.identityPrompt,
+        coreIdentity: preview.coreIdentity,
+        personality: preview.personality,
+        speechStyle: preview.speechStyle,
+        relationshipDefaults: preview.relationshipDefaults,
         isSensitive: false,
         isShared: false,
         memory: { create: {} },
@@ -148,9 +149,8 @@ export class CompanionsService {
     return {
       fileName: 'tavern-lite-companion-template.json',
       template: {
-        formatVersion: 'tavern-lite.companion.v1',
+        formatVersion: 'tavern-lite.companion.v2',
         name: '示例 AI 角色',
-        identityPrompt: '性格温柔、真诚，表达克制而有耐心。',
         coreIdentity: '温柔、真诚的长期陪伴者',
         personality: '克制而有耐心',
         speechStyle: '自然私聊',
@@ -166,9 +166,8 @@ export class CompanionsService {
     return {
       fileName: `${this.toSafeFileName(item.name)}-companion.json`,
       card: {
-        formatVersion: 'tavern-lite.companion.v1',
+        formatVersion: 'tavern-lite.companion.v2',
         name: item.name,
-        identityPrompt: item.identityPrompt,
         coreIdentity: item.coreIdentity,
         personality: item.personality,
         speechStyle: item.speechStyle,
@@ -212,8 +211,9 @@ export class CompanionsService {
                     new Set(presetNames.map((v) => v.name))
                   ),
                   description: source.promptPreset.description,
-                  systemPrompt: source.promptPreset.systemPrompt,
-                  outputRules: source.promptPreset.outputRules,
+                  instructionsJson: source.promptPreset.instructionsJson,
+                  outputRulesJson: source.promptPreset.outputRulesJson,
+                  generationPurposesJson: source.promptPreset.generationPurposesJson,
                   parametersJson: source.promptPreset.parametersJson,
                   metadataJson: source.promptPreset.metadataJson,
                   isSensitive: source.promptPreset.isSensitive,
@@ -232,7 +232,9 @@ export class CompanionsService {
                     source.persona.name,
                     new Set(personaNames.map((v) => v.name))
                   ),
-                  content: source.persona.content,
+                  coreIdentity: source.persona.coreIdentity,
+                  background: source.persona.background,
+                  interactionPreferences: source.persona.interactionPreferences,
                   metadataJson: source.persona.metadataJson,
                   isSensitive: source.persona.isSensitive,
                   isShared: false,
@@ -245,7 +247,6 @@ export class CompanionsService {
           data: {
             userId: currentUser.id,
             name: source.name,
-            identityPrompt: source.identityPrompt,
             coreIdentity: source.coreIdentity,
             personality: source.personality,
             speechStyle: source.speechStyle,
@@ -288,7 +289,6 @@ export class CompanionsService {
       data: {
         userId: currentUser.id,
         name,
-        identityPrompt: source.identityPrompt,
         coreIdentity: source.coreIdentity,
         personality: source.personality,
         speechStyle: source.speechStyle,
@@ -319,7 +319,6 @@ export class CompanionsService {
       where: { id },
       data: {
         ...(dto.name === undefined ? {} : { name: dto.name.trim() }),
-        ...(dto.identityPrompt === undefined ? {} : { identityPrompt: dto.identityPrompt.trim() }),
         ...(dto.coreIdentity === undefined ? {} : { coreIdentity: dto.coreIdentity.trim() }),
         ...(dto.personality === undefined ? {} : { personality: dto.personality.trim() }),
         ...(dto.speechStyle === undefined ? {} : { speechStyle: dto.speechStyle.trim() }),
@@ -510,33 +509,44 @@ export class CompanionsService {
       });
     }
 
-    if (root.formatVersion === 'tavern-lite.companion.v1') {
+    if (root.formatVersion === 'tavern-lite.companion.v2') {
       return {
-        format: 'tavern-lite.companion.v1',
+        format: 'tavern-lite.companion.v2',
         name: this.requiredText(root.name, 'name'),
-        identityPrompt: this.optionalText(root.identityPrompt),
+        coreIdentity: this.optionalText(root.coreIdentity),
+        personality: this.optionalText(root.personality),
+        speechStyle: this.optionalText(root.speechStyle),
+        relationshipDefaults: this.optionalText(root.relationshipDefaults),
         warnings: ['模型链、Persona、头像和记忆设置不会从导入文件恢复。']
       };
     }
 
-    const data = this.asRecord(root.data) ?? root;
+    if (root.spec !== 'chara_card_v2') {
+      throw new BadRequestException({
+        code: 'COMPANION_IMPORT_INVALID_FORMAT',
+        message: 'Companion import only accepts tavern-lite.companion.v2 or chara_card_v2.'
+      });
+    }
+
+    const data = this.asRecord(root.data);
+    if (!data) {
+      throw new BadRequestException({
+        code: 'COMPANION_IMPORT_INVALID_FORMAT',
+        message: 'chara_card_v2 import requires an object data field.'
+      });
+    }
     const description = this.optionalText(data.description);
     const personality = this.optionalText(data.personality);
     const scenario = this.optionalText(data.scenario);
     const systemPrompt = this.optionalText(data.system_prompt);
-    const identityPrompt = [
-      description && `角色描述：${description}`,
-      personality && `性格：${personality}`,
-      scenario && `场景：${scenario}`,
-      systemPrompt && `补充规则：${systemPrompt}`
-    ]
-      .filter((item): item is string => Boolean(item))
-      .join('\n\n');
 
     return {
-      format: root.spec === 'chara_card_v2' ? 'chara_card_v2' : 'generic-json',
+      format: 'chara_card_v2',
       name: this.requiredText(data.name, 'name'),
-      identityPrompt,
+      coreIdentity: description,
+      personality,
+      speechStyle: systemPrompt,
+      relationshipDefaults: scenario,
       warnings: ['已映射通用角色卡字段；开场白和示例对话不会写入 Companion 的长期关系线程。']
     };
   }
@@ -589,7 +599,6 @@ export class CompanionsService {
       id: item.id,
       userId: item.userId,
       name: item.name,
-      identityPrompt: item.identityPrompt,
       coreIdentity: item.coreIdentity,
       personality: item.personality,
       speechStyle: item.speechStyle,

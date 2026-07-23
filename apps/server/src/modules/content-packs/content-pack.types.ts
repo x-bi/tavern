@@ -1,5 +1,5 @@
 /** 内容包格式版本标识。 */
-export const CONTENT_PACK_FORMAT_VERSION = 'tavern-lite.content-pack.v1';
+export const CONTENT_PACK_FORMAT_VERSION = 'tavern-lite.content-pack.v2';
 
 /** 内容包导入时遇到同名资源的处理策略。 */
 export type ContentPackDuplicateStrategy = 'reject' | 'rename' | 'skip';
@@ -39,8 +39,6 @@ export type ContentPackWorldBookEntry = {
   compactContent?: string;
   insertionOrder?: ContentPackWorldBookEntryPosition;
   tokenBudget?: number | null;
-  caseSensitive?: boolean;
-  metadata?: Record<string, unknown> | null;
   contentType?: 'lore' | 'state' | 'behavior_rule' | 'reference';
   activationMode?: 'constant' | 'keyword' | 'manual';
   matchMode?: 'contains' | 'normalized_phrase';

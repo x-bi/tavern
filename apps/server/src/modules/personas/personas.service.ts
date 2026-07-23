@@ -25,7 +25,6 @@ import type { PersonaListResponse, PersonaResponse } from './persona.types';
 
 type PersonaImportPreview = {
   name: string;
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -44,7 +43,6 @@ type PersonaImportResponse = {
 
 type NormalizedPersonaImport = {
   name: string;
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -93,10 +91,15 @@ export class PersonasService {
       ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
       ...(query.isDefault === undefined ? {} : { isDefault: query.isDefault }),
-      // search 关键字：匹配 name/content 任一包含
+      // search 关键字：匹配 V2 Persona 正文。
       ...(query.search
         ? {
-            OR: [{ name: { contains: query.search } }, { content: { contains: query.search } }]
+            OR: [
+              { name: { contains: query.search } },
+              { coreIdentity: { contains: query.search } },
+              { background: { contains: query.search } },
+              { interactionPreferences: { contains: query.search } }
+            ]
           }
         : {})
     };
@@ -137,9 +140,7 @@ export class PersonasService {
     const data = {
       userId: currentUser.id,
       name: dto.name,
-      // 可选字段未传时落库为空串；metadata 序列化成 JSON 存储
-      content: dto.content ?? '',
-      coreIdentity: dto.coreIdentity ?? dto.content ?? '',
+      coreIdentity: dto.coreIdentity ?? '',
       background: dto.background ?? '',
       interactionPreferences: dto.interactionPreferences ?? '',
       metadataJson: this.stringifyNullable(dto.metadata),
@@ -187,7 +188,7 @@ export class PersonasService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<PersonaImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.persona.v1');
+    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.persona.v2');
     const normalized = this.normalizePersonaImport(parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -236,7 +237,6 @@ export class PersonasService {
               data: {
                 userId: currentUser.id,
                 name,
-                content: normalized.content,
                 coreIdentity: normalized.coreIdentity,
                 background: normalized.background,
                 interactionPreferences: normalized.interactionPreferences,
@@ -251,7 +251,6 @@ export class PersonasService {
             data: {
               userId: currentUser.id,
               name,
-              content: normalized.content,
               coreIdentity: normalized.coreIdentity,
               background: normalized.background,
               interactionPreferences: normalized.interactionPreferences,
@@ -288,9 +287,8 @@ export class PersonasService {
     return {
       fileName: `${safeExportFileName(persona.name)}-persona.json`,
       card: {
-        formatVersion: 'tavern-lite.persona.v1',
+        formatVersion: 'tavern-lite.persona.v2',
         name: persona.name,
-        content: persona.content,
         coreIdentity: persona.coreIdentity,
         background: persona.background,
         interactionPreferences: persona.interactionPreferences,
@@ -308,7 +306,6 @@ export class PersonasService {
       data: {
         userId: currentUser.id,
         name: createAvailableName(source.name, names),
-        content: source.content,
         coreIdentity: source.coreIdentity,
         background: source.background,
         interactionPreferences: source.interactionPreferences,
@@ -326,9 +323,8 @@ export class PersonasService {
     return {
       fileName: 'tavern-lite-persona-template.json',
       template: {
-        formatVersion: 'tavern-lite.persona.v1',
+        formatVersion: 'tavern-lite.persona.v2',
         name: '示例 Persona',
-        content: '我是用户希望在对话中呈现的身份、偏好与表达方式。',
         coreIdentity: '用户不可被 AI 改写的核心身份。',
         background: '',
         interactionPreferences: '称呼、互动偏好与边界。',
@@ -359,7 +355,6 @@ export class PersonasService {
     // metadata 传则整体替换
     const data = {
       ...(dto.name === undefined ? {} : { name: dto.name }),
-      ...(dto.content === undefined ? {} : { content: dto.content }),
       ...(dto.coreIdentity === undefined ? {} : { coreIdentity: dto.coreIdentity }),
       ...(dto.background === undefined ? {} : { background: dto.background }),
       ...(dto.interactionPreferences === undefined
@@ -481,18 +476,11 @@ export class PersonasService {
   private normalizePersonaImport(record: JsonRecord): NormalizedPersonaImport {
     const warnings: ModuleJsonImportWarning[] = [];
     const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
-    const content = limitText(
-      optionalString(record, 'content', 'content') ?? '',
-      10000,
-      'content',
-      warnings
-    );
 
     return {
       name,
-      content,
       coreIdentity: limitText(
-        optionalString(record, 'coreIdentity', 'coreIdentity') ?? content,
+        optionalString(record, 'coreIdentity', 'coreIdentity') ?? '',
         8000,
         'coreIdentity',
         warnings
@@ -622,7 +610,6 @@ export class PersonasService {
       id: persona.id,
       userId: persona.userId,
       name: persona.name,
-      content: persona.content,
       coreIdentity: persona.coreIdentity,
       background: persona.background,
       interactionPreferences: persona.interactionPreferences,

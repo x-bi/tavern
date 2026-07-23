@@ -30,8 +30,9 @@ import type {
 type PromptPresetImportPreview = {
   name: string;
   description: string;
-  systemPrompt: string;
-  outputRules: string;
+  instructions: string[];
+  outputRuleOperations: PromptPresetResponse['outputRuleOperations'];
+  generationPurposes: string[];
   parameters: Record<string, unknown> | null;
   metadata: Record<string, unknown> | null;
   isDefault: boolean;
@@ -49,8 +50,6 @@ type PromptPresetImportResponse = {
 type NormalizedPromptPresetImport = {
   name: string;
   description: string;
-  systemPrompt: string;
-  outputRules: string;
   instructions: string[];
   outputRuleOperations: PromptPresetResponse['outputRuleOperations'];
   generationPurposes: string[];
@@ -104,13 +103,14 @@ export class PresetsService {
       ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       // isDefault 未传时不加条件，传了则按值过滤
       ...(query.isDefault === undefined ? {} : { isDefault: query.isDefault }),
-      // search 关键字：匹配 name/description/outputRules 任一包含
+      // search 关键字：匹配名称、描述和 V2 结构化指令。
       ...(query.search
         ? {
             OR: [
               { name: { contains: query.search } },
               { description: { contains: query.search } },
-              { outputRules: { contains: query.search } }
+              { instructionsJson: { contains: query.search } },
+              { outputRulesJson: { contains: query.search } }
             ]
           }
         : {})
@@ -155,10 +155,7 @@ export class PresetsService {
     const data = {
       userId: currentUser.id,
       name: dto.name,
-      // 可选字段未传时落库为空串
       description: dto.description ?? '',
-      systemPrompt: dto.systemPrompt ?? '',
-      outputRules: dto.outputRules ?? '',
       instructionsJson: JSON.stringify(dto.instructions ?? []),
       outputRulesJson: JSON.stringify(dto.outputRuleOperations ?? []),
       generationPurposesJson: JSON.stringify(
@@ -210,7 +207,7 @@ export class PresetsService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<PromptPresetImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.prompt-preset.v1');
+    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.prompt-preset.v2');
     const normalized = this.normalizePromptPresetImport(parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -247,8 +244,6 @@ export class PresetsService {
         userId: currentUser.id,
         name,
         description: normalized.description,
-        systemPrompt: normalized.systemPrompt,
-        outputRules: normalized.outputRules,
         instructionsJson: JSON.stringify(normalized.instructions),
         outputRulesJson: JSON.stringify(normalized.outputRuleOperations),
         generationPurposesJson: JSON.stringify(normalized.generationPurposes),
@@ -301,11 +296,9 @@ export class PresetsService {
     return {
       fileName: `${safeExportFileName(preset.name)}-prompt-preset.json`,
       card: {
-        formatVersion: 'tavern-lite.prompt-preset.v1',
+        formatVersion: 'tavern-lite.prompt-preset.v2',
         name: preset.name,
         description: preset.description,
-        systemPrompt: preset.systemPrompt,
-        outputRules: preset.outputRules,
         instructions: this.parseStringArray(preset.instructionsJson),
         outputRuleOperations: this.parseOutputRuleOperations(preset.outputRulesJson),
         generationPurposes: this.parseStringArray(preset.generationPurposesJson),
@@ -325,8 +318,6 @@ export class PresetsService {
         userId: currentUser.id,
         name: createAvailableName(source.name, names),
         description: source.description,
-        systemPrompt: source.systemPrompt,
-        outputRules: source.outputRules,
         instructionsJson: source.instructionsJson,
         outputRulesJson: source.outputRulesJson,
         generationPurposesJson: source.generationPurposesJson,
@@ -345,11 +336,9 @@ export class PresetsService {
     return {
       fileName: 'tavern-lite-prompt-preset-template.json',
       template: {
-        formatVersion: 'tavern-lite.prompt-preset.v1',
+        formatVersion: 'tavern-lite.prompt-preset.v2',
         name: '示例参数预设',
         description: '适用于自然、稳定的日常角色对话。',
-        systemPrompt: '',
-        outputRules: '使用自然简洁的中文表达，并根据当前场景控制回复长度。',
         instructions: ['遵循当前角色身份与最新对话事实。'],
         outputRuleOperations: [
           { key: 'style', content: '使用自然口语。', operation: 'add', sortOrder: 0 }
@@ -390,8 +379,6 @@ export class PresetsService {
     const data = {
       ...(dto.name === undefined ? {} : { name: dto.name }),
       ...(dto.description === undefined ? {} : { description: dto.description }),
-      ...(dto.systemPrompt === undefined ? {} : { systemPrompt: dto.systemPrompt }),
-      ...(dto.outputRules === undefined ? {} : { outputRules: dto.outputRules }),
       ...(dto.instructions === undefined
         ? {}
         : { instructionsJson: JSON.stringify(dto.instructions) }),
@@ -486,18 +473,6 @@ export class PresetsService {
         optionalString(record, 'description', 'description') ?? '',
         500,
         'description',
-        warnings
-      ),
-      systemPrompt: limitText(
-        optionalString(record, 'systemPrompt', 'systemPrompt') ?? '',
-        10000,
-        'systemPrompt',
-        warnings
-      ),
-      outputRules: limitText(
-        optionalString(record, 'outputRules', 'outputRules') ?? '',
-        4000,
-        'outputRules',
         warnings
       ),
       instructions: Array.isArray(record.instructions)
@@ -634,8 +609,6 @@ export class PresetsService {
       userId: preset.userId,
       name: preset.name,
       description: preset.description,
-      systemPrompt: preset.systemPrompt,
-      outputRules: preset.outputRules,
       instructions: this.parseStringArray(preset.instructionsJson),
       outputRuleOperations: this.parseOutputRuleOperations(preset.outputRulesJson),
       generationPurposes: this.parseStringArray(preset.generationPurposesJson),

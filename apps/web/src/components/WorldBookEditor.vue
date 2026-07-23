@@ -350,7 +350,6 @@
 
             <div class="world-book-editor__switches">
               <n-checkbox v-model:checked="entryForm.isEnabled">启用条目</n-checkbox>
-              <n-checkbox v-model:checked="entryForm.caseSensitive">区分大小写</n-checkbox>
               <n-checkbox v-model:checked="entryForm.sameMessageOnly">二级词限同一消息</n-checkbox>
             </div>
 
@@ -403,7 +402,6 @@
               <n-tag v-if="entry.tokenBudget !== null" size="small">
                 budget {{ entry.tokenBudget }}
               </n-tag>
-              <n-tag v-if="entry.caseSensitive" size="small">case sensitive</n-tag>
               <n-tag v-if="entry.compactStale" size="small" type="warning">压缩正文已失效</n-tag>
             </div>
 
@@ -460,7 +458,6 @@ type EntryFormState = {
   tokenBudget: number | null;
   insertionOrder: WorldBookEntryInsertionOrder;
   isEnabled: boolean;
-  caseSensitive: boolean;
   contentType: WorldBookEntry['contentType'];
   trustLevel: WorldBookEntry['trustLevel'];
   activationMode: WorldBookEntry['activationMode'];
@@ -755,7 +752,6 @@ function createEmptyEntryForm(): EntryFormState {
     tokenBudget: null,
     insertionOrder: 'before_history',
     isEnabled: true,
-    caseSensitive: false,
     contentType: 'lore',
     trustLevel: 'user_authored',
     activationMode: 'keyword',
@@ -787,7 +783,6 @@ function toEntryForm(entry: WorldBookEntry): EntryFormState {
     tokenBudget: entry.tokenBudget,
     insertionOrder: entry.insertionOrder,
     isEnabled: entry.isEnabled,
-    caseSensitive: entry.caseSensitive,
     contentType: entry.contentType,
     trustLevel: entry.trustLevel,
     activationMode: entry.activationMode,
@@ -835,8 +830,7 @@ function toEntryPayload(): WorldBookEntryPayload | WorldBookEntryUpdatePayload {
     compactContent: entryForm.compactContent.trim() || null,
     tokenBudget: entryForm.tokenBudget ?? null,
     insertionOrder: entryForm.insertionOrder,
-    isEnabled: entryForm.isEnabled,
-    caseSensitive: entryForm.caseSensitive
+    isEnabled: entryForm.isEnabled
   };
 }
 

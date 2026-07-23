@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException
 } from '@nestjs/common';
-import type { Prisma, WorldBook, WorldBookEntry, WorldBookEntryRevision } from '@prisma/client';
+import type { WorldBook, WorldBookEntry, WorldBookEntryRevision } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 
 import { ERROR_CODES } from '../../common/dto/error-codes';
@@ -54,8 +54,6 @@ type WorldBookEntryImportPreview = {
   isEnabled: boolean;
   insertionOrder: WorldBookEntryInsertionOrder;
   tokenBudget: number | null;
-  caseSensitive: boolean;
-  metadata: Record<string, unknown> | null;
   contentType: string;
   trustLevel: string;
   activationMode: string;
@@ -114,6 +112,7 @@ type WorldBookWithEntries = WorldBook & {
 /** 条目 + 其世界书（include 后的形态）。 */
 type WorldBookEntryWithBook = WorldBookEntry & {
   worldBook: WorldBook;
+  activeRevision: WorldBookEntryRevision | null;
 };
 
 /**
@@ -353,7 +352,7 @@ export class WorldBooksService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<WorldBookImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.world-book.v1');
+    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.world-book.v2');
     const normalized = await this.normalizeWorldBookImport(currentUser, parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -409,25 +408,36 @@ export class WorldBooksService {
       });
 
       if (normalized.entries.length > 0) {
-        await tx.worldBookEntry.createMany({
-          data: normalized.entries.map((entry) => ({
-            worldBookId: created.id,
-            title: entry.title,
-            content: entry.content,
-            keywordsJson: JSON.stringify(entry.keywords),
-            secondaryKeywordsJson: this.stringifyNullable(entry.secondaryKeywords),
-            isEnabled: entry.isEnabled,
-            position: entry.insertionOrder,
-            tokenBudget: entry.tokenBudget,
-            caseSensitive: entry.caseSensitive,
-            metadataJson: this.stringifyNullable(entry.metadata)
-          }))
-        });
-        const importedEntries = await tx.worldBookEntry.findMany({
-          where: { worldBookId: created.id }
-        });
-        for (const entry of importedEntries)
-          await this.createInitialEntryRevision(tx, entry, 'imported_untrusted');
+        for (const entry of normalized.entries) {
+          const entryId = randomUUID();
+          const revisionId = randomUUID();
+          const config = this.toEntryRevisionConfig({
+            ...entry,
+            compactContent: entry.compactContent ?? undefined,
+            trustLevel: 'imported_untrusted'
+          });
+          await tx.worldBookEntry.create({
+            data: { id: entryId, worldBookId: created.id, isEnabled: entry.isEnabled }
+          });
+          await tx.worldBookEntryRevision.create({
+            data: {
+              id: revisionId,
+              entryId,
+              version: 1,
+              configJson: canonicalJson(config),
+              content: entry.content,
+              compactContent: entry.compactContent?.trim() || null,
+              compactSourceHash: entry.compactContent?.trim()
+                ? canonicalSha256(entry.content)
+                : null,
+              contentHash: canonicalSha256(entry.content)
+            }
+          });
+          await tx.worldBookEntry.update({
+            where: { id: entryId },
+            data: { activeRevisionId: revisionId }
+          });
+        }
       }
 
       return tx.worldBook.findFirstOrThrow({
@@ -471,7 +481,7 @@ export class WorldBooksService {
     return {
       fileName: 'tavern-lite-world-book-template.json',
       template: {
-        formatVersion: 'tavern-lite.world-book.v1',
+        formatVersion: 'tavern-lite.world-book.v2',
         name: '示例世界书',
         description: '描述这本世界书适用的角色、场景或背景设定。',
         characterIds: [],
@@ -509,8 +519,7 @@ export class WorldBooksService {
             isEnabled: true,
             insertionOrder: 'before_history',
             tokenBudget: null,
-            caseSensitive: false,
-            metadata: {}
+            compactContent: null
           }
         ]
       }
@@ -553,7 +562,7 @@ export class WorldBooksService {
     return {
       fileName: `${safeExportFileName(worldBook.name)}-world-book.json`,
       card: {
-        formatVersion: 'tavern-lite.world-book.v1',
+        formatVersion: 'tavern-lite.world-book.v2',
         name: worldBook.name,
         description: worldBook.description,
         characterIds: worldBook.characterLinks.map((link) => link.characterId),
@@ -567,16 +576,16 @@ export class WorldBooksService {
         entries: worldBook.entries.map((entry) => {
           const config = this.parseRecord(entry.activeRevision?.configJson ?? null) ?? {};
           return {
-            title: entry.title,
-            content: entry.content,
+            title: typeof config.title === 'string' ? config.title : '',
+            content: entry.activeRevision?.content ?? '',
             compactContent: entry.activeRevision?.compactContent ?? null,
             contentType: config.contentType ?? 'lore',
             trustLevel: config.trustLevel ?? 'user_authored',
             activationMode: config.activationMode ?? 'keyword',
             matchMode: config.matchMode ?? 'normalized_phrase',
-            keywords: this.parseStringArray(entry.keywordsJson),
+            keywords: this.arrayOfStrings(config.primaryKeywords),
             primaryLogic: config.primaryLogic ?? 'any',
-            secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+            secondaryKeywords: this.arrayOfStrings(config.secondaryKeywords),
             secondaryLogic: config.secondaryLogic ?? 'and_any',
             excludeKeywords: config.excludeKeywords ?? [],
             sameMessageOnly: config.sameMessageOnly ?? true,
@@ -595,10 +604,8 @@ export class WorldBooksService {
             budgetPriority: config.budgetPriority ?? 0,
             sortOrder: config.sortOrder ?? 0,
             isEnabled: entry.isEnabled,
-            insertionOrder: entry.position,
-            tokenBudget: entry.tokenBudget,
-            caseSensitive: entry.caseSensitive,
-            metadata: this.parseRecord(entry.metadataJson)
+            insertionOrder: placementToInsertionOrder(config.placement),
+            tokenBudget: typeof config.maxTokens === 'number' ? config.maxTokens : null
           };
         }),
         exportedAt: new Date().toISOString()
@@ -641,25 +648,34 @@ export class WorldBooksService {
         }
       });
       if (source.entries.length > 0) {
-        await tx.worldBookEntry.createMany({
-          data: source.entries.map((entry) => ({
-            worldBookId: created.id,
-            title: entry.title,
-            content: entry.content,
-            keywordsJson: entry.keywordsJson,
-            secondaryKeywordsJson: entry.secondaryKeywordsJson,
-            isEnabled: entry.isEnabled,
-            position: entry.position,
-            tokenBudget: entry.tokenBudget,
-            caseSensitive: entry.caseSensitive,
-            metadataJson: entry.metadataJson
-          }))
-        });
-        const forkedEntries = await tx.worldBookEntry.findMany({
-          where: { worldBookId: created.id }
-        });
-        for (const entry of forkedEntries)
-          await this.createInitialEntryRevision(tx, entry, 'user_authored');
+        for (const entry of source.entries) {
+          if (!entry.activeRevision) continue;
+          const entryId = randomUUID();
+          const revisionId = randomUUID();
+          await tx.worldBookEntry.create({
+            data: {
+              id: entryId,
+              worldBookId: created.id,
+              isEnabled: entry.isEnabled
+            }
+          });
+          await tx.worldBookEntryRevision.create({
+            data: {
+              id: revisionId,
+              entryId,
+              version: 1,
+              configJson: entry.activeRevision.configJson,
+              content: entry.activeRevision.content,
+              compactContent: entry.activeRevision.compactContent,
+              compactSourceHash: entry.activeRevision.compactSourceHash,
+              contentHash: entry.activeRevision.contentHash
+            }
+          });
+          await tx.worldBookEntry.update({
+            where: { id: entryId },
+            data: { activeRevisionId: revisionId }
+          });
+        }
       }
       return tx.worldBook.findFirstOrThrow({
         where: { id: created.id },
@@ -849,16 +865,7 @@ export class WorldBooksService {
         data: {
           id: entryId,
           worldBookId,
-          title: dto.title,
-          content: dto.content,
-          // 关键词序列化成 JSON 存储；position 字段存 insertionOrder
-          keywordsJson: JSON.stringify(dto.keywords),
-          secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords),
-          isEnabled: dto.isEnabled ?? true,
-          position: dto.insertionOrder ?? 'before_history',
-          tokenBudget: dto.tokenBudget ?? null,
-          caseSensitive: dto.caseSensitive ?? false,
-          metadataJson: canonicalJson({ ...(dto.metadata ?? {}), contextV2: config })
+          isEnabled: dto.isEnabled ?? true
         }
       });
       await tx.worldBookEntryRevision.create({
@@ -900,12 +907,15 @@ export class WorldBooksService {
     const current = await this.findOwnedActiveEntry(currentUser, id);
 
     // 部分更新：仅写入 DTO 中实际传入的字段；keywords/insertionOrder 需转换存储格式
-    const previousRevision = current.activeRevisionId
-      ? await this.prisma.worldBookEntryRevision.findUnique({
-          where: { id: current.activeRevisionId }
-        })
-      : null;
-    const config = this.toEntryRevisionConfig(dto, previousRevision?.configJson);
+    const previousRevision = current.activeRevision;
+    if (!previousRevision) {
+      throw new ConflictException({
+        code: 'WORLD_BOOK_REVISION_REQUIRED',
+        message: 'Entry has no active revision.'
+      });
+    }
+    const config = this.toEntryRevisionConfig(dto, previousRevision.configJson);
+    const nextContent = dto.content ?? previousRevision.content;
     const revisionId = randomUUID();
     const nextVersion =
       (
@@ -921,18 +931,18 @@ export class WorldBooksService {
           entryId: id,
           version: nextVersion + 1,
           configJson: canonicalJson(config),
-          content: dto.content ?? current.content,
+          content: nextContent,
           compactContent:
             dto.compactContent === undefined
-              ? (previousRevision?.compactContent ?? null)
+              ? previousRevision.compactContent
               : dto.compactContent.trim() || null,
           compactSourceHash:
             dto.compactContent === undefined
-              ? (previousRevision?.compactSourceHash ?? null)
+              ? previousRevision.compactSourceHash
               : dto.compactContent.trim()
-                ? canonicalSha256(dto.content ?? current.content)
+                ? canonicalSha256(nextContent)
                 : null,
-          contentHash: canonicalSha256(dto.content ?? current.content)
+          contentHash: canonicalSha256(nextContent)
         }
       });
       const [conversationStates, companionStates] = await Promise.all([
@@ -963,20 +973,7 @@ export class WorldBooksService {
         where: { id },
         data: {
           activeRevisionId: revisionId,
-          ...(dto.title === undefined ? {} : { title: dto.title }),
-          ...(dto.content === undefined ? {} : { content: dto.content }),
-          ...(dto.keywords === undefined ? {} : { keywordsJson: JSON.stringify(dto.keywords) }),
-          ...(dto.secondaryKeywords === undefined
-            ? {}
-            : { secondaryKeywordsJson: this.stringifyNullable(dto.secondaryKeywords) }),
-          ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled }),
-          ...(dto.insertionOrder === undefined ? {} : { position: dto.insertionOrder }),
-          ...(dto.tokenBudget === undefined ? {} : { tokenBudget: dto.tokenBudget }),
-          ...(dto.caseSensitive === undefined ? {} : { caseSensitive: dto.caseSensitive }),
-          metadataJson: canonicalJson({
-            ...(dto.metadata ?? this.parseRecord(current.metadataJson) ?? {}),
-            contextV2: config
-          })
+          ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled })
         },
         include: { activeRevision: true }
       });
@@ -1269,7 +1266,7 @@ export class WorldBooksService {
       targetId,
       entries: books.flatMap((book) =>
         book.entries.map((entry) => {
-          const context = this.isRecord(entry.metadata?.contextV2) ? entry.metadata.contextV2 : {};
+          const context = entry.config;
           const state = stateByEntry.get(entry.id) ?? null;
           return {
             worldBookId: book.id,
@@ -1375,8 +1372,7 @@ export class WorldBooksService {
       );
       const insertionOrder = this.normalizeInsertionOrder(
         record.insertionOrder,
-        `entries[${index}].insertionOrder`,
-        warnings
+        `entries[${index}].insertionOrder`
       );
       const requestedContentType = importEnum(
         record.contentType,
@@ -1487,8 +1483,7 @@ export class WorldBooksService {
         ),
         sortOrder: optionalInteger(record, 'sortOrder', 0, `entries[${index}].sortOrder`),
         placement: importPlacement(insertionOrder),
-        maxTokens: tokenBudget,
-        compactContent: optionalString(record, 'compactContent', `entries[${index}].compactContent`)
+        maxTokens: tokenBudget
       };
       return {
         title: limitText(
@@ -1512,16 +1507,6 @@ export class WorldBooksService {
         isEnabled: optionalBoolean(record, 'isEnabled', true, `entries[${index}].isEnabled`),
         insertionOrder,
         tokenBudget,
-        caseSensitive: optionalBoolean(
-          record,
-          'caseSensitive',
-          false,
-          `entries[${index}].caseSensitive`
-        ),
-        metadata: {
-          ...(optionalRecord(record, 'metadata', `entries[${index}].metadata`) ?? {}),
-          contextV2
-        },
         contentType,
         trustLevel: 'imported_untrusted',
         activationMode: contextV2.activationMode,
@@ -1540,47 +1525,25 @@ export class WorldBooksService {
         generationPurposes: contextV2.generationPurposes,
         budgetPriority: contextV2.budgetPriority,
         sortOrder: contextV2.sortOrder,
-        compactContent: contextV2.compactContent || null
+        compactContent:
+          optionalString(record, 'compactContent', `entries[${index}].compactContent`) || null
       };
     });
   }
 
   /**
-   * 归一化导入条目的插入位置，兼容旧提示词里的 message 命名。
+   * 校验导入条目的 V2 插入位置。
    * @param value 原始 insertionOrder。
    * @param path 字段路径。
-   * @param warnings 告警收集数组。
    * @returns 世界书条目插入位置。
    */
-  private normalizeInsertionOrder(
-    value: unknown,
-    path: string,
-    warnings: ModuleJsonImportWarning[]
-  ): WorldBookEntryInsertionOrder {
+  private normalizeInsertionOrder(value: unknown, path: string): WorldBookEntryInsertionOrder {
     if (value === undefined || value === null || value === '') {
       return 'before_history';
     }
 
     if (typeof value !== 'string') {
       throw invalidModuleFormat(`${path} must be a string when present.`);
-    }
-
-    if (value === 'before_current_user_message') {
-      warnings.push({
-        code: 'INSERTION_ORDER_ALIAS_NORMALIZED',
-        field: path,
-        message: 'before_current_user_message 已归一化为 before_current_user_input。'
-      });
-      return 'before_current_user_input';
-    }
-
-    if (value === 'after_current_user_message') {
-      warnings.push({
-        code: 'INSERTION_ORDER_ALIAS_NORMALIZED',
-        field: path,
-        message: 'after_current_user_message 已归一化为 after_current_user_input。'
-      });
-      return 'after_current_user_input';
     }
 
     if ((WORLD_BOOK_ENTRY_INSERTION_ORDERS as readonly string[]).includes(value)) {
@@ -1765,7 +1728,8 @@ export class WorldBooksService {
         }
       },
       include: {
-        worldBook: true
+        worldBook: true,
+        activeRevision: true
       }
     });
 
@@ -1920,7 +1884,9 @@ export class WorldBooksService {
       scanDepth: worldBook.scanDepth,
       tokenBudget: worldBook.tokenBudget,
       metadata: this.parseRecord(worldBook.metadataJson),
-      entries: worldBook.entries.map((entry) => this.toPromptEntryContext(entry))
+      entries: worldBook.entries.flatMap((entry) =>
+        entry.activeRevision ? [this.toPromptEntryContext(entry)] : []
+      )
     };
   }
 
@@ -1932,23 +1898,30 @@ export class WorldBooksService {
   private toPromptEntryContext(
     entry: WorldBookEntry & { activeRevision: WorldBookEntryRevision | null }
   ): WorldBookEntryContext {
+    const revision = entry.activeRevision;
+    if (!revision) {
+      throw new ConflictException({
+        code: 'WORLD_BOOK_REVISION_REQUIRED',
+        message: 'Entry has no active revision.'
+      });
+    }
+    const config = this.parseRecord(revision.configJson) ?? {};
     return {
       id: entry.id,
-      activeRevisionId: entry.activeRevisionId,
+      activeRevisionId: revision.id,
       worldBookId: entry.worldBookId,
-      title: entry.title,
-      content: entry.content,
-      compactContent: entry.activeRevision?.compactContent ?? null,
-      compactSourceHash: entry.activeRevision?.compactSourceHash ?? null,
-      keywords: this.parseStringArray(entry.keywordsJson),
-      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+      title: typeof config.title === 'string' ? config.title : '',
+      content: revision.content,
+      compactContent: revision.compactContent,
+      compactSourceHash: revision.compactSourceHash,
+      keywords: this.arrayOfStrings(config.primaryKeywords),
+      secondaryKeywords: this.arrayOfStrings(config.secondaryKeywords),
       isEnabled: entry.isEnabled,
-      budgetPriority: this.contextNumber(entry.metadataJson, 'budgetPriority', 0),
-      sortOrder: this.contextNumber(entry.metadataJson, 'sortOrder', 0),
-      position: this.toInsertionOrder(entry.position),
-      tokenBudget: entry.tokenBudget,
-      caseSensitive: entry.caseSensitive,
-      metadata: this.parseRecord(entry.metadataJson)
+      budgetPriority: typeof config.budgetPriority === 'number' ? config.budgetPriority : 0,
+      sortOrder: typeof config.sortOrder === 'number' ? config.sortOrder : 0,
+      position: placementToInsertionOrder(config.placement),
+      tokenBudget: typeof config.maxTokens === 'number' ? config.maxTokens : null,
+      config
     };
   }
 
@@ -1960,21 +1933,25 @@ export class WorldBooksService {
   private toEntryResponse(
     entry: WorldBookEntry & { activeRevision?: WorldBookEntryRevision | null }
   ): WorldBookEntryResponse {
-    const metadata = this.parseRecord(entry.metadataJson);
-    const config = this.isRecord(metadata?.contextV2) ? metadata.contextV2 : {};
+    const revision = entry.activeRevision;
+    if (!revision) {
+      throw new ConflictException({
+        code: 'WORLD_BOOK_REVISION_REQUIRED',
+        message: 'Entry has no active revision.'
+      });
+    }
+    const config = this.parseRecord(revision.configJson) ?? {};
     return {
       id: entry.id,
-      activeRevisionId: entry.activeRevisionId,
+      activeRevisionId: revision.id,
       worldBookId: entry.worldBookId,
-      title: entry.title,
-      content: entry.content,
-      keywords: this.parseStringArray(entry.keywordsJson),
-      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
+      title: typeof config.title === 'string' ? config.title : '',
+      content: revision.content,
+      keywords: this.arrayOfStrings(config.primaryKeywords),
+      secondaryKeywords: this.arrayOfStrings(config.secondaryKeywords),
       isEnabled: entry.isEnabled,
-      insertionOrder: this.toInsertionOrder(entry.position),
-      tokenBudget: entry.tokenBudget,
-      caseSensitive: entry.caseSensitive,
-      metadata,
+      insertionOrder: placementToInsertionOrder(config.placement),
+      tokenBudget: typeof config.maxTokens === 'number' ? config.maxTokens : null,
       contentType: typeof config.contentType === 'string' ? config.contentType : 'lore',
       trustLevel: typeof config.trustLevel === 'string' ? config.trustLevel : 'user_authored',
       activationMode: typeof config.activationMode === 'string' ? config.activationMode : 'keyword',
@@ -2003,15 +1980,10 @@ export class WorldBooksService {
       ]),
       budgetPriority: typeof config.budgetPriority === 'number' ? config.budgetPriority : 0,
       sortOrder: typeof config.sortOrder === 'number' ? config.sortOrder : 0,
-      compactContent:
-        entry.activeRevision?.compactContent ??
-        (typeof config.compactContent === 'string' && config.compactContent.trim()
-          ? config.compactContent
-          : null),
-      compactSourceHash: entry.activeRevision?.compactSourceHash ?? null,
+      compactContent: revision.compactContent,
+      compactSourceHash: revision.compactSourceHash,
       compactStale: Boolean(
-        entry.activeRevision?.compactContent &&
-        entry.activeRevision.compactSourceHash !== canonicalSha256(entry.content)
+        revision.compactContent && revision.compactSourceHash !== canonicalSha256(revision.content)
       ),
       createdAt: entry.createdAt.toISOString(),
       updatedAt: entry.updatedAt.toISOString()
@@ -2063,83 +2035,9 @@ export class WorldBooksService {
       generationPurposes: pick('generationPurposes', ['chat_reply', 'regenerate', 'continue']),
       budgetPriority: pick('budgetPriority', 0),
       sortOrder: pick('sortOrder', 0),
-      compactContent: pick('compactContent', null),
       placement: pick('insertionOrder', placementDefaults[String(contentType)] ?? 'before_history'),
       maxTokens: pick('tokenBudget', null)
     };
-  }
-
-  private async createInitialEntryRevision(
-    tx: Prisma.TransactionClient,
-    entry: WorldBookEntry,
-    trustLevel: 'imported_untrusted' | 'user_authored'
-  ) {
-    if (entry.activeRevisionId) return;
-    const revisionId = randomUUID();
-    const storedMetadata = this.parseRecord(entry.metadataJson) ?? {};
-    const storedContext = this.isRecord(storedMetadata.contextV2) ? storedMetadata.contextV2 : {};
-    const baseConfig = this.toEntryRevisionConfig({
-      title: entry.title,
-      content: entry.content,
-      keywords: this.parseStringArray(entry.keywordsJson),
-      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
-      insertionOrder: entry.position,
-      tokenBudget: entry.tokenBudget,
-      caseSensitive: entry.caseSensitive,
-      trustLevel
-    });
-    const config = {
-      ...baseConfig,
-      ...storedContext,
-      title: entry.title,
-      trustLevel,
-      primaryKeywords: this.parseStringArray(entry.keywordsJson),
-      secondaryKeywords: this.parseStringArray(entry.secondaryKeywordsJson),
-      placement:
-        typeof storedContext.placement === 'string'
-          ? storedContext.placement
-          : importPlacement(this.toInsertionOrder(entry.position)),
-      maxTokens: entry.tokenBudget
-    };
-    await tx.worldBookEntryRevision.create({
-      data: {
-        id: revisionId,
-        entryId: entry.id,
-        version: 1,
-        configJson: canonicalJson(config),
-        content: entry.content,
-        compactContent:
-          typeof storedContext.compactContent === 'string' && storedContext.compactContent.trim()
-            ? storedContext.compactContent.trim()
-            : null,
-        compactSourceHash:
-          typeof storedContext.compactContent === 'string' && storedContext.compactContent.trim()
-            ? canonicalSha256(entry.content)
-            : null,
-        contentHash: canonicalSha256(entry.content)
-      }
-    });
-    await tx.worldBookEntry.update({
-      where: { id: entry.id },
-      data: {
-        activeRevisionId: revisionId,
-        metadataJson: canonicalJson({
-          ...storedMetadata,
-          contextV2: config
-        })
-      }
-    });
-  }
-
-  /**
-   * 把 position 字段归一化为插入位置枚举；非法值回退 before_history。
-   * @param value 原始 position 值。
-   * @returns 合法的插入位置。
-   */
-  private toInsertionOrder(value: string): WorldBookEntryInsertionOrder {
-    return WORLD_BOOK_ENTRY_INSERTION_ORDERS.includes(value as WorldBookEntryInsertionOrder)
-      ? (value as WorldBookEntryInsertionOrder)
-      : 'before_history';
   }
 
   /**
@@ -2151,41 +2049,10 @@ export class WorldBooksService {
     return value === undefined || value === null ? null : JSON.stringify(value);
   }
 
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-  }
-
-  /**
-   * 解析关键词 JSON 为字符串数组；为空/非数组/解析失败返回空数组。
-   * @param value keywordsJson 字符串。
-   * @returns 关键词数组。
-   */
-  private parseStringArray(value: string | null): string[] {
-    if (!value) {
-      return [];
-    }
-
-    try {
-      const parsed = JSON.parse(value) as unknown;
-
-      return Array.isArray(parsed)
-        ? parsed.filter((item): item is string => typeof item === 'string')
-        : [];
-    } catch {
-      return [];
-    }
-  }
-
   private arrayOfStrings(value: unknown, fallback: string[] = []): string[] {
     if (!Array.isArray(value)) return fallback;
     const result = value.filter((item): item is string => typeof item === 'string');
     return result.length ? result : fallback;
-  }
-
-  private contextNumber(metadataJson: string | null, key: string, fallback: number): number {
-    const metadata = this.parseRecord(metadataJson);
-    const config = this.isRecord(metadata?.contextV2) ? metadata.contextV2 : null;
-    return typeof config?.[key] === 'number' ? config[key] : fallback;
   }
 
   /**
@@ -2228,6 +2095,17 @@ function importPlacement(value: WorldBookEntryInsertionOrder): string {
     return 'before_current_user';
   }
   return value;
+}
+
+function placementToInsertionOrder(value: unknown): WorldBookEntryInsertionOrder {
+  if (value === 'after_history') return 'after_history';
+  if (value === 'before_current_user' || value === 'before_current_user_input') {
+    return 'before_current_user_input';
+  }
+  if (value === 'after_current_user' || value === 'after_current_user_input') {
+    return 'after_current_user_input';
+  }
+  return 'before_history';
 }
 
 function safeExportFileName(value: string): string {

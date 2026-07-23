@@ -28,7 +28,7 @@
       <n-input
         v-model:value="searchText"
         clearable
-        placeholder="搜索名称、简介、性格或场景"
+        placeholder="搜索名称、核心身份、性格或场景"
         @keyup.enter="applySearch"
         @clear="applySearch"
       />
@@ -117,16 +117,16 @@
         <div class="character-import-details">
           <dl>
             <div>
-              <dt>描述</dt>
-              <dd>{{ fallback(preview.description) }}</dd>
+              <dt>核心身份</dt>
+              <dd>{{ fallback(preview.coreIdentity) }}</dd>
             </div>
             <div>
               <dt>人格</dt>
               <dd>{{ fallback(preview.personality) }}</dd>
             </div>
             <div>
-              <dt>场景</dt>
-              <dd>{{ fallback(preview.scenario) }}</dd>
+              <dt>初始场景</dt>
+              <dd>{{ fallback(preview.initialScenario) }}</dd>
             </div>
           </dl>
           <div class="character-list__mapping">

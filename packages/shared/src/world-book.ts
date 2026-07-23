@@ -9,8 +9,8 @@ export type WorldBookEntryInsertionOrder = WorldBookEntryPosition;
 export type WorldBookEntryResponse = {
   /** 条目 ID。 */
   id: string;
-  /** 当前不可变 Revision；旧导入数据迁移完成前可为空。 */
-  activeRevisionId: string | null;
+  /** 当前不可变 Revision。 */
+  activeRevisionId: string;
   contentType: 'lore' | 'state' | 'behavior_rule' | 'reference';
   trustLevel: 'system' | 'user_authored' | 'imported_untrusted' | 'user_confirmed_import';
   activationMode: 'constant' | 'keyword' | 'manual';
@@ -49,10 +49,6 @@ export type WorldBookEntryResponse = {
   insertionOrder: WorldBookEntryInsertionOrder;
   /** 条目 token 预算上限；未设置时为 null，沿用世界书预算。 */
   tokenBudget: number | null;
-  /** 关键词匹配是否区分大小写。 */
-  caseSensitive: boolean;
-  /** 附加元数据；无则为 null。 */
-  metadata: Record<string, unknown> | null;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */
@@ -188,10 +184,6 @@ export type WorldBookEntryPayload = {
   insertionOrder?: WorldBookEntryInsertionOrder;
   /** 条目 token 预算上限；传 null 表示未设置。 */
   tokenBudget?: number | null;
-  /** 关键词匹配是否区分大小写。 */
-  caseSensitive?: boolean;
-  /** 附加元数据。 */
-  metadata?: Record<string, unknown> | null;
 };
 
 /** 更新世界书条目的入参，所有字段可选（部分更新）。 */

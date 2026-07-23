@@ -30,12 +30,6 @@ export class UpdateCharacterDto {
   name?: string;
   @IsOptional() @IsString() @MaxLength(10000) coreIdentity?: string;
 
-  /** 角色描述。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(10000)
-  description?: string;
-
   /** 性格设定。 */
   @IsOptional()
   @IsString()
@@ -46,12 +40,6 @@ export class UpdateCharacterDto {
   @IsOptional() @IsString() @MaxLength(20000) extendedBackground?: string;
   @IsOptional() @IsString() @MaxLength(10000) characterRules?: string;
   @IsOptional() @IsString() @MaxLength(10000) speechStyle?: string;
-
-  /** 场景设定。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(10000)
-  scenario?: string;
 
   /** 开场白。 */
   @IsOptional()

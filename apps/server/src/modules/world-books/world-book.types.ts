@@ -8,7 +8,7 @@ export type WorldBookEntryInsertionOrder =
 /** 世界书条目对外响应。 */
 export type WorldBookEntryResponse = {
   id: string;
-  activeRevisionId: string | null;
+  activeRevisionId: string;
   contentType: string;
   trustLevel: string;
   activationMode: string;
@@ -41,8 +41,6 @@ export type WorldBookEntryResponse = {
   insertionOrder: WorldBookEntryInsertionOrder;
   /** 条目独立 token 预算，为 null 时用世界书的。 */
   tokenBudget: number | null;
-  caseSensitive: boolean;
-  metadata: Record<string, unknown> | null;
   createdAt: string;
   updatedAt: string;
 };

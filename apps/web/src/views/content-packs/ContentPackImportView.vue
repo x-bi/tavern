@@ -5,7 +5,7 @@
         <h2>内容包导入</h2>
         <p>导入 AI 生成的角色、世界书、Persona、Prompt 预设和开局会话，不覆盖现有数据。</p>
       </div>
-      <n-tag :bordered="false" type="success">tavern-lite.content-pack.v1</n-tag>
+      <n-tag :bordered="false" type="success">tavern-lite.content-pack.v2</n-tag>
     </header>
 
     <div class="content-pack-layout">
@@ -25,7 +25,7 @@
           <n-input
             v-model:value="rawJson"
             type="textarea"
-            placeholder='{ "format": "tavern-lite.content-pack.v1", ... }'
+            placeholder='{ "format": "tavern-lite.content-pack.v2", ... }'
             :autosize="{ minRows: 16, maxRows: 28 }"
           />
 

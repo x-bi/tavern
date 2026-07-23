@@ -9,7 +9,6 @@ export type CompanionPromptParameters = {
 
 export type CompanionPromptInput = {
   name: string;
-  identityPrompt: string;
   companionId?: string;
   coreIdentity?: string;
   personality?: string;
@@ -17,15 +16,12 @@ export type CompanionPromptInput = {
   relationshipDefaults?: string;
   personaProfile?: {
     id: string;
-    content: string;
     coreIdentity: string;
     background: string;
     interactionPreferences: string;
   } | null;
   preset?: {
     id?: string;
-    systemPrompt: string;
-    outputRules: string;
     instructions?: string[];
     outputRuleOperations?: Array<{
       key: string;

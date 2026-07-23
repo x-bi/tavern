@@ -13,7 +13,9 @@ const ids = {
   character: 'seed_character_librarian',
   worldBook: 'seed_worldbook_library',
   worldBookEntryArchives: 'seed_worldbook_entry_archives',
+  worldBookEntryArchivesRevision: 'seed_worldbook_entry_archives_revision_1',
   worldBookEntryBell: 'seed_worldbook_entry_bell',
+  worldBookEntryBellRevision: 'seed_worldbook_entry_bell_revision_1',
   settingSeedVersion: 'seed_setting_seed_version'
 };
 
@@ -156,8 +158,16 @@ async function main() {
     },
     update: {
       description: 'Balanced defaults for character chat and prompt preview.',
-      systemPrompt: '',
-      outputRules: 'Use concise but vivid prose suited to the current roleplay scene.',
+      instructionsJson: json(['Stay consistent with the current character and latest facts.']),
+      outputRulesJson: json([
+        {
+          key: 'balanced_prose',
+          content: 'Use concise but vivid prose suited to the current roleplay scene.',
+          operation: 'add',
+          sortOrder: 10
+        }
+      ]),
+      generationPurposesJson: json(['chat_reply', 'regenerate', 'continue']),
       parametersJson: json({
         temperature: 0.8,
         presencePenalty: 0.2,
@@ -175,8 +185,16 @@ async function main() {
       userId: user.id,
       name: 'Balanced Roleplay',
       description: 'Balanced defaults for character chat and prompt preview.',
-      systemPrompt: '',
-      outputRules: 'Use concise but vivid prose suited to the current roleplay scene.',
+      instructionsJson: json(['Stay consistent with the current character and latest facts.']),
+      outputRulesJson: json([
+        {
+          key: 'balanced_prose',
+          content: 'Use concise but vivid prose suited to the current roleplay scene.',
+          operation: 'add',
+          sortOrder: 10
+        }
+      ]),
+      generationPurposesJson: json(['chat_reply', 'regenerate', 'continue']),
       parametersJson: json({
         temperature: 0.8,
         presencePenalty: 0.2,
@@ -198,8 +216,10 @@ async function main() {
       }
     },
     update: {
-      content:
+      coreIdentity:
         'A calm traveler who asks practical questions, notices small details, and keeps a handwritten journal.',
+      background: '',
+      interactionPreferences: '',
       metadataJson: json({
         seed: true
       }),
@@ -211,8 +231,10 @@ async function main() {
       id: ids.persona,
       userId: user.id,
       name: 'Curious Traveler',
-      content:
+      coreIdentity:
         'A calm traveler who asks practical questions, notices small details, and keeps a handwritten journal.',
+      background: '',
+      interactionPreferences: '',
       metadataJson: json({
         seed: true
       }),
@@ -227,11 +249,15 @@ async function main() {
       userId: user.id,
       avatarAssetId: null,
       name: 'Mira, Keeper of the Lantern Archive',
-      description:
+      coreIdentity:
         'A soft-spoken archive keeper who manages a quiet library built under an old hill.',
       personality: 'Patient, observant, lightly teasing, and protective of forgotten stories.',
-      scenario:
+      persistentPremise: 'She protects forgotten stories and the people connected to them.',
+      initialScenario:
         'The user arrives at the Lantern Archive near closing time while rain taps against the glass roof.',
+      extendedBackground: '',
+      characterRules: '',
+      speechStyle: 'Soft-spoken and observant, with light teasing.',
       firstMessage:
         'The brass bell above the archive door gives a tired chime. Mira looks up from a stack of weathered index cards and smiles. "You found us late, but not too late. What are you hoping to learn tonight?"',
       exampleMessagesJson: json([
@@ -257,11 +283,15 @@ async function main() {
       id: ids.character,
       userId: user.id,
       name: 'Mira, Keeper of the Lantern Archive',
-      description:
+      coreIdentity:
         'A soft-spoken archive keeper who manages a quiet library built under an old hill.',
       personality: 'Patient, observant, lightly teasing, and protective of forgotten stories.',
-      scenario:
+      persistentPremise: 'She protects forgotten stories and the people connected to them.',
+      initialScenario:
         'The user arrives at the Lantern Archive near closing time while rain taps against the glass roof.',
+      extendedBackground: '',
+      characterRules: '',
+      speechStyle: 'Soft-spoken and observant, with light teasing.',
       firstMessage:
         'The brass bell above the archive door gives a tired chime. Mira looks up from a stack of weathered index cards and smiles. "You found us late, but not too late. What are you hoping to learn tonight?"',
       exampleMessagesJson: json([
@@ -321,80 +351,151 @@ async function main() {
     }
   });
 
-  await prisma.worldBookEntry.upsert({
+  const archiveEntry = await prisma.worldBookEntry.upsert({
     where: { id: ids.worldBookEntryArchives },
     update: {
       worldBookId: worldBook.id,
-      title: 'The Lantern Archive',
-      content:
-        'The Lantern Archive is an underground library that preserves records of abandoned places, missing families, and unfinished promises.',
-      keywordsJson: json(['archive', 'library', 'lantern']),
-      secondaryKeywordsJson: json(['record', 'map', 'letter']),
       isEnabled: true,
-      priority: 20,
-      position: 'before_history',
-      tokenBudget: 180,
-      caseSensitive: false,
-      metadataJson: json({
-        seed: true
-      }),
       deletedAt: null
     },
     create: {
       id: ids.worldBookEntryArchives,
       worldBookId: worldBook.id,
-      title: 'The Lantern Archive',
-      content:
-        'The Lantern Archive is an underground library that preserves records of abandoned places, missing families, and unfinished promises.',
-      keywordsJson: json(['archive', 'library', 'lantern']),
-      secondaryKeywordsJson: json(['record', 'map', 'letter']),
-      isEnabled: true,
-      priority: 20,
-      position: 'before_history',
-      tokenBudget: 180,
-      caseSensitive: false,
-      metadataJson: json({
-        seed: true
-      })
+      isEnabled: true
     }
   });
 
-  await prisma.worldBookEntry.upsert({
+  const archiveRevision = await prisma.worldBookEntryRevision.upsert({
+    where: { id: ids.worldBookEntryArchivesRevision },
+    update: {
+      configJson: json({
+        title: 'The Lantern Archive',
+        contentType: 'lore',
+        trustLevel: 'user_authored',
+        activationMode: 'keyword',
+        matchMode: 'normalized_phrase',
+        primaryKeywords: ['archive', 'library', 'lantern'],
+        primaryLogic: 'any',
+        secondaryKeywords: ['record', 'map', 'letter'],
+        secondaryLogic: 'and_any',
+        excludeKeywords: [],
+        sameMessageOnly: true,
+        scanSources: ['current_user', 'user_history', 'assistant_latest'],
+        userHistoryScanDepth: 6,
+        stickyTurns: 0,
+        continuationTurns: 1,
+        cooldownTurns: 0,
+        delayTurns: 0,
+        cooldownPolicy: 'strict',
+        generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+        budgetPriority: 20,
+        sortOrder: 20,
+        placement: 'before_history',
+        maxTokens: 180
+      }),
+      content:
+        'The Lantern Archive is an underground library that preserves records of abandoned places, missing families, and unfinished promises.',
+      contentHash: 'c9b0b53e712828ad22c748eeab566a886a17477df90ad04655bc1446f2ad0bfe'
+    },
+    create: {
+      id: ids.worldBookEntryArchivesRevision,
+      entryId: archiveEntry.id,
+      version: 1,
+      configJson: json({
+        title: 'The Lantern Archive',
+        contentType: 'lore',
+        trustLevel: 'user_authored',
+        activationMode: 'keyword',
+        matchMode: 'normalized_phrase',
+        primaryKeywords: ['archive', 'library', 'lantern'],
+        primaryLogic: 'any',
+        secondaryKeywords: ['record', 'map', 'letter'],
+        secondaryLogic: 'and_any',
+        excludeKeywords: [],
+        sameMessageOnly: true,
+        scanSources: ['current_user', 'user_history', 'assistant_latest'],
+        userHistoryScanDepth: 6,
+        stickyTurns: 0,
+        continuationTurns: 1,
+        cooldownTurns: 0,
+        delayTurns: 0,
+        cooldownPolicy: 'strict',
+        generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+        budgetPriority: 20,
+        sortOrder: 20,
+        placement: 'before_history',
+        maxTokens: 180
+      }),
+      content:
+        'The Lantern Archive is an underground library that preserves records of abandoned places, missing families, and unfinished promises.',
+      contentHash: 'c9b0b53e712828ad22c748eeab566a886a17477df90ad04655bc1446f2ad0bfe'
+    }
+  });
+  await prisma.worldBookEntry.update({
+    where: { id: archiveEntry.id },
+    data: { activeRevisionId: archiveRevision.id }
+  });
+
+  const bellEntry = await prisma.worldBookEntry.upsert({
     where: { id: ids.worldBookEntryBell },
     update: {
       worldBookId: worldBook.id,
-      title: 'Brass Door Bell',
-      content:
-        'The archive door bell rings once for ordinary visitors and twice when someone carries a story that has been deliberately erased.',
-      keywordsJson: json(['bell', 'door', 'chime']),
-      secondaryKeywordsJson: json(['visitor', 'erased', 'story']),
       isEnabled: true,
-      priority: 10,
-      position: 'before_history',
-      tokenBudget: 140,
-      caseSensitive: false,
-      metadataJson: json({
-        seed: true
-      }),
       deletedAt: null
     },
     create: {
       id: ids.worldBookEntryBell,
       worldBookId: worldBook.id,
-      title: 'Brass Door Bell',
-      content:
-        'The archive door bell rings once for ordinary visitors and twice when someone carries a story that has been deliberately erased.',
-      keywordsJson: json(['bell', 'door', 'chime']),
-      secondaryKeywordsJson: json(['visitor', 'erased', 'story']),
-      isEnabled: true,
-      priority: 10,
-      position: 'before_history',
-      tokenBudget: 140,
-      caseSensitive: false,
-      metadataJson: json({
-        seed: true
-      })
+      isEnabled: true
     }
+  });
+
+  const bellConfig = {
+    title: 'Brass Door Bell',
+    contentType: 'lore',
+    trustLevel: 'user_authored',
+    activationMode: 'keyword',
+    matchMode: 'normalized_phrase',
+    primaryKeywords: ['bell', 'door', 'chime'],
+    primaryLogic: 'any',
+    secondaryKeywords: ['visitor', 'erased', 'story'],
+    secondaryLogic: 'and_any',
+    excludeKeywords: [],
+    sameMessageOnly: true,
+    scanSources: ['current_user', 'user_history', 'assistant_latest'],
+    userHistoryScanDepth: 6,
+    stickyTurns: 0,
+    continuationTurns: 1,
+    cooldownTurns: 0,
+    delayTurns: 0,
+    cooldownPolicy: 'strict',
+    generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+    budgetPriority: 10,
+    sortOrder: 10,
+    placement: 'before_history',
+    maxTokens: 140
+  };
+  const bellContent =
+    'The archive door bell rings once for ordinary visitors and twice when someone carries a story that has been deliberately erased.';
+  const bellRevision = await prisma.worldBookEntryRevision.upsert({
+    where: { id: ids.worldBookEntryBellRevision },
+    update: {
+      configJson: json(bellConfig),
+      content: bellContent,
+      contentHash: '5d83f553d81cee3e4d6e35ff0a5fc8330c03a84e439560c69744e4ef659ce6d9'
+    },
+    create: {
+      id: ids.worldBookEntryBellRevision,
+      entryId: bellEntry.id,
+      version: 1,
+      configJson: json(bellConfig),
+      content: bellContent,
+      contentHash: '5d83f553d81cee3e4d6e35ff0a5fc8330c03a84e439560c69744e4ef659ce6d9'
+    }
+  });
+  await prisma.worldBookEntry.update({
+    where: { id: bellEntry.id },
+    data: { activeRevisionId: bellRevision.id }
   });
 
   await prisma.appSetting.upsert({

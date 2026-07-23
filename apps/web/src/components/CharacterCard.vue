@@ -68,9 +68,10 @@ const initials = computed(() => props.character.name.trim().slice(0, 2).toUpperC
 
 const summary = computed(() => {
   const fields = [
-    props.character.description,
+    props.character.coreIdentity,
     props.character.personality,
-    props.character.scenario,
+    props.character.persistentPremise,
+    props.character.initialScenario,
     props.character.firstMessage
   ];
 

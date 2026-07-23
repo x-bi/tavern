@@ -3,7 +3,6 @@ export type CompanionResponse = {
   id: string;
   userId: string;
   name: string;
-  identityPrompt: string;
   coreIdentity: string;
   personality: string;
   speechStyle: string;
@@ -32,9 +31,12 @@ export type CompanionResponse = {
 };
 
 export type CompanionImportPreview = {
-  format: 'tavern-lite.companion.v1' | 'chara_card_v2' | 'generic-json';
+  format: 'tavern-lite.companion.v2' | 'chara_card_v2';
   name: string;
-  identityPrompt: string;
+  coreIdentity: string;
+  personality: string;
+  speechStyle: string;
+  relationshipDefaults: string;
   nameConflict: boolean;
   suggestedName: string | null;
   warnings: string[];
@@ -49,9 +51,8 @@ export type CompanionImportResponse = {
 export type CompanionExportResponse = {
   fileName: string;
   card: {
-    formatVersion: 'tavern-lite.companion.v1';
+    formatVersion: 'tavern-lite.companion.v2';
     name: string;
-    identityPrompt: string;
     coreIdentity: string;
     personality: string;
     speechStyle: string;

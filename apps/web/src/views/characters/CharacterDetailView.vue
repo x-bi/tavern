@@ -106,11 +106,6 @@
       </section>
 
       <section class="character-detail__section page-panel">
-        <h3>描述</h3>
-        <p>{{ fallback(character.description) }}</p>
-      </section>
-
-      <section class="character-detail__section page-panel">
         <h3>人格</h3>
         <p>{{ fallback(character.personality) }}</p>
       </section>
@@ -141,18 +136,8 @@
       </section>
 
       <section class="character-detail__section page-panel">
-        <h3>场景</h3>
-        <p>{{ fallback(character.scenario) }}</p>
-      </section>
-
-      <section class="character-detail__section page-panel">
         <h3>开场白</h3>
         <p>{{ fallback(character.firstMessage) }}</p>
-      </section>
-
-      <section class="character-detail__section page-panel">
-        <h3>系统提示</h3>
-        <p>{{ fallback(systemPrompt) }}</p>
       </section>
 
       <section class="character-detail__section page-panel">
@@ -208,12 +193,6 @@ const tags = computed(() => {
     ? rawTags.filter((tag): tag is string => typeof tag === 'string')
     : [];
 });
-
-const systemPrompt = computed(() =>
-  typeof character.value?.metadata?.systemPrompt === 'string'
-    ? character.value.metadata.systemPrompt
-    : ''
-);
 
 const creatorNotes = computed(() =>
   typeof character.value?.metadata?.creatorNotes === 'string'
@@ -318,7 +297,6 @@ function startConversation() {
     return;
   }
 
-  message.info('会话创建将在后续阶段接入');
   router.push({
     name: 'conversations',
     query: {

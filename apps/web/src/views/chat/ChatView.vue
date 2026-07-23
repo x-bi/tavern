@@ -51,13 +51,13 @@
         @edit="handleEdit"
         @delete="confirmDelete"
         @regenerate="handleRegenerate"
-        @regenerate-latest="handleLatestRegeneratePlaceholder"
+        @regenerate-latest="handleLatestRegenerate"
         @preview-prompt="goPromptPreview"
         @request-suggestions="handleSuggestions"
         @apply-suggestion="chatStore.applySuggestion"
       />
 
-      <aside class="chat-view__side" aria-label="会话配置占位">
+      <aside class="chat-view__side" aria-label="会话配置">
         <section class="chat-view__side-section">
           <h3>角色</h3>
           <p>{{ currentConversation?.character.name ?? '未加载' }}</p>
@@ -83,7 +83,6 @@
           <div class="chat-view__tool-grid">
             <n-button size="small" secondary @click="goPromptPreview">Prompt</n-button>
             <n-button size="small" secondary @click="goWorldBook">世界书</n-button>
-            <n-button size="small" secondary disabled>导出</n-button>
           </div>
         </section>
       </aside>
@@ -546,8 +545,18 @@ function handleStop() {
   message.info('已停止当前生成。');
 }
 
-function handleLatestRegeneratePlaceholder() {
-  message.info('重新生成最新回复会在后续阶段接入。');
+function handleLatestRegenerate() {
+  for (let index = chatStore.visibleMessages.length - 1; index >= 0; index -= 1) {
+    const target = chatStore.visibleMessages[index];
+
+    if (target?.role === 'assistant') {
+      void handleRegenerate(target);
+
+      return;
+    }
+  }
+
+  message.warning('当前没有可重新生成的角色回复。');
 }
 
 async function copyMessage(target: Message) {

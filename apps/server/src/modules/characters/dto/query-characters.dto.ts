@@ -19,7 +19,7 @@ export class QueryCharactersDto extends QueryContentLibraryDto {
   @Max(100)
   pageSize?: number = 20;
 
-  /** 搜索关键字，匹配 name/description/personality/scenario 任一包含。 */
+  /** 搜索关键字，匹配 name/coreIdentity/personality/persistentPremise/initialScenario。 */
   @IsOptional()
   @IsString()
   @MaxLength(120)

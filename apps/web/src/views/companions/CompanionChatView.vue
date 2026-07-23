@@ -173,9 +173,6 @@
           <n-form-item label="名字"
             ><n-input v-model:value="settings.name" maxlength="80"
           /></n-form-item>
-          <n-form-item label="身份设定"
-            ><n-input v-model:value="settings.identityPrompt" type="textarea" :rows="4"
-          /></n-form-item>
           <n-form-item label="核心身份"
             ><n-input v-model:value="settings.coreIdentity" type="textarea" :rows="3"
           /></n-form-item>
@@ -356,7 +353,6 @@ const presetOptions = ref<SelectOption[]>([]);
 const personaOptions = ref<SelectOption[]>([]);
 const settings = reactive({
   name: '',
-  identityPrompt: '',
   coreIdentity: '',
   personality: '',
   speechStyle: '',
@@ -434,7 +430,6 @@ async function load() {
     memory.value = loadedMemory;
     Object.assign(settings, {
       name: loadedCompanion.name,
-      identityPrompt: loadedCompanion.identityPrompt,
       coreIdentity: loadedCompanion.coreIdentity,
       personality: loadedCompanion.personality,
       speechStyle: loadedCompanion.speechStyle,
@@ -682,7 +677,6 @@ async function saveSettings() {
   try {
     const updatedCompanion = await updateCompanion(id, {
       name: settings.name.trim(),
-      identityPrompt: settings.identityPrompt,
       coreIdentity: settings.coreIdentity,
       personality: settings.personality,
       speechStyle: settings.speechStyle,

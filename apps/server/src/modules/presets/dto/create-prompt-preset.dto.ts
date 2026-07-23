@@ -25,18 +25,6 @@ export class CreatePromptPresetDto {
   @MaxLength(500)
   description?: string;
 
-  /** 预设级系统提示词，可选，最长 10000。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(10000)
-  systemPrompt?: string;
-
-  /** 输出规则，可选，最长 4000。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(4000)
-  outputRules?: string;
-
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

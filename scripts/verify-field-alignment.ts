@@ -192,7 +192,7 @@ const chatSource = readFileSync(
 );
 assert.match(
   chatSource,
-  /for \(const \[candidateIndex, candidate\][\s\S]*gatewayConfig: candidate[\s\S]*streamChat\(prompt\.finalMessages/,
+  /for \(const \[candidateIndex, candidate\][\s\S]*gatewayConfig: candidate[\s\S]*buildTavernPromptSections[\s\S]*streamChat\(compiled\.messages/,
   '酒馆聊天必须在候选循环内按当前候选重新构建 Prompt。'
 );
 
@@ -202,7 +202,7 @@ const companionChatSource = readFileSync(
 );
 assert.match(
   companionChatSource,
-  /for \(const candidate of candidates\)[\s\S]*promptBudget\(candidate,[\s\S]*streamChat\(built\.messages/,
+  /for \(const \[candidateIndex, candidate\] of candidates\.entries\(\)\)[\s\S]*promptBudget\(candidate,[\s\S]*buildCompanionPromptSections[\s\S]*streamChat\(compiled\.messages/,
   'AI 角色聊天必须在候选循环内按当前候选重新构建 Prompt。'
 );
 

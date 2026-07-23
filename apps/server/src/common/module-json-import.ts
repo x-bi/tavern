@@ -12,7 +12,7 @@ export type ModuleJsonImportWarning = {
 /** JSON 对象类型。 */
 export type JsonRecord = Record<string, unknown>;
 
-/** 解析单模块导入 JSON，并做根对象、format、敏感字段校验。 */
+/** 解析单模块导入 JSON，并做根对象、formatVersion、敏感字段校验。 */
 export function parseModuleJson(rawJson: string, expectedFormat: string): JsonRecord {
   let parsed: unknown;
 
@@ -41,8 +41,10 @@ export function parseModuleJson(rawJson: string, expectedFormat: string): JsonRe
     });
   }
 
-  if (parsed.format !== undefined && parsed.format !== expectedFormat) {
-    throw invalidModuleFormat(`Unsupported module JSON format: ${String(parsed.format)}.`);
+  if (parsed.formatVersion !== expectedFormat) {
+    throw invalidModuleFormat(
+      `Unsupported module JSON format version: ${String(parsed.formatVersion ?? 'missing')}.`
+    );
   }
 
   return parsed;

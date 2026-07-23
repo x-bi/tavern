@@ -1,5 +1,5 @@
 /** 备份文件格式版本标识。 */
-export const APPLICATION_BACKUP_FORMAT_VERSION = 'tavern-lite.backup.v1';
+export const APPLICATION_BACKUP_FORMAT_VERSION = 'tavern-lite.backup.v2';
 
 /** 备份 JSON 记录（任意键值对象）。 */
 export type BackupJsonRecord = Record<string, unknown>;

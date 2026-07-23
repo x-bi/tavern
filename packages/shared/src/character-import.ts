@@ -62,8 +62,6 @@ export type CharacterImportPreview = {
   /** 角色名。 */
   name: string;
   coreIdentity: string;
-  /** 角色描述。 */
-  description: string;
   /** 性格。 */
   personality: string;
   persistentPremise: string;
@@ -71,8 +69,6 @@ export type CharacterImportPreview = {
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  /** 场景设定。 */
-  scenario: string;
   /** 首条消息。 */
   firstMessage: string;
   /** 规范化后的对话示例。 */

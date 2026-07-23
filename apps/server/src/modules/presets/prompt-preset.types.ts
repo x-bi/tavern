@@ -14,9 +14,6 @@ export type PromptPresetResponse = {
   userId: string;
   name: string;
   description: string;
-  systemPrompt: string;
-  /** 输出规则（引导模型输出风格的指令）。 */
-  outputRules: string;
   instructions: string[];
   outputRuleOperations: Array<{
     key: string;

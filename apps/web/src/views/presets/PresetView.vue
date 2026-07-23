@@ -28,7 +28,7 @@
       <n-input
         v-model:value="searchText"
         clearable
-        placeholder="搜索预设名称、描述或输出约束"
+        placeholder="搜索预设名称、描述、指令或输出规则"
         @keyup.enter="applySearch"
         @clear="applySearch"
       />
@@ -86,7 +86,7 @@
 
         <section class="preset-card__rules">
           <h3>输出约束</h3>
-          <p>{{ preset.outputRules || '未设置输出风格约束' }}</p>
+          <p>{{ outputRuleSummary(preset) }}</p>
         </section>
 
         <template #action>
@@ -150,7 +150,7 @@
     <ModuleJsonImportDrawer
       v-model:show="importDrawerVisible"
       title="导入参数预设 JSON"
-      format-label="tavern-lite.prompt-preset.v1"
+      format-label="tavern-lite.prompt-preset.v2"
       :preview="importPreview"
       :previewing="importPreviewing"
       :importing="importing"
@@ -375,6 +375,15 @@ async function setDefault(preset: PromptPreset) {
   } finally {
     settingDefaultId.value = null;
   }
+}
+
+function outputRuleSummary(preset: PromptPreset): string {
+  const rules = preset.outputRuleOperations
+    .filter((rule) => rule.operation !== 'disable_optional')
+    .map((rule) => rule.content.trim())
+    .filter(Boolean);
+
+  return rules.join('；') || '未设置输出规则操作';
 }
 
 function parameterSummary(preset: PromptPreset): string[] {

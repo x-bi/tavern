@@ -8,8 +8,6 @@ export type PersonaResponse = {
   userId: string;
   /** Persona 名称。 */
   name: string;
-  /** Persona 正文（人设描述）。 */
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -40,8 +38,6 @@ export type PersonaListResponse = PageResult<PersonaResponse>;
 export type PersonaPayload = {
   /** Persona 名称。 */
   name: string;
-  /** Persona 正文，未传时后端按空字符串处理。 */
-  content?: string;
   coreIdentity?: string;
   background?: string;
   interactionPreferences?: string;

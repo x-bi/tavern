@@ -35,7 +35,7 @@ export function buildCompanionPromptSections(
     companionId,
     'core',
     'companion_core',
-    `Companion: ${input.name}\n${input.coreIdentity || input.identityPrompt}`,
+    `Companion: ${input.name}\n${input.coreIdentity ?? ''}`,
     10,
     'required'
   );
@@ -56,7 +56,7 @@ export function buildCompanionPromptSections(
       input.personaProfile.id,
       'core',
       'persona_core',
-      input.personaProfile.coreIdentity || input.personaProfile.content,
+      input.personaProfile.coreIdentity,
       60
     );
     addProfile(
@@ -81,7 +81,7 @@ export function buildCompanionPromptSections(
     ? input.preset.generationPurposes
     : ['chat_reply', 'regenerate', 'continue'];
   if (input.preset && presetPurposes.includes(purpose)) {
-    [input.preset.systemPrompt, ...(input.preset.instructions ?? [])].forEach((content, index) =>
+    (input.preset.instructions ?? []).forEach((content, index) =>
       add({
         id: `companion-preset:${input.preset!.id ?? 'bound'}:instruction:${index}`,
         kind: 'preset_instruction',
@@ -96,19 +96,7 @@ export function buildCompanionPromptSections(
       })
     );
     mergePresetOutputRules(
-      [
-        { key: 'companion_style', content: COMPANION_STYLE_RULE, optional: true, sortOrder: 130 },
-        ...(input.preset.outputRules.trim()
-          ? [
-              {
-                key: 'preset_text',
-                content: input.preset.outputRules,
-                optional: true,
-                sortOrder: 131
-              }
-            ]
-          : [])
-      ],
+      [{ key: 'companion_style', content: COMPANION_STYLE_RULE, optional: true, sortOrder: 130 }],
       input.preset.outputRuleOperations ?? []
     ).forEach((rule) =>
       add({

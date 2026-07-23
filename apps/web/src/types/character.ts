@@ -14,8 +14,6 @@ export type ExampleMessage = {
 export type CharacterMetadata = Record<string, unknown> & {
   /** 标签列表。 */
   tags?: string[];
-  /** 自定义系统 Prompt。 */
-  systemPrompt?: string;
   /** 创作者备注。 */
   creatorNotes?: string;
 };
@@ -36,8 +34,6 @@ export type CharacterEditorForm = {
   coreIdentity: string;
   /** 标签文本（逗号分隔，提交时拆成数组）。 */
   tagsText: string;
-  /** 角色描述。 */
-  description: string;
   /** 性格。 */
   personality: string;
   persistentPremise: string;
@@ -45,12 +41,8 @@ export type CharacterEditorForm = {
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  /** 场景设定。 */
-  scenario: string;
   /** 首条消息。 */
   firstMessage: string;
-  /** 自定义系统 Prompt。 */
-  systemPrompt: string;
   /** 对话示例的多行文本（提交时解析为 ExampleMessage[]）。 */
   exampleMessagesText: string;
   /** 是否标记为敏感内容。 */
@@ -70,8 +62,6 @@ export type CharacterMutationPayload = {
   /** 角色名。 */
   name: string;
   coreIdentity: string;
-  /** 角色描述。 */
-  description: string;
   /** 性格。 */
   personality: string;
   persistentPremise: string;
@@ -79,8 +69,6 @@ export type CharacterMutationPayload = {
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  /** 场景设定。 */
-  scenario: string;
   /** 首条消息。 */
   firstMessage: string;
   /** 对话示例数组。 */

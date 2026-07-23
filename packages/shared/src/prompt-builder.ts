@@ -162,8 +162,6 @@ export type PromptCharacterContext = {
   /** 角色名。 */
   name: string;
   coreIdentity: string;
-  /** 角色描述。 */
-  description: string;
   /** 性格。 */
   personality: string;
   persistentPremise: string;
@@ -171,8 +169,6 @@ export type PromptCharacterContext = {
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  /** 场景设定。 */
-  scenario: string;
   /** 首条消息（开场白）。 */
   firstMessage: string;
   /** 对话示例。 */
@@ -187,8 +183,6 @@ export type PromptPersonaContext = {
   id: string;
   /** Persona 名称。 */
   name: string;
-  /** Persona 正文。 */
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -204,10 +198,6 @@ export type PromptPresetContext = {
   name: string;
   /** 预设描述。 */
   description: string;
-  /** 系统 Prompt 文本。 */
-  systemPrompt: string;
-  /** 输出约束规则文本。 */
-  outputRules: string;
   instructions: string[];
   outputRuleOperations: Array<{
     key: string;
@@ -262,7 +252,7 @@ export type PromptModelGatewayContext = {
 export type WorldBookEntryContext = {
   /** 条目 ID。 */
   id: string;
-  activeRevisionId?: string | null;
+  activeRevisionId: string;
   /** 所属世界书 ID。 */
   worldBookId: string;
   /** 条目标题。 */
@@ -283,10 +273,8 @@ export type WorldBookEntryContext = {
   position: WorldBookEntryPosition;
   /** 条目 token 预算上限；未设置时为 null。 */
   tokenBudget?: number | null;
-  /** 关键词匹配是否区分大小写。 */
-  caseSensitive: boolean;
-  /** 附加元数据。 */
-  metadata?: Record<string, unknown> | null;
+  /** active revision 的规范化配置。 */
+  config: Record<string, unknown>;
 };
 
 /** 世界书上下文（Builder 输入之一），含全部条目。 */

@@ -26,18 +26,6 @@ export class UpdatePromptPresetDto {
   @MaxLength(500)
   description?: string;
 
-  /** 预设级系统提示词。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(10000)
-  systemPrompt?: string;
-
-  /** 输出规则。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(4000)
-  outputRules?: string;
-
   @IsOptional()
   @IsArray()
   @IsString({ each: true })

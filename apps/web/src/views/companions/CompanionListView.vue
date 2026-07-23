@@ -25,8 +25,6 @@
       ><n-form
         ><n-form-item label="名字"
           ><n-input v-model:value="draft.name" maxlength="80" /></n-form-item
-        ><n-form-item label="初始身份设定"
-          ><n-input v-model:value="draft.identityPrompt" type="textarea" :rows="5" /></n-form-item
         ><n-form-item label="核心身份"
           ><n-input v-model:value="draft.coreIdentity" type="textarea" :rows="3" /></n-form-item
         ><n-form-item label="稳定性格"
@@ -98,7 +96,7 @@
           }}</n-avatar>
           <div>
             <h3>{{ item.name }}</h3>
-            <p>{{ item.identityPrompt || '还没有身份设定' }}</p>
+            <p>{{ item.coreIdentity || '还没有核心身份设定' }}</p>
             <n-tag
               size="small"
               :type="item.memoryEnabled ? 'success' : 'default'"
@@ -153,7 +151,7 @@
     <ModuleJsonImportDrawer
       v-model:show="importDrawerVisible"
       title="导入 AI 角色 JSON"
-      format-label="tavern-lite.companion.v1 / chara_card_v2"
+      format-label="tavern-lite.companion.v2 / chara_card_v2"
       :preview="importPreview"
       :previewing="importPreviewing"
       :importing="importing"
@@ -163,8 +161,8 @@
     >
       <template #preview-details="{ preview }">
         <div class="companion-import-details">
-          <span>身份设定</span>
-          <p>{{ preview.identityPrompt || '未提供' }}</p>
+          <span>核心身份</span>
+          <p>{{ preview.coreIdentity || '未提供' }}</p>
         </div>
       </template>
     </ModuleJsonImportDrawer>
@@ -213,7 +211,6 @@ const error = ref('');
 const showCreate = ref(false);
 const draft = reactive({
   name: '',
-  identityPrompt: '',
   coreIdentity: '',
   personality: '',
   speechStyle: '',
@@ -282,7 +279,6 @@ async function save() {
     const asset = avatarFile.value ? await uploadAsset(avatarFile.value) : null;
     const item = await createCompanion({
       name: draft.name,
-      identityPrompt: draft.identityPrompt,
       coreIdentity: draft.coreIdentity,
       personality: draft.personality,
       speechStyle: draft.speechStyle,

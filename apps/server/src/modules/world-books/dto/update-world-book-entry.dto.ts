@@ -6,7 +6,6 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
-  IsObject,
   IsOptional,
   IsString,
   Max,
@@ -108,14 +107,4 @@ export class UpdateWorldBookEntryDto {
   @Min(1)
   @Max(200000)
   tokenBudget?: number | null;
-
-  /** 关键词是否区分大小写。 */
-  @IsOptional()
-  @IsBoolean()
-  caseSensitive?: boolean;
-
-  /** 扩展元数据，传入则整体替换。 */
-  @IsOptional()
-  @IsObject()
-  metadata?: Record<string, unknown> | null;
 }

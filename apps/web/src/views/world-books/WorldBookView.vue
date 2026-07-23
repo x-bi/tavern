@@ -3,7 +3,7 @@
     <header class="page-shell__header world-book-view__header">
       <div>
         <h2>世界书</h2>
-        <p>维护世界书与条目数据，后续阶段会基于这些字段接入命中和注入流程。</p>
+        <p>维护世界书、不可变条目版本，以及运行时命中和注入规则。</p>
       </div>
       <n-space v-if="activeScope === 'owned'" justify="end">
         <n-button secondary :loading="templateLoading" @click="downloadImportTemplate">
@@ -324,7 +324,7 @@
     <ModuleJsonImportDrawer
       v-model:show="importDrawerVisible"
       title="导入世界书 JSON"
-      format-label="tavern-lite.world-book.v1"
+      format-label="tavern-lite.world-book.v2"
       :preview="importPreview"
       :previewing="importPreviewing"
       :importing="importing"

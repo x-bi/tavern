@@ -40,17 +40,6 @@
         />
       </n-form-item>
 
-      <n-form-item label="Persona 内容" path="content">
-        <n-input
-          v-model:value="form.content"
-          type="textarea"
-          maxlength="8000"
-          show-count
-          :autosize="{ minRows: 8, maxRows: 14 }"
-          placeholder="描述用户身份、说话习惯、偏好、边界和角色关系。"
-        />
-      </n-form-item>
-
       <div class="persona-editor__switches">
         <n-checkbox v-model:checked="form.isDefault">设为默认 Persona</n-checkbox>
         <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
@@ -77,7 +66,6 @@ import { getStoredCurrentUser } from '../api/auth';
 
 type PersonaFormState = {
   name: string;
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -122,12 +110,7 @@ const rules: FormRules = {
       message: 'Persona 名称不能只包含空格',
       trigger: ['blur', 'input']
     }
-  ],
-  content: {
-    validator: (_rule, value: string) => value.trim().length <= 8000,
-    message: 'Persona 内容不能超过 8000 个字符',
-    trigger: ['blur', 'input']
-  }
+  ]
 };
 
 watch(
@@ -147,7 +130,6 @@ async function handleSubmit() {
 
   emit('submit', {
     name: form.name.trim(),
-    content: form.content.trim(),
     coreIdentity: form.coreIdentity.trim(),
     background: form.background.trim(),
     interactionPreferences: form.interactionPreferences.trim(),
@@ -160,7 +142,6 @@ async function handleSubmit() {
 function createEmptyForm(): PersonaFormState {
   return {
     name: '',
-    content: '',
     coreIdentity: '',
     background: '',
     interactionPreferences: '',
@@ -173,7 +154,6 @@ function createEmptyForm(): PersonaFormState {
 function toForm(persona: Persona): PersonaFormState {
   return {
     name: persona.name,
-    content: persona.content,
     coreIdentity: persona.coreIdentity,
     background: persona.background,
     interactionPreferences: persona.interactionPreferences,

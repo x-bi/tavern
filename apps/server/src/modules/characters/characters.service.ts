@@ -82,14 +82,15 @@ export class CharactersService {
       ...(access.isManaged || showSensitiveContent ? {} : { isSensitive: false }),
       // isArchived 未传时不加条件（查全部），传了则按值过滤归档/未归档
       ...(query.isArchived === undefined ? {} : { isArchived: query.isArchived }),
-      // search 关键字：匹配 name/description/personality/scenario 任一包含
+      // search 关键字：匹配 V2 角色正文。
       ...(query.search
         ? {
             OR: [
               { name: { contains: query.search } },
-              { description: { contains: query.search } },
+              { coreIdentity: { contains: query.search } },
               { personality: { contains: query.search } },
-              { scenario: { contains: query.search } }
+              { persistentPremise: { contains: query.search } },
+              { initialScenario: { contains: query.search } }
             ]
           }
         : {})
@@ -142,16 +143,13 @@ export class CharactersService {
         userId: currentUser.id,
         avatarAssetId,
         name: dto.name,
-        coreIdentity: dto.coreIdentity ?? dto.description ?? '',
-        // 可选字段未传时落库为空串（避免 null）
-        description: dto.description ?? '',
+        coreIdentity: dto.coreIdentity ?? '',
         personality: dto.personality ?? '',
-        persistentPremise: dto.persistentPremise ?? dto.scenario ?? '',
+        persistentPremise: dto.persistentPremise ?? '',
         initialScenario: dto.initialScenario ?? '',
         extendedBackground: dto.extendedBackground ?? '',
         characterRules: dto.characterRules ?? '',
         speechStyle: dto.speechStyle ?? '',
-        scenario: dto.scenario ?? '',
         firstMessage: dto.firstMessage ?? '',
         // exampleMessages / metadata 是结构化数据，序列化成 JSON 字符串存储
         exampleMessagesJson: this.stringifyNullable(dto.exampleMessages),
@@ -231,14 +229,12 @@ export class CharactersService {
         avatarAssetId: null,
         name: importName,
         coreIdentity: preview.coreIdentity,
-        description: preview.description,
         personality: preview.personality,
         persistentPremise: preview.persistentPremise,
         initialScenario: preview.initialScenario,
         extendedBackground: preview.extendedBackground,
         characterRules: preview.characterRules,
         speechStyle: preview.speechStyle,
-        scenario: preview.scenario,
         firstMessage: preview.firstMessage,
         exampleMessagesJson: this.stringifyNullable(preview.exampleMessages),
         metadataJson: this.stringifyNullable(preview.metadata),
@@ -322,9 +318,13 @@ export class CharactersService {
             userId: currentUser.id,
             avatarAssetId: asset?.id ?? null,
             name,
-            description: source.description,
+            coreIdentity: source.coreIdentity,
             personality: source.personality,
-            scenario: source.scenario,
+            persistentPremise: source.persistentPremise,
+            initialScenario: source.initialScenario,
+            extendedBackground: source.extendedBackground,
+            characterRules: source.characterRules,
+            speechStyle: source.speechStyle,
             firstMessage: source.firstMessage,
             exampleMessagesJson: source.exampleMessagesJson,
             metadataJson: source.metadataJson,
@@ -390,7 +390,6 @@ export class CharactersService {
         ...(avatarAssetId === undefined ? {} : { avatarAssetId }),
         ...(dto.name === undefined ? {} : { name: dto.name }),
         ...(dto.coreIdentity === undefined ? {} : { coreIdentity: dto.coreIdentity }),
-        ...(dto.description === undefined ? {} : { description: dto.description }),
         ...(dto.personality === undefined ? {} : { personality: dto.personality }),
         ...(dto.persistentPremise === undefined
           ? {}
@@ -401,7 +400,6 @@ export class CharactersService {
           : { extendedBackground: dto.extendedBackground }),
         ...(dto.characterRules === undefined ? {} : { characterRules: dto.characterRules }),
         ...(dto.speechStyle === undefined ? {} : { speechStyle: dto.speechStyle }),
-        ...(dto.scenario === undefined ? {} : { scenario: dto.scenario }),
         ...(dto.firstMessage === undefined ? {} : { firstMessage: dto.firstMessage }),
         ...(dto.exampleMessages === undefined
           ? {}
@@ -682,14 +680,12 @@ export class CharactersService {
       avatarUrl: character.avatarAsset?.publicPath ?? null,
       name: character.name,
       coreIdentity: character.coreIdentity,
-      description: character.description,
       personality: character.personality,
       persistentPremise: character.persistentPremise,
       initialScenario: character.initialScenario,
       extendedBackground: character.extendedBackground,
       characterRules: character.characterRules,
       speechStyle: character.speechStyle,
-      scenario: character.scenario,
       firstMessage: character.firstMessage,
       exampleMessages: this.parseExampleMessages(character.exampleMessagesJson),
       metadata: this.parseRecord(character.metadataJson),

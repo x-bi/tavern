@@ -8,9 +8,11 @@
       <section class="backup-export">
         <div class="backup-export__content">
           <h3>应用数据导出</h3>
-          <p>导出角色、会话、消息、世界书、预设、Persona、设置和资源文件清单。模型链配置不纳入备份。</p>
+          <p>
+            导出角色、会话、消息、世界书、预设、Persona、设置和资源文件清单。模型链配置不纳入备份。
+          </p>
           <div class="backup-export__tags">
-            <n-tag :bordered="false" type="info">格式版本 tavern-lite.backup.v1</n-tag>
+            <n-tag :bordered="false" type="info">格式版本 tavern-lite.backup.v2</n-tag>
             <n-tag :bordered="false" type="warning">不包含 uploads 文件二进制</n-tag>
           </div>
         </div>

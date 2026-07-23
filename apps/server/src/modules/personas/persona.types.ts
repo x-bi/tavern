@@ -3,7 +3,6 @@ export type PersonaResponse = {
   id: string;
   userId: string;
   name: string;
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;

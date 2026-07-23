@@ -88,7 +88,7 @@ export class WorldBookRuntimeService {
       .flatMap((book) =>
         book.entries
           .filter((entry) => entry.isEnabled && entry.activeRevisionId)
-          .map((entry) => ({ book, entry, config: parseConfig(entry.metadata) }))
+          .map((entry) => ({ book, entry, config: parseConfig(entry.config) }))
       );
     const candidates: WorldBookCandidateV2[] = entries.map(({ entry, config }) => ({
       entryId: entry.id,
@@ -204,7 +204,7 @@ export class WorldBookRuntimeService {
       });
       if (!evidence) return;
 
-      const context = record(entry.metadata?.contextV2);
+      const context = record(entry.config);
       const placement = placementFor(context.placement);
       const contentType = contentTypeFor(context.contentType);
       const trustLevel = trustLevelFor(context.trustLevel);
@@ -393,8 +393,8 @@ export class WorldBookRuntimeService {
   }
 }
 
-function parseConfig(metadata: Record<string, unknown> | null | undefined): WorldBookEntryConfigV2 {
-  const value = record(metadata?.contextV2);
+function parseConfig(config: Record<string, unknown> | null | undefined): WorldBookEntryConfigV2 {
+  const value = record(config);
   const scanSources = stringArray(value.scanSources).filter(
     (item): item is 'current_user' | 'user_history' | 'assistant_latest' =>
       ['current_user', 'user_history', 'assistant_latest'].includes(item)

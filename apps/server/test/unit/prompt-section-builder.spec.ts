@@ -10,21 +10,18 @@ function input(): BuildPromptInput {
       id: 'character',
       name: '角色',
       coreIdentity: '核心身份',
-      description: '旧描述',
       personality: '人格',
       persistentPremise: '持续前提',
       initialScenario: '初始场景',
       extendedBackground: '背景',
       characterRules: '角色规则',
       speechStyle: '说话风格',
-      scenario: '旧场景',
       firstMessage: '开场白',
       exampleMessages: []
     },
     persona: {
       id: 'persona',
       name: '用户',
-      content: '旧 Persona',
       coreIdentity: '用户核心',
       background: '用户背景',
       interactionPreferences: '互动偏好'
@@ -33,8 +30,6 @@ function input(): BuildPromptInput {
       id: 'preset',
       name: '预设',
       description: '',
-      systemPrompt: '旧系统约束',
-      outputRules: '旧输出规则',
       instructions: ['原子指令'],
       outputRuleOperations: [
         { key: 'style', content: '附加风格规则', operation: 'add', sortOrder: 1 }

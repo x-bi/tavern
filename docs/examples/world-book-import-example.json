@@ -1,5 +1,5 @@
 {
-  "format": "tavern-lite.world-book.v1",
+  "formatVersion": "tavern-lite.world-book.v2",
   "name": "雾港与钟楼",
   "description": "用于雾港调查线的地点、组织和传闻设定。",
   "characterIds": [],
@@ -16,13 +16,13 @@
       "keywords": ["雾港", "海港", "旧城区"],
       "secondaryKeywords": ["钟楼", "午夜"],
       "isEnabled": true,
-      "priority": 100,
+      "budgetPriority": 100,
+      "sortOrder": 10,
       "insertionOrder": "before_current_user_input",
       "tokenBudget": 320,
-      "caseSensitive": false,
-      "metadata": {
-        "kind": "location"
-      }
+      "contentType": "lore",
+      "activationMode": "keyword",
+      "matchMode": "normalized_phrase"
     },
     {
       "title": "钟楼巡夜人",
@@ -30,13 +30,13 @@
       "keywords": ["巡夜人", "旧钟楼", "失踪案"],
       "secondaryKeywords": [],
       "isEnabled": true,
-      "priority": 80,
+      "budgetPriority": 80,
+      "sortOrder": 20,
       "insertionOrder": "before_current_user_input",
       "tokenBudget": 280,
-      "caseSensitive": false,
-      "metadata": {
-        "kind": "faction"
-      }
+      "contentType": "lore",
+      "activationMode": "keyword",
+      "matchMode": "normalized_phrase"
     }
   ]
 }

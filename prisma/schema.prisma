@@ -40,14 +40,12 @@ model Character {
   avatarAssetId       String?
   name                String
   coreIdentity        String    @default("")
-  description         String    @default("")
   personality         String    @default("")
   persistentPremise   String    @default("")
   initialScenario     String    @default("")
   extendedBackground  String    @default("")
   characterRules      String    @default("")
   speechStyle         String    @default("")
-  scenario            String    @default("")
   firstMessage        String    @default("")
   exampleMessagesJson String?
   metadataJson        String?
@@ -166,8 +164,6 @@ model PromptPreset {
   userId                 String
   name                   String
   description            String    @default("")
-  systemPrompt           String    @default("")
-  outputRules            String    @default("")
   instructionsJson       String    @default("[]")
   outputRulesJson        String    @default("[]")
   generationPurposesJson String    @default("[\"chat_reply\",\"regenerate\",\"continue\"]")
@@ -195,7 +191,6 @@ model UserPersona {
   id                     String    @id @default(cuid())
   userId                 String
   name                   String
-  content                String    @default("")
   coreIdentity           String    @default("")
   background             String    @default("")
   interactionPreferences String    @default("")
@@ -486,21 +481,13 @@ model WorldBookCompanion {
 }
 
 model WorldBookEntry {
-  id                    String    @id @default(cuid())
-  worldBookId           String
-  activeRevisionId      String?   @unique
-  title                 String
-  content               String
-  keywordsJson          String
-  secondaryKeywordsJson String?
-  isEnabled             Boolean   @default(true)
-  position              String    @default("before_history")
-  tokenBudget           Int?
-  caseSensitive         Boolean   @default(false)
-  metadataJson          String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  deletedAt             DateTime?
+  id               String    @id @default(cuid())
+  worldBookId      String
+  activeRevisionId String?   @unique
+  isEnabled        Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
   worldBook                    WorldBook                              @relation(fields: [worldBookId], references: [id], onDelete: Cascade)
   activeRevision               WorldBookEntryRevision?                @relation("WorldBookEntryActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
@@ -736,7 +723,6 @@ model Companion {
   promptPresetId          String?
   personaId               String?
   name                    String
-  identityPrompt          String    @default("")
   coreIdentity            String    @default("")
   personality             String    @default("")
   speechStyle             String    @default("")

@@ -32,14 +32,12 @@ type NormalizedCharacter = {
   ref: string;
   name: string;
   coreIdentity: string;
-  description: string;
   personality: string;
   persistentPremise: string;
   initialScenario: string;
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  scenario: string;
   firstMessage: string;
   exampleMessages: ContentPackMessage[];
   metadata: JsonRecord | null;
@@ -50,7 +48,6 @@ type NormalizedCharacter = {
 type NormalizedPersona = {
   ref: string;
   name: string;
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -64,8 +61,6 @@ type NormalizedPromptPreset = {
   ref: string;
   name: string;
   description: string;
-  systemPrompt: string;
-  outputRules: string;
   instructions: string[];
   outputRuleOperations: ContentPackPresetRule[];
   generationPurposes: string[];
@@ -100,12 +95,10 @@ type NormalizedWorldBookEntry = Required<
     | 'isEnabled'
     | 'budgetPriority'
     | 'sortOrder'
-    | 'caseSensitive'
   >
 > & {
   insertionOrder: NonNullable<ContentPackWorldBookEntry['insertionOrder']>;
   tokenBudget: number | null;
-  metadata: JsonRecord | null;
   revisionConfig: JsonRecord;
 };
 
@@ -335,14 +328,12 @@ export class ContentPacksService {
             userId: currentUser.id,
             name: character.finalName,
             coreIdentity: character.coreIdentity,
-            description: character.description,
             personality: character.personality,
             persistentPremise: character.persistentPremise,
             initialScenario: character.initialScenario,
             extendedBackground: character.extendedBackground,
             characterRules: character.characterRules,
             speechStyle: character.speechStyle,
-            scenario: character.scenario,
             firstMessage: character.firstMessage,
             exampleMessagesJson: this.stringifyNullable(character.exampleMessages),
             metadataJson: this.stringifyNullable(character.metadata),
@@ -373,7 +364,6 @@ export class ContentPacksService {
           data: {
             userId: currentUser.id,
             name: persona.finalName,
-            content: persona.content,
             coreIdentity: persona.coreIdentity,
             background: persona.background,
             interactionPreferences: persona.interactionPreferences,
@@ -406,8 +396,6 @@ export class ContentPacksService {
             userId: currentUser.id,
             name: preset.finalName,
             description: preset.description,
-            systemPrompt: preset.systemPrompt,
-            outputRules: preset.outputRules,
             instructionsJson: JSON.stringify(preset.instructions),
             outputRulesJson: JSON.stringify(preset.outputRuleOperations),
             generationPurposesJson: JSON.stringify(preset.generationPurposes),
@@ -453,18 +441,7 @@ export class ContentPacksService {
             const createdEntry = await tx.worldBookEntry.create({
               data: {
                 worldBookId: created.id,
-                title: entry.title,
-                content: entry.content,
-                keywordsJson: JSON.stringify(entry.keywords),
-                secondaryKeywordsJson: JSON.stringify(entry.secondaryKeywords),
-                isEnabled: entry.isEnabled,
-                position: entry.insertionOrder,
-                tokenBudget: entry.tokenBudget,
-                caseSensitive: entry.caseSensitive,
-                metadataJson: this.stringifyNullable({
-                  ...(entry.metadata ?? {}),
-                  contextV2: entry.revisionConfig
-                })
+                isEnabled: entry.isEnabled
               }
             });
             const revision = await tx.worldBookEntryRevision.create({
@@ -590,12 +567,6 @@ export class ContentPacksService {
       ref: this.requiredString(record, 'ref', `${path}.ref`),
       name,
       finalName: name,
-      description: this.optionalLimitedString(
-        record,
-        'description',
-        `${path}.description`,
-        warnings
-      ),
       coreIdentity: this.optionalLimitedString(
         record,
         'coreIdentity',
@@ -638,7 +609,6 @@ export class ContentPacksService {
         `${path}.speechStyle`,
         warnings
       ),
-      scenario: this.optionalLimitedString(record, 'scenario', `${path}.scenario`, warnings),
       firstMessage: this.optionalLimitedString(
         record,
         'firstMessage',
@@ -666,7 +636,6 @@ export class ContentPacksService {
       ref: this.requiredString(record, 'ref', `${path}.ref`),
       name,
       finalName: name,
-      content: this.optionalLimitedString(record, 'content', `${path}.content`, warnings),
       coreIdentity: this.optionalLimitedString(
         record,
         'coreIdentity',
@@ -701,18 +670,6 @@ export class ContentPacksService {
         record,
         'description',
         `${path}.description`,
-        warnings
-      ),
-      systemPrompt: this.optionalLimitedString(
-        record,
-        'systemPrompt',
-        `${path}.systemPrompt`,
-        warnings
-      ),
-      outputRules: this.optionalLimitedString(
-        record,
-        'outputRules',
-        `${path}.outputRules`,
         warnings
       ),
       instructions: this.optionalStringArray(record, 'instructions', `${path}.instructions`),
@@ -792,8 +749,6 @@ export class ContentPacksService {
         warnings
       ),
       tokenBudget: this.optionalNullableInteger(record, 'tokenBudget', `${path}.tokenBudget`),
-      caseSensitive: this.optionalBoolean(record, 'caseSensitive', false, `${path}.caseSensitive`),
-      metadata: this.optionalRecord(record, 'metadata', `${path}.metadata`),
       revisionConfig: {
         contentType:
           record.contentType === 'behavior_rule' ? 'lore' : (record.contentType ?? 'lore'),

@@ -1,5 +1,5 @@
-/** 应用级备份文件格式版本标识，当前为 `tavern-lite.backup.v1`。 */
-export const APPLICATION_BACKUP_FORMAT_VERSION = 'tavern-lite.backup.v1';
+/** 应用级备份文件格式版本标识。 */
+export const APPLICATION_BACKUP_FORMAT_VERSION = 'tavern-lite.backup.v2';
 
 /** 备份文件中一条 JSON 记录的宽泛类型（逐字段语义由具体类型约束）。 */
 export type BackupJsonRecord = Record<string, unknown>;

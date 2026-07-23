@@ -28,7 +28,7 @@ describe('WorldBook V2 module import/export', () => {
         commit: true,
         duplicateNameStrategy: 'reject',
         rawJson: JSON.stringify({
-          formatVersion: 'tavern-lite.world-book.v1',
+          formatVersion: 'tavern-lite.world-book.v2',
           name: 'V2 exportable',
           entries: [
             {

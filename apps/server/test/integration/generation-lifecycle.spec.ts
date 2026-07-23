@@ -119,7 +119,7 @@ describe('generation lifecycle idempotency and lease', () => {
         data: { userId: user.id, name: 'Lore' }
       });
       const entry = await database.client.worldBookEntry.create({
-        data: { worldBookId: book.id, title: 'State', content: 'content', keywordsJson: '["hit"]' }
+        data: { worldBookId: book.id }
       });
       const revision = await database.client.worldBookEntryRevision.create({
         data: {

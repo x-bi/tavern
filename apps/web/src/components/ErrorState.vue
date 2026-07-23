@@ -12,7 +12,7 @@ withDefaults(
   }>(),
   {
     title: '当前页面暂不可用',
-    description: '这里是错误状态占位，后续阶段接入真实错误处理。'
+    description: '请求处理失败，请稍后重试。'
   }
 );
 </script>

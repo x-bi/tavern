@@ -7,15 +7,12 @@ describe('Companion atomic prompt section builder', () => {
       {
         companionId: 'companion',
         name: '伙伴',
-        identityPrompt: '旧身份',
         coreIdentity: '核心身份',
         personality: '人格',
         speechStyle: '风格',
         relationshipDefaults: '关系前提',
-        persona: '旧 Persona',
         personaProfile: {
           id: 'persona',
-          content: '旧 Persona',
           coreIdentity: '用户核心',
           background: '用户背景',
           interactionPreferences: '用户偏好'
@@ -52,7 +49,7 @@ describe('Companion atomic prompt section builder', () => {
     const sections = buildCompanionPromptSections(
       {
         name: '伙伴',
-        identityPrompt: '身份',
+        coreIdentity: '身份',
         memory: {
           isEnabled: true,
           status: 'stale',

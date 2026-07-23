@@ -22,7 +22,7 @@ const memberToken = await login(memberAccount);
 try {
   const adminPersona = await create(adminToken, 'personas', {
     name: `verify-persona-${suffix}`,
-    content: 'admin persona snapshot',
+    coreIdentity: 'admin persona snapshot',
     isShared: true
   });
   remember('admin', 'personas', adminPersona.id);
@@ -30,7 +30,10 @@ try {
   const adminPreset = await create(adminToken, 'prompt-presets', {
     name: `verify-preset-${suffix}`,
     description: 'admin preset snapshot',
-    outputRules: 'keep replies concise',
+    outputRuleOperations: [
+      { key: 'concise', content: 'keep replies concise', operation: 'add', sortOrder: 1 }
+    ],
+    generationPurposes: ['chat_reply'],
     temperature: 0.7,
     isShared: true
   });
@@ -38,14 +41,14 @@ try {
 
   const adminCharacter = await create(adminToken, 'characters', {
     name: `verify-character-${suffix}`,
-    description: 'admin character snapshot',
+    coreIdentity: 'admin character snapshot',
     isShared: true
   });
   remember('admin', 'characters', adminCharacter.id);
 
   const adminCharacterTwo = await create(adminToken, 'characters', {
     name: `verify-character-two-${suffix}`,
-    description: 'second admin character snapshot',
+    coreIdentity: 'second admin character snapshot',
     isShared: true
   });
   remember('admin', 'characters', adminCharacterTwo.id);
@@ -76,7 +79,7 @@ try {
 
   const adminCompanion = await create(adminToken, 'companions', {
     name: `verify-companion-${suffix}`,
-    identityPrompt: 'admin companion snapshot',
+    coreIdentity: 'admin companion snapshot',
     promptPresetId: adminPreset.id,
     personaId: adminPersona.id,
     isShared: true
@@ -98,7 +101,7 @@ try {
     method: 'POST',
     body: {
       rawJson: JSON.stringify({
-        formatVersion: 'tavern-lite.world-book.v1',
+        formatVersion: 'tavern-lite.world-book.v2',
         name: `verify-imported-world-book-${suffix}`,
         characterIds: [adminCharacter.id, memberCharacter.id],
         isEnabled: true,
@@ -189,7 +192,7 @@ try {
   if (
     duplicatedCompanion.id === memberCompanion.id ||
     duplicatedCompanion.name === memberCompanion.name ||
-    duplicatedCompanion.identityPrompt !== memberCompanion.identityPrompt ||
+    duplicatedCompanion.coreIdentity !== memberCompanion.coreIdentity ||
     duplicatedCompanion.promptPresetId !== memberCompanion.promptPresetId ||
     duplicatedCompanion.personaId !== memberCompanion.personaId ||
     duplicatedCompanion.isShared ||
@@ -218,7 +221,7 @@ try {
 
   const forbiddenUpdate = await rawApi(memberToken, `characters/${adminCharacter.id}`, {
     method: 'PUT',
-    body: { description: 'member must not mutate master data' }
+    body: { coreIdentity: 'member must not mutate master data' }
   });
   if (forbiddenUpdate.ok) throw new Error('Member unexpectedly updated administrator master data.');
 

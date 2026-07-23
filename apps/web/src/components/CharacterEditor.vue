@@ -35,17 +35,6 @@
         </n-form-item>
       </div>
 
-      <n-form-item label="描述" path="description">
-        <n-input
-          v-model:value="form.description"
-          type="textarea"
-          maxlength="10000"
-          show-count
-          :autosize="{ minRows: 3, maxRows: 8 }"
-          placeholder="角色背景、外观或基础设定"
-        />
-      </n-form-item>
-
       <n-form-item label="核心身份">
         <n-input
           v-model:value="form.coreIdentity"
@@ -107,17 +96,6 @@
         />
       </n-form-item>
 
-      <n-form-item label="场景" path="scenario">
-        <n-input
-          v-model:value="form.scenario"
-          type="textarea"
-          maxlength="10000"
-          show-count
-          :autosize="{ minRows: 3, maxRows: 8 }"
-          placeholder="初始场景、关系或当前情境"
-        />
-      </n-form-item>
-
       <n-form-item label="开场白" path="firstMessage">
         <n-input
           v-model:value="form.firstMessage"
@@ -126,17 +104,6 @@
           show-count
           :autosize="{ minRows: 3, maxRows: 8 }"
           placeholder="角色第一次发给用户的消息"
-        />
-      </n-form-item>
-
-      <n-form-item label="系统提示">
-        <n-input
-          v-model:value="form.systemPrompt"
-          type="textarea"
-          maxlength="10000"
-          show-count
-          :autosize="{ minRows: 3, maxRows: 8 }"
-          placeholder="可选。用于后续 Prompt Builder 的角色级补充约束"
         />
       </n-form-item>
 
@@ -231,19 +198,9 @@ const rules: FormRules = {
       trigger: ['blur', 'input']
     }
   ],
-  description: {
-    max: 10000,
-    message: '描述不能超过 10000 个字符',
-    trigger: ['blur']
-  },
   personality: {
     max: 10000,
     message: '人格不能超过 10000 个字符',
-    trigger: ['blur']
-  },
-  scenario: {
-    max: 10000,
-    message: '场景不能超过 10000 个字符',
     trigger: ['blur']
   },
   firstMessage: {
@@ -282,14 +239,12 @@ async function handleSubmit() {
     avatarAssetId: form.avatarAssetId,
     name: form.name.trim(),
     coreIdentity: form.coreIdentity.trim(),
-    description: form.description.trim(),
     personality: form.personality.trim(),
     persistentPremise: form.persistentPremise.trim(),
     initialScenario: form.initialScenario.trim(),
     extendedBackground: form.extendedBackground.trim(),
     characterRules: form.characterRules.trim(),
     speechStyle: form.speechStyle.trim(),
-    scenario: form.scenario.trim(),
     firstMessage: form.firstMessage.trim(),
     exampleMessages: parsedExamples,
     metadata: createMetadata(form),
@@ -305,16 +260,13 @@ function createEmptyForm(): CharacterEditorForm {
     name: '',
     coreIdentity: '',
     tagsText: '',
-    description: '',
     personality: '',
     persistentPremise: '',
     initialScenario: '',
     extendedBackground: '',
     characterRules: '',
     speechStyle: '',
-    scenario: '',
     firstMessage: '',
-    systemPrompt: '',
     exampleMessagesText: '',
     isSensitive: false,
     isShared: false
@@ -328,17 +280,13 @@ function toForm(character: Character): CharacterEditorForm {
     name: character.name,
     coreIdentity: character.coreIdentity,
     tagsText: Array.isArray(character.metadata?.tags) ? character.metadata.tags.join(', ') : '',
-    description: character.description,
     personality: character.personality,
     persistentPremise: character.persistentPremise,
     initialScenario: character.initialScenario,
     extendedBackground: character.extendedBackground,
     characterRules: character.characterRules,
     speechStyle: character.speechStyle,
-    scenario: character.scenario,
     firstMessage: character.firstMessage,
-    systemPrompt:
-      typeof character.metadata?.systemPrompt === 'string' ? character.metadata.systemPrompt : '',
     exampleMessagesText: character.exampleMessages
       .map((message) => `${message.role}: ${message.content}`)
       .join('\n'),
@@ -372,12 +320,6 @@ function createMetadata(value: CharacterEditorForm): CharacterMetadata {
     delete metadata.tags;
   }
 
-  if (value.systemPrompt.trim()) {
-    metadata.systemPrompt = value.systemPrompt.trim();
-  } else {
-    delete metadata.systemPrompt;
-  }
-
   return metadata;
 }
 
@@ -396,7 +338,7 @@ function parseExampleMessages(value: string): ExampleMessage[] | string {
       const content = line.slice(separatorIndex + 1).trim();
 
       if (separatorIndex < 1 || !['user', 'assistant'].includes(role) || !content) {
-        return `第 ${index + 1} 行格式应为 user: 内容或 assistant: 内容。系统约束请填写“系统提示”。`;
+        return `第 ${index + 1} 行格式应为 user: 内容或 assistant: 内容。系统约束请填写“角色规则”。`;
       }
 
       return {

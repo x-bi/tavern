@@ -152,8 +152,10 @@ export class PromptsService {
         'persona.coreIdentity': buildInput.persona?.coreIdentity,
         'persona.background': buildInput.persona?.background,
         'persona.interactionPreferences': buildInput.persona?.interactionPreferences,
-        'preset.systemPrompt': buildInput.promptPreset?.systemPrompt,
-        'preset.outputRules': buildInput.promptPreset?.outputRules
+        'preset.instructions': buildInput.promptPreset?.instructions.join('\n'),
+        'preset.outputRuleOperations': buildInput.promptPreset?.outputRuleOperations
+          .map((rule) => rule.content)
+          .join('\n')
       })
       .map((issue) => ({
         code: issue.code,
@@ -310,14 +312,12 @@ export class PromptsService {
         id: conversation.character.id,
         name: conversation.character.name,
         coreIdentity: conversation.character.coreIdentity,
-        description: conversation.character.description,
         personality: conversation.character.personality,
         persistentPremise: conversation.character.persistentPremise,
         initialScenario: conversation.character.initialScenario,
         extendedBackground: conversation.character.extendedBackground,
         characterRules: conversation.character.characterRules,
         speechStyle: conversation.character.speechStyle,
-        scenario: conversation.character.scenario,
         firstMessage: conversation.character.firstMessage,
         // 示例对话从 JSON 解析成结构化消息
         exampleMessages: this.parseExampleMessages(
@@ -330,7 +330,6 @@ export class PromptsService {
         ? {
             id: conversation.persona.id,
             name: conversation.persona.name,
-            content: conversation.persona.content,
             coreIdentity: conversation.persona.coreIdentity,
             background: conversation.persona.background,
             interactionPreferences: conversation.persona.interactionPreferences,
@@ -342,8 +341,6 @@ export class PromptsService {
             id: conversation.promptPreset.id,
             name: conversation.promptPreset.name,
             description: conversation.promptPreset.description,
-            systemPrompt: conversation.promptPreset.systemPrompt,
-            outputRules: conversation.promptPreset.outputRules,
             instructions: parsePresetStringArray(conversation.promptPreset.instructionsJson),
             outputRuleOperations: parsePresetOutputRuleOperations(
               conversation.promptPreset.outputRulesJson

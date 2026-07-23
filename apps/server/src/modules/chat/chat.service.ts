@@ -1026,7 +1026,6 @@ export class ChatService {
         ? {
             id: params.conversation.persona.id,
             name: params.conversation.persona.name,
-            content: params.conversation.persona.content,
             coreIdentity: params.conversation.persona.coreIdentity,
             background: params.conversation.persona.background,
             interactionPreferences: params.conversation.persona.interactionPreferences,
@@ -1038,8 +1037,6 @@ export class ChatService {
             id: params.promptPreset.id,
             name: params.promptPreset.name,
             description: params.promptPreset.description,
-            systemPrompt: params.promptPreset.systemPrompt,
-            outputRules: params.promptPreset.outputRules,
             instructions: parsePresetStringArray(params.promptPreset.instructionsJson),
             outputRuleOperations: parsePresetOutputRuleOperations(
               params.promptPreset.outputRulesJson
@@ -1085,14 +1082,12 @@ export class ChatService {
       id: character.id,
       name: character.name,
       coreIdentity: character.coreIdentity,
-      description: character.description,
       personality: character.personality,
       persistentPremise: character.persistentPremise,
       initialScenario: character.initialScenario,
       extendedBackground: character.extendedBackground,
       characterRules: character.characterRules,
       speechStyle: character.speechStyle,
-      scenario: character.scenario,
       firstMessage: character.firstMessage,
       exampleMessages: this.parseExampleMessages(character.exampleMessagesJson, conversationId),
       metadata: this.parseRecord(character.metadataJson)

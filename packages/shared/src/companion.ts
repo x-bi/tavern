@@ -2,7 +2,6 @@ import type { PromptModelParameters, ProviderChatMessage } from './prompt-builde
 
 export type CompanionPayload = {
   name: string;
-  identityPrompt?: string;
   coreIdentity?: string;
   personality?: string;
   speechStyle?: string;
@@ -19,7 +18,6 @@ export type CompanionResponse = {
   id: string;
   userId: string;
   name: string;
-  identityPrompt: string;
   coreIdentity: string;
   personality: string;
   speechStyle: string;
@@ -112,9 +110,12 @@ export type CompanionChatStreamPayload = {
   turnId?: string;
 };
 export type CompanionImportPreview = {
-  format: 'tavern-lite.companion.v1' | 'chara_card_v2' | 'generic-json';
+  format: 'tavern-lite.companion.v2' | 'chara_card_v2';
   name: string;
-  identityPrompt: string;
+  coreIdentity: string;
+  personality: string;
+  speechStyle: string;
+  relationshipDefaults: string;
   nameConflict: boolean;
   suggestedName: string | null;
   warnings: string[];
@@ -127,9 +128,8 @@ export type CompanionImportResponse = {
 export type CompanionExportResponse = {
   fileName: string;
   card: {
-    formatVersion: 'tavern-lite.companion.v1';
+    formatVersion: 'tavern-lite.companion.v2';
     name: string;
-    identityPrompt: string;
     coreIdentity: string;
     personality: string;
     speechStyle: string;
@@ -140,9 +140,12 @@ export type CompanionExportResponse = {
 export type CompanionImportTemplateResponse = {
   fileName: string;
   template: {
-    formatVersion: 'tavern-lite.companion.v1';
+    formatVersion: 'tavern-lite.companion.v2';
     name: string;
-    identityPrompt: string;
+    coreIdentity: string;
+    personality: string;
+    speechStyle: string;
+    relationshipDefaults: string;
   };
 };
 export type CompanionPromptPreviewResponse = {

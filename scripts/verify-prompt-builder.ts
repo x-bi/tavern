@@ -27,14 +27,12 @@ function tavernInput(history: BuildPromptInput['history'] = []): BuildPromptInpu
       id: 'character-1',
       name: 'Mira',
       coreIdentity: 'Lantern keeper',
-      description: '',
       personality: 'Calm',
       persistentPremise: 'Protects the archive',
       initialScenario: 'At the gate',
       extendedBackground: '',
       characterRules: '',
       speechStyle: '',
-      scenario: '',
       firstMessage: 'Welcome.',
       exampleMessages: [
         {
@@ -50,8 +48,6 @@ function tavernInput(history: BuildPromptInput['history'] = []): BuildPromptInpu
       id: 'preset-1',
       name: 'Preset',
       description: '',
-      systemPrompt: '',
-      outputRules: '',
       instructions: [],
       generationPurposes: ['chat_reply'],
       parameters: null,
@@ -87,7 +83,7 @@ assert.ok(!laterTurn.some((section) => section.sourceType === 'character_example
 const companionSections = buildCompanionPromptSections(
   {
     name: 'Luna',
-    identityPrompt: 'Astronomer',
+    coreIdentity: 'Astronomer',
     history: [],
     userInput: 'Hello',
     memory: {

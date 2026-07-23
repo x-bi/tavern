@@ -22,14 +22,12 @@ export type CharacterImportWarning = {
 export type CharacterImportMappedCard = {
   name: string;
   coreIdentity: string;
-  description: string;
   personality: string;
   persistentPremise: string;
   initialScenario: string;
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  scenario: string;
   firstMessage: string;
   exampleMessages: ExampleMessage[];
   metadata: Record<string, unknown>;
@@ -155,19 +153,13 @@ export class CharacterCardJsonImporter {
       nameSource.value,
       warnings
     );
-    // 构建 metadata（含 systemPrompt/creatorNotes、原卡片扩展字段、未映射字段）
-    const metadata = this.buildMetadata(
-      root,
-      card,
-      systemPrompt.value,
-      creatorNotes.value,
-      warnings
-    );
+    // 构建 metadata（含 creatorNotes、原卡片扩展字段、未映射字段）
+    const metadata = this.buildMetadata(root, card, creatorNotes.value, warnings);
 
     // 记录已映射到业务字段的映射关系
     this.addMappedFields(fieldMappings, [
       [nameSource.source, 'name'],
-      [description.source, 'description'],
+      [description.source, 'coreIdentity'],
       [coreIdentity.source, 'coreIdentity'],
       [personality.source, 'personality'],
       [persistentPremise.source, 'persistentPremise'],
@@ -175,10 +167,10 @@ export class CharacterCardJsonImporter {
       [extendedBackground.source, 'extendedBackground'],
       [characterRules.source, 'characterRules'],
       [speechStyle.source, 'speechStyle'],
-      [scenario.source, 'scenario'],
+      [scenario.source, 'persistentPremise/initialScenario'],
       [firstMessage.source, 'firstMessage'],
       [exampleSource.source, 'exampleMessages'],
-      [systemPrompt.source, 'metadata.systemPrompt'],
+      [systemPrompt.source, 'characterRules'],
       [creatorNotes.source, 'metadata.creatorNotes']
     ]);
     // 记录 metadata 类和 ignored 类字段的映射
@@ -187,15 +179,13 @@ export class CharacterCardJsonImporter {
     return {
       // name 单独做长度限制（其余文本字段在 pickText 内已截断）
       name: this.limitText(nameSource.value, MAX_NAME_LENGTH, 'name', warnings),
-      description: description.value,
       coreIdentity: coreIdentity.value || description.value,
       personality: personality.value,
       persistentPremise: persistentPremise.value || scenario.value,
       initialScenario: initialScenario.value || scenario.value,
       extendedBackground: extendedBackground.value,
-      characterRules: characterRules.value,
+      characterRules: characterRules.value || systemPrompt.value,
       speechStyle: speechStyle.value,
-      scenario: scenario.value,
       firstMessage: firstMessage.value,
       exampleMessages,
       metadata,
@@ -217,16 +207,15 @@ export class CharacterCardJsonImporter {
   }
 
   /**
-   * 构建 metadata：把 systemPrompt/creatorNotes、已知扩展字段、未映射字段归档。
+   * 构建 metadata：把 creatorNotes、已知扩展字段、未映射字段归档。
    *
    * 产出两部分：
-   * - metadata 顶层：systemPrompt / creatorNotes / tags / importedCard；
+   * - metadata 顶层：creatorNotes / tags / importedCard；
    * - importedCard：原卡片信息的快照（含未映射字段），供导出时回写。
    */
   private buildMetadata(
     root: JsonRecord,
     card: JsonRecord,
-    systemPrompt: string,
     creatorNotes: string,
     warnings: CharacterImportWarning[]
   ): Record<string, unknown> {
@@ -238,11 +227,6 @@ export class CharacterCardJsonImporter {
     };
     // 未能映射到已知字段的额外字段
     const unmappedFields: Record<string, unknown> = {};
-
-    // systemPrompt / creatorNotes 提到 metadata 顶层（便于业务直接取用）
-    if (systemPrompt) {
-      metadata.systemPrompt = systemPrompt;
-    }
 
     if (creatorNotes) {
       metadata.creatorNotes = creatorNotes;

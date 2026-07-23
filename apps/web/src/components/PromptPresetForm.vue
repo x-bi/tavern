@@ -24,17 +24,6 @@
         />
       </n-form-item>
 
-      <n-form-item label="系统提示词">
-        <n-input
-          v-model:value="form.systemPrompt"
-          type="textarea"
-          maxlength="10000"
-          show-count
-          :autosize="{ minRows: 4, maxRows: 10 }"
-          placeholder="预设级系统/开发者约束；会进入酒馆与 AI 角色 Prompt。"
-        />
-      </n-form-item>
-
       <n-form-item label="原子 Instructions（每行一条）">
         <n-input
           v-model:value="form.instructionsText"
@@ -142,17 +131,6 @@
         </n-form-item>
       </div>
 
-      <n-form-item label="输出风格约束">
-        <n-input
-          v-model:value="form.outputRules"
-          type="textarea"
-          maxlength="4000"
-          show-count
-          :autosize="{ minRows: 4, maxRows: 8 }"
-          placeholder="例如：回复保持自然口语，避免过长段落。"
-        />
-      </n-form-item>
-
       <div class="prompt-preset-form__switches">
         <n-checkbox v-model:checked="form.isDefault">设为默认预设</n-checkbox>
         <n-checkbox v-model:checked="form.isSensitive">标记为敏感内容</n-checkbox>
@@ -180,8 +158,6 @@ import { getStoredCurrentUser } from '../api/auth';
 type PromptPresetFormState = {
   name: string;
   description: string;
-  systemPrompt: string;
-  outputRules: string;
   instructionsText: string;
   outputRuleOperationsText: string;
   generationPurposes: string[];
@@ -306,8 +282,6 @@ async function handleSubmit() {
   emit('submit', {
     name: form.name.trim(),
     description: form.description.trim(),
-    systemPrompt: form.systemPrompt.trim(),
-    outputRules: form.outputRules.trim(),
     instructions: form.instructionsText
       .split('\n')
       .map((item) => item.trim())
@@ -330,8 +304,6 @@ function createEmptyForm(): PromptPresetFormState {
   return {
     name: '',
     description: '',
-    systemPrompt: '',
-    outputRules: '',
     instructionsText: '',
     outputRuleOperationsText: '[]',
     generationPurposes: ['chat_reply', 'regenerate', 'continue'],
@@ -351,8 +323,6 @@ function toForm(preset: PromptPreset): PromptPresetFormState {
   return {
     name: preset.name,
     description: preset.description,
-    systemPrompt: preset.systemPrompt,
-    outputRules: preset.outputRules,
     instructionsText: preset.instructions.join('\n'),
     outputRuleOperationsText: JSON.stringify(preset.outputRuleOperations, null, 2),
     generationPurposes: [...preset.generationPurposes],

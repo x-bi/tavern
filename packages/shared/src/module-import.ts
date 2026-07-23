@@ -45,8 +45,9 @@ export type ModuleImportPreviewBase = {
 
 /** Persona JSON 导入预览。 */
 export type PersonaImportPreview = ModuleImportPreviewBase & {
-  /** Persona 正文。 */
-  content: string;
+  coreIdentity: string;
+  background: string;
+  interactionPreferences: string;
   /** 扩展元数据。 */
   metadata: Record<string, unknown> | null;
   /** 是否设为默认。 */
@@ -67,10 +68,14 @@ export type PersonaImportResponse<TPersona = unknown> = {
 export type PromptPresetImportPreview = ModuleImportPreviewBase & {
   /** 预设说明。 */
   description: string;
-  /** 系统 Prompt。 */
-  systemPrompt: string;
-  /** 输出规则。 */
-  outputRules: string;
+  instructions: string[];
+  outputRuleOperations: Array<{
+    key: string;
+    content: string;
+    operation: 'add' | 'replace_optional' | 'disable_optional';
+    sortOrder: number;
+  }>;
+  generationPurposes: string[];
   /** 参数 JSON。 */
   parameters: Record<string, unknown> | null;
   /** 扩展元数据。 */
@@ -105,10 +110,6 @@ export type WorldBookEntryImportPreview = {
   insertionOrder: string;
   /** token 预算。 */
   tokenBudget: number | null;
-  /** 是否区分大小写。 */
-  caseSensitive: boolean;
-  /** 扩展元数据。 */
-  metadata: Record<string, unknown> | null;
   contentType: string;
   trustLevel: string;
   activationMode: string;

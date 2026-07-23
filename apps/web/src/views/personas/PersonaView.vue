@@ -28,7 +28,7 @@
       <n-input
         v-model:value="searchText"
         clearable
-        placeholder="搜索 Persona 名称或内容"
+        placeholder="搜索 Persona 名称、核心身份、背景或互动偏好"
         @keyup.enter="applySearch"
         @clear="applySearch"
       />
@@ -85,7 +85,7 @@
           </div>
           <div>
             <dt>字符数</dt>
-            <dd>{{ persona.content.length }}</dd>
+            <dd>{{ personaTextLength(persona) }}</dd>
           </div>
         </dl>
 
@@ -150,7 +150,7 @@
     <ModuleJsonImportDrawer
       v-model:show="importDrawerVisible"
       title="导入 Persona JSON"
-      format-label="tavern-lite.persona.v1"
+      format-label="tavern-lite.persona.v2"
       :preview="importPreview"
       :previewing="importPreviewing"
       :importing="importing"
@@ -378,9 +378,19 @@ async function setDefault(persona: Persona) {
 }
 
 function personaSummary(persona: Persona): string {
-  const value = persona.content.trim().replace(/\s+/g, ' ');
+  const value = [persona.coreIdentity, persona.background, persona.interactionPreferences]
+    .find((item) => item.trim())
+    ?.trim()
+    .replace(/\s+/g, ' ');
 
   return value || '未填写 Persona 内容';
+}
+
+function personaTextLength(persona: Persona): number {
+  return [persona.coreIdentity, persona.background, persona.interactionPreferences].reduce(
+    (total, item) => total + item.length,
+    0
+  );
 }
 
 function formatDateTime(value: string): string {

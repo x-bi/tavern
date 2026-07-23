@@ -16,14 +16,12 @@ export type CharacterResponse = {
   avatarUrl: string | null;
   name: string;
   coreIdentity: string;
-  description: string;
   personality: string;
   persistentPremise: string;
   initialScenario: string;
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  scenario: string;
   /** 角色的开场白。 */
   firstMessage: string;
   exampleMessages: ExampleMessage[];
@@ -73,14 +71,12 @@ export type CharacterImportWarning = {
 export type CharacterImportPreview = {
   name: string;
   coreIdentity: string;
-  description: string;
   personality: string;
   persistentPremise: string;
   initialScenario: string;
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  scenario: string;
   firstMessage: string;
   exampleMessages: ExampleMessage[];
   metadata: Record<string, unknown>;

@@ -129,7 +129,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import type { Conversation } from '../../api/conversations';
 import ConversationList from '../../components/ConversationList.vue';
@@ -152,6 +152,7 @@ type ConversationFormState = {
 };
 
 const router = useRouter();
+const route = useRoute();
 const dialog = useDialog();
 const message = useMessage();
 const conversationStore = useConversationStore();
@@ -214,6 +215,19 @@ async function loadInitialData() {
     personaStore.loadPersonas({ page: 1, pageSize: 100, search: '' }),
     presetStore.loadPresets({ page: 1, pageSize: 100, search: '' })
   ]);
+
+  const requestedCharacterId =
+    typeof route.query.characterId === 'string' ? route.query.characterId : null;
+  const requestedCharacter = characterStore.items.find(
+    (character) => character.id === requestedCharacterId
+  );
+
+  if (requestedCharacter) {
+    resetForm();
+    form.characterId = requestedCharacter.id;
+    form.title = `${requestedCharacter.name} 的会话`;
+    drawerVisible.value = true;
+  }
 }
 
 function applySearch() {

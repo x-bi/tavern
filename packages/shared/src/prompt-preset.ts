@@ -10,10 +10,6 @@ export type PromptPresetResponse = {
   name: string;
   /** 预设描述。 */
   description: string;
-  /** 预设的系统提示词。 */
-  systemPrompt: string;
-  /** 输出约束规则文本（注入到 output_rules 段）。 */
-  outputRules: string;
   instructions: string[];
   outputRuleOperations: Array<{
     key: string;
@@ -57,10 +53,6 @@ export type PromptPresetPayload = {
   name: string;
   /** 预设描述。 */
   description?: string;
-  /** 预设级系统/开发者约束。 */
-  systemPrompt?: string;
-  /** 输出约束规则文本。 */
-  outputRules?: string;
   instructions?: string[];
   outputRuleOperations?: PromptPresetResponse['outputRuleOperations'];
   generationPurposes?: string[];

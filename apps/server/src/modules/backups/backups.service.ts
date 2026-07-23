@@ -30,6 +30,7 @@ type BackupImportPlan = {
   worldBooks: Prisma.WorldBookCreateManyInput[];
   worldBookCharacters: Prisma.WorldBookCharacterCreateManyInput[];
   worldBookEntries: Prisma.WorldBookEntryCreateManyInput[];
+  worldBookEntryRevisions: Prisma.WorldBookEntryRevisionCreateManyInput[];
   appSettings: Prisma.AppSettingCreateManyInput[];
   summary: BackupImportSummary;
   warnings: string[];
@@ -108,7 +109,8 @@ export class BackupsService {
             where: {
               deletedAt: null
             },
-            orderBy: { createdAt: 'asc' }
+            orderBy: { createdAt: 'asc' },
+            include: { activeRevision: true }
           }
         },
         orderBy: [{ updatedAt: 'desc' }, { createdAt: 'desc' }]
@@ -486,6 +488,12 @@ export class BackupsService {
       worldBooks,
       worldBookCharacters,
       worldBookEntries,
+      worldBookEntryRevisions: worldBookEntryRecords.map((record, index) =>
+        this.toWorldBookEntryRevisionImportInput(
+          record,
+          `data.worldBooks.entries[${index}].activeRevision`
+        )
+      ),
       appSettings,
       summary: {
         characters: characters.length,
@@ -585,6 +593,16 @@ export class BackupsService {
 
     if (plan.worldBookEntries.length > 0) {
       await tx.worldBookEntry.createMany({ data: plan.worldBookEntries });
+    }
+
+    if (plan.worldBookEntryRevisions.length > 0) {
+      await tx.worldBookEntryRevision.createMany({ data: plan.worldBookEntryRevisions });
+      for (const revision of plan.worldBookEntryRevisions) {
+        await tx.worldBookEntry.update({
+          where: { id: revision.entryId },
+          data: { activeRevisionId: revision.id }
+        });
+      }
     }
 
     if (plan.appSettings.length > 0) {
@@ -698,9 +716,21 @@ export class BackupsService {
       userId: currentUser.id,
       avatarAssetId,
       name: this.requiredString(record, 'name', `${path}.name`),
-      description: this.requiredString(record, 'description', `${path}.description`),
+      coreIdentity: this.requiredString(record, 'coreIdentity', `${path}.coreIdentity`),
       personality: this.requiredString(record, 'personality', `${path}.personality`),
-      scenario: this.requiredString(record, 'scenario', `${path}.scenario`),
+      persistentPremise: this.requiredString(
+        record,
+        'persistentPremise',
+        `${path}.persistentPremise`
+      ),
+      initialScenario: this.requiredString(record, 'initialScenario', `${path}.initialScenario`),
+      extendedBackground: this.requiredString(
+        record,
+        'extendedBackground',
+        `${path}.extendedBackground`
+      ),
+      characterRules: this.requiredString(record, 'characterRules', `${path}.characterRules`),
+      speechStyle: this.requiredString(record, 'speechStyle', `${path}.speechStyle`),
       firstMessage: this.requiredString(record, 'firstMessage', `${path}.firstMessage`),
       exampleMessagesJson: this.optionalString(
         record,
@@ -709,6 +739,7 @@ export class BackupsService {
       ),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
       isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
+      isShared: this.optionalBoolean(record, 'isShared', false, `${path}.isShared`),
       isArchived: this.requiredBoolean(record, 'isArchived', `${path}.isArchived`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
@@ -733,12 +764,18 @@ export class BackupsService {
       userId: currentUser.id,
       name: this.requiredString(record, 'name', `${path}.name`),
       description: this.requiredString(record, 'description', `${path}.description`),
-      systemPrompt: this.requiredString(record, 'systemPrompt', `${path}.systemPrompt`),
-      outputRules: this.requiredString(record, 'outputRules', `${path}.outputRules`),
+      instructionsJson: this.requiredString(record, 'instructionsJson', `${path}.instructionsJson`),
+      outputRulesJson: this.requiredString(record, 'outputRulesJson', `${path}.outputRulesJson`),
+      generationPurposesJson: this.requiredString(
+        record,
+        'generationPurposesJson',
+        `${path}.generationPurposesJson`
+      ),
       parametersJson: this.optionalString(record, 'parametersJson', `${path}.parametersJson`),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
       isDefault: this.requiredBoolean(record, 'isDefault', `${path}.isDefault`),
       isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
+      isShared: this.optionalBoolean(record, 'isShared', false, `${path}.isShared`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
       deletedAt: null
@@ -761,10 +798,17 @@ export class BackupsService {
       id: this.requiredString(record, 'id', `${path}.id`),
       userId: currentUser.id,
       name: this.requiredString(record, 'name', `${path}.name`),
-      content: this.requiredString(record, 'content', `${path}.content`),
+      coreIdentity: this.requiredString(record, 'coreIdentity', `${path}.coreIdentity`),
+      background: this.requiredString(record, 'background', `${path}.background`),
+      interactionPreferences: this.requiredString(
+        record,
+        'interactionPreferences',
+        `${path}.interactionPreferences`
+      ),
       metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
       isDefault: this.requiredBoolean(record, 'isDefault', `${path}.isDefault`),
       isSensitive: this.optionalBoolean(record, 'isSensitive', false, `${path}.isSensitive`),
+      isShared: this.optionalBoolean(record, 'isShared', false, `${path}.isShared`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
       deletedAt: null
@@ -900,7 +944,7 @@ export class BackupsService {
     };
   }
 
-  /** 把新版 characterIds 或旧版 characterId 恢复为显式多角色关联。 */
+  /** 从 V2 characterIds 恢复显式多角色关联。 */
   private toWorldBookCharacterImportInputs(
     record: BackupJsonRecord,
     path: string,
@@ -909,22 +953,15 @@ export class BackupsService {
   ): Prisma.WorldBookCharacterCreateManyInput[] {
     const worldBookId = this.requiredString(record, 'id', `${path}.id`);
     const rawCharacterIds = record.characterIds;
-    let ids: string[];
-
-    if (rawCharacterIds === undefined || rawCharacterIds === null) {
-      const legacyCharacterId = this.optionalString(record, 'characterId', `${path}.characterId`);
-      ids = legacyCharacterId ? [legacyCharacterId] : [];
-    } else {
-      if (!Array.isArray(rawCharacterIds)) {
-        throw this.invalidFormat(`${path}.characterIds must be an array.`);
-      }
-      ids = rawCharacterIds.map((value, index) => {
-        if (typeof value !== 'string' || !value.trim()) {
-          throw this.invalidFormat(`${path}.characterIds[${index}] must be a non-empty string.`);
-        }
-        return value.trim();
-      });
+    if (!Array.isArray(rawCharacterIds)) {
+      throw this.invalidFormat(`${path}.characterIds must be an array.`);
     }
+    const ids = rawCharacterIds.map((value, index) => {
+      if (typeof value !== 'string' || !value.trim()) {
+        throw this.invalidFormat(`${path}.characterIds[${index}] must be a non-empty string.`);
+      }
+      return value.trim();
+    });
 
     return [...new Set(ids)].flatMap((characterId) => {
       const resolved = this.resolveOptionalReference(
@@ -960,22 +997,37 @@ export class BackupsService {
     return {
       id: this.requiredString(record, 'id', `${path}.id`),
       worldBookId,
-      title: this.requiredString(record, 'title', `${path}.title`),
-      content: this.requiredString(record, 'content', `${path}.content`),
-      keywordsJson: this.requiredString(record, 'keywordsJson', `${path}.keywordsJson`),
-      secondaryKeywordsJson: this.optionalString(
-        record,
-        'secondaryKeywordsJson',
-        `${path}.secondaryKeywordsJson`
-      ),
+      activeRevisionId: null,
       isEnabled: this.requiredBoolean(record, 'isEnabled', `${path}.isEnabled`),
-      position: this.requiredString(record, 'position', `${path}.position`),
-      tokenBudget: this.optionalInteger(record, 'tokenBudget', `${path}.tokenBudget`),
-      caseSensitive: this.requiredBoolean(record, 'caseSensitive', `${path}.caseSensitive`),
-      metadataJson: this.optionalString(record, 'metadataJson', `${path}.metadataJson`),
       createdAt: this.requiredDate(record, 'createdAt', `${path}.createdAt`),
       updatedAt: this.requiredDate(record, 'updatedAt', `${path}.updatedAt`),
       deletedAt: null
+    };
+  }
+
+  private toWorldBookEntryRevisionImportInput(
+    record: BackupJsonRecord,
+    path: string
+  ): Prisma.WorldBookEntryRevisionCreateManyInput {
+    if (!this.isRecord(record.activeRevision)) {
+      throw this.invalidFormat(`${path} must be an object.`);
+    }
+    const revision = record.activeRevision;
+    const entryId = this.requiredString(record, 'id', `${path}.entryId`);
+    return {
+      id: this.requiredString(revision, 'id', `${path}.id`),
+      entryId,
+      version: this.requiredInteger(revision, 'version', `${path}.version`),
+      configJson: this.requiredString(revision, 'configJson', `${path}.configJson`),
+      content: this.requiredString(revision, 'content', `${path}.content`),
+      compactContent: this.optionalString(revision, 'compactContent', `${path}.compactContent`),
+      compactSourceHash: this.optionalString(
+        revision,
+        'compactSourceHash',
+        `${path}.compactSourceHash`
+      ),
+      contentHash: this.requiredString(revision, 'contentHash', `${path}.contentHash`),
+      createdAt: this.requiredDate(revision, 'createdAt', `${path}.createdAt`)
     };
   }
 

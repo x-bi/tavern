@@ -17,7 +17,7 @@ describe('content pack V2 context fields', () => {
           commit: true,
           duplicateStrategy: 'reject',
           rawJson: JSON.stringify({
-            format: 'tavern-lite.content-pack.v1',
+            format: 'tavern-lite.content-pack.v2',
             title: 'V2 pack',
             characters: [
               { ref: 'c', name: 'Role', coreIdentity: 'Core', persistentPremise: 'Always' }
@@ -26,7 +26,6 @@ describe('content pack V2 context fields', () => {
               {
                 ref: 'p',
                 name: 'Me',
-                content: 'Legacy',
                 coreIdentity: 'User core',
                 background: 'Past'
               }

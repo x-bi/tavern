@@ -39,12 +39,8 @@
             <n-checkbox v-model:checked="form.autoOpenLastConversation">
               进入聊天页时优先打开最近会话
             </n-checkbox>
-            <n-checkbox v-model:checked="form.compactListMode">
-              管理列表使用紧凑显示
-            </n-checkbox>
-            <n-checkbox v-model:checked="form.showSensitiveContent">
-              显示敏感内容
-            </n-checkbox>
+            <n-checkbox v-model:checked="form.compactListMode"> 管理列表使用紧凑显示 </n-checkbox>
+            <n-checkbox v-model:checked="form.showSensitiveContent"> 显示敏感内容 </n-checkbox>
           </div>
           <div class="setting-actions">
             <n-button type="primary" :loading="settingStore.saving" @click="saveSettings">
@@ -109,7 +105,7 @@
         <div class="backup-entry">
           <div>
             <strong>AI 设定内容包</strong>
-            <p>适合从其它聊天模型生成 tavern-lite.content-pack.v1 JSON 后直接预览和导入。</p>
+            <p>适合从其它聊天模型生成 tavern-lite.content-pack.v2 JSON 后直接预览和导入。</p>
           </div>
           <div class="backup-entry__actions">
             <n-button type="primary" @click="goTo('content-pack-import')"> 导入内容包 </n-button>
@@ -193,7 +189,7 @@ const defaultPersonaSummary = computed(() => {
     return '新会话不会自动带入 Persona。';
   }
 
-  return trimSummary(defaultPersona.value.content, '已配置默认 Persona。');
+  return trimSummary(defaultPersona.value.coreIdentity, '已配置默认 Persona。');
 });
 
 const defaultPresetSummary = computed(() => {

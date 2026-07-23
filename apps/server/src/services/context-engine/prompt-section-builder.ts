@@ -55,10 +55,7 @@ export function buildTavernPromptSections(
     kind: 'character_core',
     sourceType: 'character_core',
     sourceId: input.character.id,
-    content: [
-      `Character: ${input.character.name}`,
-      input.character.coreIdentity || input.character.description
-    ]
+    content: [`Character: ${input.character.name}`, input.character.coreIdentity]
       .filter(Boolean)
       .join('\n'),
     placement: 'instruction',
@@ -90,7 +87,7 @@ export function buildTavernPromptSections(
       input.character.id,
       'initial-scenario',
       'character_initial_scenario',
-      input.character.initialScenario || input.character.scenario,
+      input.character.initialScenario,
       40
     );
   }
@@ -150,7 +147,7 @@ export function buildTavernPromptSections(
       input.persona.id,
       'core',
       'persona_core',
-      input.persona.coreIdentity || input.persona.content,
+      input.persona.coreIdentity,
       110
     );
     addProfileSection(
@@ -176,10 +173,7 @@ export function buildTavernPromptSections(
     : ['chat_reply', 'regenerate', 'continue'];
   const presetApplies = Boolean(input.promptPreset && presetPurposes.includes(purpose));
   if (input.promptPreset && presetApplies) {
-    const instructions = [
-      input.promptPreset.systemPrompt,
-      ...(input.promptPreset.instructions ?? [])
-    ];
+    const instructions = input.promptPreset.instructions ?? [];
     instructions.forEach((content, index) =>
       add({
         id: `preset:${input.promptPreset!.id}:instruction:${index}`,
@@ -215,17 +209,7 @@ export function buildTavernPromptSections(
         content: PROMPT_BUILDER_DEFAULT_OUTPUT_RULES[2],
         optional: true,
         sortOrder: 202
-      },
-      ...(presetApplies && input.promptPreset?.outputRules.trim()
-        ? [
-            {
-              key: 'preset_text',
-              content: input.promptPreset.outputRules,
-              optional: true,
-              sortOrder: 210
-            }
-          ]
-        : [])
+      }
     ];
     const mergedRules = mergePresetOutputRules(
       baseRules,

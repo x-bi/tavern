@@ -107,14 +107,12 @@ export type PromptCharacterContext = {
   id: string;
   name: string;
   coreIdentity: string;
-  description: string;
   personality: string;
   persistentPremise: string;
   initialScenario: string;
   extendedBackground: string;
   characterRules: string;
   speechStyle: string;
-  scenario: string;
   firstMessage: string;
   exampleMessages?: ChatMessageLike[];
   metadata?: Record<string, unknown> | null;
@@ -124,7 +122,6 @@ export type PromptCharacterContext = {
 export type PromptPersonaContext = {
   id: string;
   name: string;
-  content: string;
   coreIdentity: string;
   background: string;
   interactionPreferences: string;
@@ -136,8 +133,6 @@ export type PromptPresetContext = {
   id: string;
   name: string;
   description: string;
-  systemPrompt: string;
-  outputRules: string;
   instructions: string[];
   outputRuleOperations: Array<{
     key: string;
@@ -176,7 +171,7 @@ export type PromptModelGatewayContext = {
 /** 世界书条目上下文。 */
 export type WorldBookEntryContext = {
   id: string;
-  activeRevisionId?: string | null;
+  activeRevisionId: string;
   worldBookId: string;
   title: string;
   content: string;
@@ -189,8 +184,7 @@ export type WorldBookEntryContext = {
   sortOrder: number;
   position: WorldBookEntryPosition;
   tokenBudget?: number | null;
-  caseSensitive: boolean;
-  metadata?: Record<string, unknown> | null;
+  config: Record<string, unknown>;
 };
 
 /** 世界书上下文（含其条目）。 */

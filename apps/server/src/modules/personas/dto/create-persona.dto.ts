@@ -7,11 +7,6 @@ export class CreatePersonaDto {
   @MaxLength(120)
   name!: string;
 
-  /** 人设内容，可选，最长 8000。 */
-  @IsOptional()
-  @IsString()
-  @MaxLength(8000)
-  content?: string;
   @IsOptional() @IsString() @MaxLength(8000) coreIdentity?: string;
   @IsOptional() @IsString() @MaxLength(12000) background?: string;
   @IsOptional() @IsString() @MaxLength(8000) interactionPreferences?: string;

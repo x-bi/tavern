@@ -140,8 +140,10 @@ export class CompanionChatService {
         'persona.coreIdentity': promptInput.personaProfile?.coreIdentity,
         'persona.background': promptInput.personaProfile?.background,
         'persona.interactionPreferences': promptInput.personaProfile?.interactionPreferences,
-        'preset.systemPrompt': promptInput.preset?.systemPrompt,
-        'preset.outputRules': promptInput.preset?.outputRules,
+        'preset.instructions': promptInput.preset?.instructions?.join('\n'),
+        'preset.outputRuleOperations': promptInput.preset?.outputRuleOperations
+          ?.map((rule) => rule.content)
+          .join('\n'),
         memory: [promptInput.memory?.relationshipState, promptInput.memory?.currentArc]
           .filter(Boolean)
           .join('\n')
@@ -437,22 +439,13 @@ export class CompanionChatService {
     return {
       name: companion.name,
       companionId: companion.id,
-      identityPrompt: [
-        companion.coreIdentity || companion.identityPrompt,
-        companion.personality,
-        companion.speechStyle,
-        companion.relationshipDefaults
-      ]
-        .filter(Boolean)
-        .join('\n'),
-      coreIdentity: companion.coreIdentity || companion.identityPrompt,
+      coreIdentity: companion.coreIdentity,
       personality: companion.personality,
       speechStyle: companion.speechStyle,
       relationshipDefaults: companion.relationshipDefaults,
       personaProfile: companion.persona
         ? {
             id: companion.persona.id,
-            content: companion.persona.content,
             coreIdentity: companion.persona.coreIdentity,
             background: companion.persona.background,
             interactionPreferences: companion.persona.interactionPreferences
@@ -488,8 +481,6 @@ export class CompanionChatService {
     return preset
       ? {
           id: preset.id,
-          systemPrompt: preset.systemPrompt,
-          outputRules: preset.outputRules,
           instructions: parsePresetStringArray(preset.instructionsJson),
           outputRuleOperations: parsePresetOutputRuleOperations(preset.outputRulesJson),
           generationPurposes: parsePresetStringArray(preset.generationPurposesJson),

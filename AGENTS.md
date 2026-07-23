@@ -312,7 +312,7 @@ type ApiResponse<T> = {
 - Builder 返回结果包含可解释的组成段落（sections），供 Prompt 预览展示。
 - 世界书命中逻辑必须可调试，至少保留命中关键词、优先级、token 预算和注入位置。
 
-v1 不做（酒馆形态）：
+酒馆形态不做：
 
 - 长期记忆摘要（酒馆 `PromptSectionKind` 不含 `conversation_memory`，section 序列永远不含该段）。
 - 向量召回。

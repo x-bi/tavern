@@ -188,13 +188,11 @@ export type {
 export type {
   BuildPromptDebugInfo,
   BuildPromptInput,
-  BuildPromptResult,
   ChatMessageLike,
   PromptBuildMode,
   PromptBuildOptions,
   PromptBuildPurpose,
   PromptBuildWarning,
-  PromptBuilderMessage,
   PromptCharacterContext,
   PromptConversationContext,
   PromptInternalMessageRole,
@@ -206,19 +204,13 @@ export type {
   PromptHistoryTrimInfo,
   PromptPreviewPayload,
   PromptPreviewResponse,
-  PromptPreviewResult,
   PromptProviderMessageRole,
-  PromptSection,
   PromptSectionKind,
-  PromptSectionSource,
   PromptTruncatedHistoryItem,
   ProviderChatMessage,
   WorldBookContext,
   WorldBookEntryContext,
-  WorldBookEntryPosition,
-  WorldBookMatchedEntry,
-  WorldBookMatchResult,
-  WorldBookSkippedEntry
+  WorldBookEntryPosition
 } from './prompt-builder';
 export type {
   PromptPresetListResponse,

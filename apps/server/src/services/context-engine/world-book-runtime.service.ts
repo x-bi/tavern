@@ -22,16 +22,27 @@ type RuntimeTarget = 'conversation' | 'companion';
 type RuntimeDecision = {
   entryId: string;
   revisionId: string;
+  worldBookId: string;
+  title: string;
   included: boolean;
   activationSource: WorldBookActivationSource | null;
   reason: string | null;
   sourceMessageId: string | null;
+  placement: PromptSectionV2['placement'];
+  contentType: NonNullable<PromptSectionV2['contentType']>;
+  trustLevel: NonNullable<PromptSectionV2['trustLevel']>;
+  budgetPriority: number;
+  sortOrder: number;
 };
 export type WorldBookRuntimeResult = {
   sections: PromptSectionV2[];
   includedWorldBooks: ProposedWorldBookTrace[];
   stateChanges: ProposedWorldBookStateChange[];
   decisions: RuntimeDecision[];
+  /** 喂给 V2 匹配器的消息 ID 列表（current + user_history + latest_assistant）。 */
+  scannedMessageIds: string[];
+  /** 本次扫描使用的 user_history 深度（取各启用条目 userHistoryScanDepth 的最大值，至少 1）。 */
+  scanDepth: number;
 };
 
 type StoredState = WorldBookActivationStateV2 & {
@@ -101,9 +112,10 @@ export class WorldBookRuntimeService {
       }))
     }));
     const current = input.currentUserMessage;
+    const scanDepth = Math.max(1, ...candidates.map((entry) => entry.config.userHistoryScanDepth));
     const userHistory = input.history
       .filter((message) => message.role === 'user' && message.id !== current.id)
-      .slice(-Math.max(1, ...candidates.map((entry) => entry.config.userHistoryScanDepth)))
+      .slice(-scanDepth)
       .map((message) => ({
         id: message.id,
         source: 'user_history' as const,
@@ -113,6 +125,11 @@ export class WorldBookRuntimeService {
     const latestAssistant = [...input.history]
       .reverse()
       .find((message) => message.role === 'assistant' && message.status !== 'edited');
+    const scannedMessageIds = [
+      current.id,
+      ...userHistory.map((message) => message.id),
+      ...(latestAssistant ? [latestAssistant.id] : [])
+    ];
     const direct = matchWorldBookEntriesV2({
       entries: candidates,
       messages: [
@@ -194,20 +211,27 @@ export class WorldBookRuntimeService {
         evidence = undefined;
         reason = 'delay';
       }
-      decisions.push({
-        entryId: entry.id,
-        revisionId: entry.activeRevisionId!,
-        included: Boolean(evidence),
-        activationSource: evidence?.activationSource ?? null,
-        reason,
-        sourceMessageId: evidence?.sourceMessageId ?? null
-      });
-      if (!evidence) return;
-
       const context = record(entry.config);
       const placement = placementFor(context.placement);
       const contentType = contentTypeFor(context.contentType);
       const trustLevel = trustLevelFor(context.trustLevel);
+      decisions.push({
+        entryId: entry.id,
+        revisionId: entry.activeRevisionId!,
+        worldBookId: book.id,
+        title: entry.title,
+        included: Boolean(evidence),
+        activationSource: evidence?.activationSource ?? null,
+        reason,
+        sourceMessageId: evidence?.sourceMessageId ?? null,
+        placement,
+        contentType,
+        trustLevel,
+        budgetPriority: config.budgetPriority,
+        sortOrder: config.sortOrder
+      });
+      if (!evidence) return;
+
       sections.push({
         id: `world-book:${entry.id}:${entry.activeRevisionId}`,
         kind: 'world_book',
@@ -262,9 +286,15 @@ export class WorldBookRuntimeService {
           sourceType: evidence.activationSource
         }
       });
-      void book;
     });
-    return { sections, includedWorldBooks, stateChanges, decisions };
+    return {
+      sections,
+      includedWorldBooks,
+      stateChanges,
+      decisions,
+      scannedMessageIds,
+      scanDepth
+    };
   }
 
   private stateEvidence(

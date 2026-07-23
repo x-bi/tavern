@@ -27,16 +27,6 @@ export type PromptSectionKind =
   | 'current_user_input' // 当前用户输入
   | 'output_rules'; // 输出规则
 
-/** Prompt section 来源（用于追溯每段内容来自哪个数据源）。 */
-export type PromptSectionSource =
-  | 'system'
-  | 'character'
-  | 'persona'
-  | 'prompt_preset'
-  | 'worldbook'
-  | 'message'
-  | 'runtime';
-
 /** 世界书条目插入位置（决定 section 在最终消息序列中的插入点）。 */
 export type WorldBookEntryPosition =
   | 'before_history' // 历史消息前
@@ -63,33 +53,6 @@ export type ProviderChatMessage = {
   content: string;
   name?: string;
   toolCallId?: string;
-  metadata?: Record<string, unknown> | null;
-};
-
-/** 单个 Prompt section（构建过程中的一段内容）。 */
-export type PromptSection = {
-  id: string;
-  kind: PromptSectionKind;
-  source: PromptSectionSource;
-  title: string;
-  content: string;
-  /** 是否纳入最终消息（false 表示被裁剪/跳过，但仍记录用于调试）。 */
-  isIncluded: boolean;
-  /** 排序序号（决定在消息序列中的位置）。 */
-  order: number;
-  tokenEstimate?: number | null;
-  sourceId?: string | null;
-  /** 跳过/裁剪原因。 */
-  reason?: string | null;
-  metadata?: Record<string, unknown> | null;
-};
-
-/** 逻辑消息（一组同属一条消息的 section 聚合，转成最终消息前的中间形态）。 */
-export type PromptBuilderMessage = {
-  role: PromptInternalMessageRole;
-  content: string;
-  sectionIds: string[];
-  tokenEstimate?: number | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -208,50 +171,6 @@ export type WorldBookContext = {
   metadata?: Record<string, unknown> | null;
 };
 
-/** 世界书匹配命中的条目（含命中关键词、来源消息等）。 */
-export type WorldBookMatchedEntry = {
-  worldBookId: string;
-  worldBookName: string;
-  entryId: string;
-  revisionId?: string | null;
-  title: string;
-  content: string;
-  keywords: string[];
-  /** 实际命中的关键词。 */
-  matchedKeywords: string[];
-  secondaryKeywords?: string[];
-  matchedSecondaryKeywords?: string[];
-  budgetPriority: number;
-  sortOrder: number;
-  position: WorldBookEntryPosition;
-  insertionOrder: WorldBookEntryPosition;
-  tokenBudget?: number | null;
-  tokenEstimate?: number | null;
-  /** 触发命中的来源消息 ID。 */
-  sourceMessageIds: string[];
-  metadata?: Record<string, unknown> | null;
-};
-
-/** 世界书未命中的条目（含跳过原因）。 */
-export type WorldBookSkippedEntry = {
-  worldBookId: string;
-  entryId: string;
-  title: string;
-  /** 跳过原因：禁用/无关键词命中/次要关键词未命中/token 超预算。 */
-  reason: 'disabled' | 'no_keyword_match' | 'secondary_keyword_miss' | 'token_budget_exceeded';
-  tokenEstimate?: number | null;
-};
-
-/** 世界书匹配结果。 */
-export type WorldBookMatchResult = {
-  scannedMessageIds: string[];
-  scanDepth: number;
-  tokenBudget: number;
-  usedTokenEstimate: number;
-  matchedEntries: WorldBookMatchedEntry[];
-  skippedEntries: WorldBookSkippedEntry[];
-};
-
 /** 被裁剪的历史消息项。 */
 export type PromptTruncatedHistoryItem = {
   messageId: string;
@@ -270,7 +189,6 @@ export type PromptBuildWarning = {
 
 /** 构建调试信息（预览/调试时返回，含匹配、裁剪、最终消息等）。 */
 export type BuildPromptDebugInfo = {
-  matchedEntries: WorldBookMatchedEntry[];
   truncatedHistory: PromptTruncatedHistoryItem[];
   finalMessages: ProviderChatMessage[];
   sectionOrder: string[];
@@ -289,8 +207,6 @@ export type BuildPromptDebugInfo = {
   };
   /** 实际解析出的 Preset 参数；不存在 Preset 时为 null。 */
   presetParameters: PromptModelParameters | null;
-  /** V2 世界书 dry-run 决策；Preview 展示但不提交状态。 */
-  worldBookDecisions?: Array<Record<string, unknown>>;
 };
 
 /** 构建选项。 */
@@ -321,26 +237,6 @@ export type BuildPromptInput = {
   options: PromptBuildOptions;
 };
 
-/** 构建结果。 */
-export type BuildPromptResult = {
-  conversationId: string;
-  sections: PromptSection[];
-  logicalMessages: PromptBuilderMessage[];
-  /** 发给模型的最终消息序列。 */
-  finalMessages: ProviderChatMessage[];
-  worldBook: WorldBookMatchResult;
-  truncatedHistory: PromptTruncatedHistoryItem[];
-  tokenEstimate?: number | null;
-  debug: BuildPromptDebugInfo;
-};
-
-/** 预览构建结果（带生成时间）。 */
-export type PromptPreviewResult = {
-  conversationId: string;
-  generatedAt: string;
-  result: BuildPromptResult;
-};
-
 /** 预览请求载荷。 */
 export type PromptPreviewPayload = {
   conversationId: string;
@@ -360,24 +256,49 @@ export type PromptHistoryTrimInfo = {
   truncatedHistory: PromptTruncatedHistoryItem[];
 };
 
-/** 预览响应中的世界书调试信息。 */
+/** 预览响应中的世界书调试信息（V2 运行时决策 + Provider 编译后实际插入的唯一来源）。 */
 export type PromptPreviewWorldBookDebug = {
-  scanDepth: number;
-  tokenBudget: number;
-  usedTokenEstimate: number;
-  scannedMessageIds: string[];
+  /** 候选条目数（启用且含 active revision 的条目总数）。 */
+  candidateCount: number;
+  /** 运行时激活（命中）的条目数。 */
   matchedCount: number;
+  /** 运行时未激活（跳过）的条目数。 */
   skippedCount: number;
-  matchedEntries: WorldBookMatchedEntry[];
-  skippedEntries: WorldBookSkippedEntry[];
-  /** 实际插入的 section 列表。 */
+  /** 喂给 V2 匹配器的消息 ID 列表。 */
+  scannedMessageIds: string[];
+  /** 本次扫描使用的 user_history 深度。 */
+  scanDepth: number;
+  /** 每个候选条目的运行时决策（含未命中条目，included 表示运行时是否激活）。 */
+  decisions: Array<{
+    worldBookId: string;
+    entryId: string;
+    revisionId: string;
+    title: string;
+    /** 运行时是否激活（true=命中/常驻/Sticky/Continuation/Manual；不含预算裁剪）。 */
+    included: boolean;
+    activationSource: string | null;
+    reason: string | null;
+    sourceMessageId: string | null;
+    placement: string;
+    contentType: string;
+    trustLevel: string;
+    budgetPriority: number;
+    sortOrder: number;
+    /** 命中条目的 token 估算（来自最终 section）；未命中条目为 null。 */
+    tokenEstimate: number | null;
+  }>;
+  /** 最终插入 Provider Prompt 的世界书 section（命中条目中实际纳入的子集，可能因预算裁剪少于 matchedCount）。 */
   insertedSections: Array<{
     sectionId: string;
-    entryId: string | null;
+    worldBookId: string;
+    entryId: string;
+    revisionId: string;
     title: string;
-    insertionOrder: WorldBookEntryPosition | null;
-    order: number;
-    tokenEstimate?: number | null;
+    placement: string;
+    contentType: string;
+    budgetPriority: number;
+    sortOrder: number;
+    tokenEstimate: number;
   }>;
 };
 
@@ -389,10 +310,7 @@ export type PromptPreviewResponse = {
   compilerVersion: string;
   promptSnapshotHash: string;
   compiledSections: CompiledPromptSection[];
-  sections: PromptSection[];
-  logicalMessages: PromptBuilderMessage[];
   finalMessages: ProviderChatMessage[];
-  worldBook: WorldBookMatchResult;
   worldBookDebug: PromptPreviewWorldBookDebug;
   historyTrimInfo: PromptHistoryTrimInfo;
   tokenEstimate?: number | null;

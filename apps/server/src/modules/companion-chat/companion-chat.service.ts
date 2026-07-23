@@ -169,8 +169,7 @@ export class CompanionChatService {
       }),
       compiledSections: compiled.sections,
       memoryVersion: companion.memory?.activeRevision?.version ?? null,
-      generatedAt: new Date().toISOString(),
-      worldBookDecisions: worldBookRuntime.decisions
+      generatedAt: new Date().toISOString()
     };
   }
 

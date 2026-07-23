@@ -13,6 +13,7 @@ import {
   parsePresetStringArray
 } from '../../services/context-engine/preset-rule-compiler';
 import { compilePromptSections } from '../../services/context-engine/provider-prompt-compiler';
+import { buildWorldBookDebug } from '../../services/context-engine/preview-world-book-debug';
 import { resolveModelPromptBudget } from '../../services/prompt-builder/prompt-budget';
 import {
   PROMPT_BUILDER_DEFAULT_HISTORY_LIMIT,
@@ -162,15 +163,6 @@ export class PromptsService {
         message: issue.message,
         details: { fields: issue.fields }
       }));
-    const emptyWorldBookResult = {
-      scannedMessageIds: [] as string[],
-      scanDepth: 0,
-      tokenBudget: 0,
-      usedTokenEstimate: 0,
-      matchedEntries: [],
-      skippedEntries: []
-    };
-
     return {
       conversationId: conversation.id,
       generatedAt: new Date().toISOString(),
@@ -178,29 +170,14 @@ export class PromptsService {
       compilerVersion: compiled.compilerVersion,
       promptSnapshotHash,
       compiledSections: compiled.sections,
-      sections: [],
-      logicalMessages: [],
       finalMessages: compiled.messages,
-      worldBook: emptyWorldBookResult,
-      worldBookDebug: {
-        ...emptyWorldBookResult,
-        matchedCount: worldBookRuntime.decisions.filter((item) => item.included).length,
-        skippedCount: worldBookRuntime.decisions.filter((item) => !item.included).length,
-        insertedSections: compiled.sections
-          .filter((item) => item.section.kind === 'world_book' && item.included)
-          .map((item, order) => ({
-            sectionId: item.section.id,
-            entryId: item.section.sourceId ?? null,
-            title: item.section.sourceType,
-            insertionOrder: null,
-            order,
-            tokenEstimate: item.tokenEstimate
-          }))
-      },
+      worldBookDebug: buildWorldBookDebug({
+        runtime: worldBookRuntime,
+        compiledSections: compiled.sections
+      }),
       historyTrimInfo,
       tokenEstimate: compiled.tokenEstimate,
       debug: {
-        matchedEntries: [],
         truncatedHistory: historyTrimInfo.truncatedHistory,
         sectionOrder: compiled.sections.map((item) => item.section.id),
         warnings: ownershipWarnings,
@@ -223,7 +200,6 @@ export class PromptsService {
         presetParameters: conversation.promptPreset
           ? this.parseParams(conversation.promptPreset.parametersJson)
           : null,
-        worldBookDecisions: worldBookRuntime.decisions,
         finalMessages: compiled.messages
       }
     };

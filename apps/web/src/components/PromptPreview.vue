@@ -49,7 +49,7 @@
         </div>
         <div>
           <span>世界书命中</span>
-          <strong>{{ includedWorldBookSections.length }}</strong>
+          <strong>{{ worldBookDebug?.matchedCount ?? 0 }}</strong>
         </div>
         <div>
           <span>Token 估算</span>
@@ -80,78 +80,84 @@
         <header>
           <div>
             <h3>世界书命中</h3>
-            <p>展示 V2 运行时匹配、激活来源和 Provider 编译后的真实纳入结果。</p>
+            <p>展示 V2 运行时决策与 Provider 编译后的真实插入结果（来源：worldBookDebug）。</p>
           </div>
           <n-tag size="small" :bordered="false"> {{ worldBookTokenEstimate }} tokens </n-tag>
         </header>
 
         <dl class="prompt-preview-worldbook__stats">
           <div>
-            <dt>运行决策</dt>
-            <dd>{{ worldBookDecisions.length }}</dd>
+            <dt>候选数</dt>
+            <dd>{{ worldBookDebug?.candidateCount ?? 0 }}</dd>
           </div>
           <div>
-            <dt>编译条目</dt>
-            <dd>{{ worldBookSections.length }}</dd>
+            <dt>命中数</dt>
+            <dd>{{ worldBookDebug?.matchedCount ?? 0 }}</dd>
           </div>
           <div>
-            <dt>命中条目</dt>
-            <dd>{{ includedWorldBookSections.length }}</dd>
+            <dt>跳过数</dt>
+            <dd>{{ worldBookDebug?.skippedCount ?? 0 }}</dd>
           </div>
           <div>
-            <dt>排除条目</dt>
-            <dd>{{ excludedWorldBookSections.length }}</dd>
+            <dt>插入 section</dt>
+            <dd>{{ insertedSectionCount }}</dd>
           </div>
         </dl>
 
-        <div v-if="worldBookSections.length > 0" class="prompt-preview-worldbook__list">
+        <div v-if="worldBookEntries.length > 0" class="prompt-preview-worldbook__list">
           <article
-            v-for="item in worldBookSections"
-            :key="item.section.id"
+            v-for="item in worldBookEntries"
+            :key="item.entryId"
             class="prompt-preview-worldbook-entry"
           >
             <header>
               <div>
                 <n-tag size="small" :type="item.included ? 'success' : 'warning'" :bordered="false">
-                  {{ item.included ? '已纳入' : '已排除' }}
+                  {{ item.included ? '已命中' : '已跳过' }}
                 </n-tag>
-                <h4>{{ item.section.sourceId ?? item.section.id }}</h4>
+                <h4>{{ item.title }}</h4>
               </div>
-              <span>{{ item.section.contentType ?? 'lore' }}</span>
+              <span>{{ item.contentType }}</span>
             </header>
             <dl>
               <div>
                 <dt>激活来源</dt>
-                <dd>
-                  {{ decisionByEntryId.get(item.section.sourceId ?? '')?.activationSource ?? '-' }}
-                </dd>
+                <dd>{{ item.activationSource ?? '-' }}</dd>
+              </div>
+              <div>
+                <dt>未命中原因</dt>
+                <dd>{{ item.reason ?? '-' }}</dd>
+              </div>
+              <div>
+                <dt>来源消息</dt>
+                <dd>{{ item.sourceMessageId ?? '-' }}</dd>
               </div>
               <div>
                 <dt>位置</dt>
-                <dd>{{ insertionOrderLabel(item.section.placement) }}</dd>
+                <dd>{{ insertionOrderLabel(item.placement) }}</dd>
               </div>
               <div>
                 <dt>信任级别</dt>
-                <dd>{{ item.section.trustLevel ?? '-' }}</dd>
+                <dd>{{ item.trustLevel }}</dd>
               </div>
               <div>
-                <dt>预算</dt>
-                <dd>{{ item.tokenEstimate }}</dd>
+                <dt>预算优先级</dt>
+                <dd>{{ item.budgetPriority }}</dd>
+              </div>
+              <div>
+                <dt>排序</dt>
+                <dd>{{ item.sortOrder }}</dd>
+              </div>
+              <div>
+                <dt>Token</dt>
+                <dd>{{ item.tokenEstimate ?? '-' }}</dd>
               </div>
             </dl>
-            <p v-if="!item.included">
-              排除原因：{{
-                item.excludedReason ??
-                decisionByEntryId.get(item.section.sourceId ?? '')?.reason ??
-                '-'
-              }}
-            </p>
-            <p>{{ contentSummary(item.section.content) }}</p>
           </article>
         </div>
 
         <div v-else class="prompt-preview-worldbook__empty">
-          当前输入和运行状态没有产生可编译的 V2 世界书条目。
+          当前输入和运行状态没有可调试的 V2 世界书候选条目。
         </div>
       </section>
 
@@ -279,21 +285,11 @@ const previewJson = computed(() => JSON.stringify(props.preview, null, 2));
 const includedCompiledCount = computed(
   () => props.preview?.compiledSections.filter((item) => item.included).length ?? 0
 );
-const worldBookSections = computed(() =>
-  (props.preview?.compiledSections ?? []).filter((item) => item.section.kind === 'world_book')
-);
-const includedWorldBookSections = computed(() =>
-  worldBookSections.value.filter((item) => item.included)
-);
-const excludedWorldBookSections = computed(() =>
-  worldBookSections.value.filter((item) => !item.included)
-);
+const worldBookDebug = computed(() => props.preview?.worldBookDebug ?? null);
+const worldBookEntries = computed(() => worldBookDebug.value?.decisions ?? []);
+const insertedSectionCount = computed(() => worldBookDebug.value?.insertedSections.length ?? 0);
 const worldBookTokenEstimate = computed(() =>
-  includedWorldBookSections.value.reduce((sum, item) => sum + item.tokenEstimate, 0)
-);
-const worldBookDecisions = computed(() => props.preview?.debug.worldBookDecisions ?? []);
-const decisionByEntryId = computed(
-  () => new Map(worldBookDecisions.value.map((decision) => [decision.entryId, decision]))
+  (worldBookDebug.value?.insertedSections ?? []).reduce((sum, item) => sum + item.tokenEstimate, 0)
 );
 
 function insertionOrderLabel(value: string) {
@@ -309,12 +305,6 @@ function insertionOrderLabel(value: string) {
   };
 
   return labels[value] ?? value;
-}
-
-function contentSummary(content: string) {
-  const normalized = content.replace(/\s+/g, ' ').trim();
-
-  return normalized.length > 180 ? `${normalized.slice(0, 180)}...` : normalized;
 }
 
 async function copyFinalMessages() {

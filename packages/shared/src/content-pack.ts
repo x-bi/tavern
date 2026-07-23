@@ -1,5 +1,5 @@
 import type { MessageRole } from './message';
-import type { WorldBookEntryPosition } from './prompt-builder';
+import type { WorldBookPlacement } from './world-book';
 
 /** 内容包格式版本标识，供 AI 生成设定包和 Tavern Lite 增量导入使用。 */
 export const CONTENT_PACK_FORMAT_VERSION = 'tavern-lite.content-pack.v2';
@@ -101,10 +101,10 @@ export type ContentPackWorldBookEntry = {
   budgetPriority?: number;
   sortOrder?: number;
   compactContent?: string;
-  /** 注入位置。 */
-  insertionOrder?: WorldBookEntryPosition;
-  /** 条目 token 预算上限。 */
-  tokenBudget?: number | null;
+  /** V2 注入位置。 */
+  placement?: WorldBookPlacement;
+  /** 条目独立最大 token。 */
+  maxTokens?: number | null;
   contentType?: 'lore' | 'state' | 'behavior_rule' | 'reference';
   activationMode?: 'constant' | 'keyword' | 'manual';
   matchMode?: 'contains' | 'normalized_phrase';

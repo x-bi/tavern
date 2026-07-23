@@ -106,10 +106,10 @@ export type WorldBookEntryImportPreview = {
   secondaryKeywords: string[];
   /** 是否启用。 */
   isEnabled: boolean;
-  /** 注入位置。 */
-  insertionOrder: string;
-  /** token 预算。 */
-  tokenBudget: number | null;
+  /** V2 注入位置。 */
+  placement: string;
+  /** 条目独立最大 token。 */
+  maxTokens: number | null;
   contentType: string;
   trustLevel: string;
   activationMode: string;

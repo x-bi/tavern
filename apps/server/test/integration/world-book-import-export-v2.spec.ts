@@ -5,6 +5,7 @@ import { SettingsService } from '../../src/modules/settings/settings.service';
 import { WorldBooksService } from '../../src/modules/world-books/world-books.service';
 import { TestDatabase } from '../helpers/test-database';
 import { canonicalSha256 } from '../../src/common/canonical-json';
+import { WorldBookRuntimeService } from '../../src/services/context-engine/world-book-runtime.service';
 
 describe('WorldBook V2 module import/export', () => {
   it('preserves V2 activation configuration while downgrading imported trust', async () => {
@@ -24,6 +25,12 @@ describe('WorldBook V2 module import/export', () => {
         displayName: user.displayName,
         role: 'admin'
       } as const;
+      const character = await database.client.character.create({
+        data: { userId: user.id, name: 'Role' }
+      });
+      const conversation = await database.client.conversation.create({
+        data: { userId: user.id, characterId: character.id, title: 'Thread' }
+      });
       const imported = await service.importJson(currentUser, {
         commit: true,
         duplicateNameStrategy: 'reject',
@@ -49,12 +56,13 @@ describe('WorldBook V2 module import/export', () => {
               stickyTurns: 2,
               continuationTurns: 4,
               cooldownTurns: 5,
-              delayTurns: 1,
+              delayTurns: 0,
               cooldownPolicy: 'current_user_override',
               generationPurposes: ['chat_reply'],
               budgetPriority: 8,
               sortOrder: 9,
-              insertionOrder: 'before_current_user_input'
+              placement: 'before_current_user',
+              maxTokens: 321
             }
           ]
         })
@@ -70,9 +78,11 @@ describe('WorldBook V2 module import/export', () => {
         stickyTurns: 2,
         continuationTurns: 4,
         cooldownTurns: 5,
-        delayTurns: 1,
+        delayTurns: 0,
         budgetPriority: 8,
-        sortOrder: 9
+        sortOrder: 9,
+        placement: 'before_current_user',
+        maxTokens: 321
       });
       expect(entry.activeRevision?.compactContent).toBe('Compact');
       expect(entry.activeRevision?.compactSourceHash).toBe(canonicalSha256('Imported content'));
@@ -84,9 +94,35 @@ describe('WorldBook V2 module import/export', () => {
         generationPurposes: ['chat_reply'],
         compactContent: 'Compact',
         budgetPriority: 8,
-        sortOrder: 9
+        sortOrder: 9,
+        placement: 'before_current_user',
+        maxTokens: 321
       });
       expect('priority' in imported.worldBook!.entries[0]).toBe(false);
+      expect('insertionOrder' in imported.worldBook!.entries[0]).toBe(false);
+      expect('tokenBudget' in imported.worldBook!.entries[0]).toBe(false);
+      await database.client.worldBook.update({
+        where: { id: imported.worldBook!.id },
+        data: { isEnabled: true }
+      });
+      const worldBooks = await service.listPromptContexts(currentUser, character.id);
+      const runtime = new WorldBookRuntimeService(database.client as unknown as PrismaService);
+      const runtimeResult = await runtime.evaluateConversation({
+        conversationId: conversation.id,
+        worldBooks,
+        history: [],
+        currentUserMessage: {
+          id: 'current-message',
+          conversationId: conversation.id,
+          role: 'user',
+          content: 'Exact Secondary trigger'
+        },
+        purpose: 'chat_reply'
+      });
+      expect(runtimeResult.sections[0]).toMatchObject({
+        placement: 'before_current_user',
+        sourceId: entry.id
+      });
       const changed = await service.updateEntry(currentUser, entry.id, {
         content: 'Changed canonical content'
       });
@@ -99,8 +135,73 @@ describe('WorldBook V2 module import/export', () => {
         matchMode: 'contains',
         sameMessageOnly: false,
         budgetPriority: 8,
-        sortOrder: 9
+        sortOrder: 9,
+        placement: 'before_current_user',
+        maxTokens: 321
       });
+      expect('insertionOrder' in exported.card.entries[0]).toBe(false);
+      expect('tokenBudget' in exported.card.entries[0]).toBe(false);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it('rejects legacy world-book entry placement fields', async () => {
+    const database = await TestDatabase.create();
+    try {
+      const service = new WorldBooksService(
+        database.client as unknown as PrismaService,
+        { assertCanSetShared: async () => undefined } as unknown as ContentLibraryService,
+        { shouldShowSensitiveContent: async () => true } as SettingsService
+      );
+      const user = await database.client.user.create({
+        data: { username: 'world-book-legacy', displayName: 'Owner', role: 'admin' }
+      });
+      const currentUser = {
+        id: user.id,
+        username: user.username,
+        displayName: user.displayName,
+        role: 'admin'
+      } as const;
+
+      await expect(
+        service.importJson(currentUser, {
+          commit: false,
+          duplicateNameStrategy: 'reject',
+          rawJson: JSON.stringify({
+            formatVersion: 'tavern-lite.world-book.v2',
+            name: 'Legacy field',
+            entries: [
+              {
+                title: 'Old',
+                content: 'Old content',
+                keywords: ['old'],
+                insertionOrder: 'before_current_user_input'
+              }
+            ]
+          })
+        })
+      ).rejects.toThrow(/insertionOrder is not supported/);
+
+      await expect(
+        service.importJson(currentUser, {
+          commit: false,
+          duplicateNameStrategy: 'reject',
+          rawJson: JSON.stringify({
+            formatVersion: 'tavern-lite.world-book.v2',
+            name: 'Legacy budget',
+            entries: [
+              {
+                title: 'Old budget',
+                content: 'Old content',
+                keywords: ['old'],
+                placement: 'before_current_user',
+                tokenBudget: 100
+              }
+            ]
+          })
+        })
+      ).rejects.toThrow(/tokenBudget is not supported/);
     } finally {
       await database.close();
     }

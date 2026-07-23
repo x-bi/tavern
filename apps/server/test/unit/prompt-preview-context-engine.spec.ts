@@ -35,7 +35,7 @@ describe('Tavern prompt preview Context Engine V2 source', () => {
       sourceId: 'entry',
       sourceRevisionId: 'revision',
       content: 'Lore',
-      placement: 'before_history' as const,
+      placement: 'before_current_user' as const,
       importance: 'optional' as const,
       budgetPriority: 10,
       sortOrder: 20,
@@ -54,7 +54,7 @@ describe('Tavern prompt preview Context Engine V2 source', () => {
       activationSource: 'keyword',
       reason: null,
       sourceMessageId: 'preview-current-user-input',
-      placement: 'before_history',
+      placement: 'before_current_user',
       contentType: 'lore',
       trustLevel: 'user_authored',
       budgetPriority: 10,
@@ -114,7 +114,7 @@ describe('Tavern prompt preview Context Engine V2 source', () => {
     expect(entry.included).toBe(true);
     expect(entry.activationSource).toBe('keyword');
     expect(entry.sourceMessageId).toBe('preview-current-user-input');
-    expect(entry.placement).toBe('before_history');
+    expect(entry.placement).toBe('before_current_user');
     expect(entry.contentType).toBe('lore');
     expect(entry.trustLevel).toBe('user_authored');
     expect(entry.budgetPriority).toBe(10);
@@ -131,7 +131,7 @@ describe('Tavern prompt preview Context Engine V2 source', () => {
     const inserted = debug.insertedSections[0];
     expect(inserted.sectionId).toBe(worldBookSection.id);
     expect(inserted.title).toBe('外滩');
-    expect(inserted.placement).toBe('before_history');
+    expect(inserted.placement).toBe('before_current_user');
     expect(inserted.entryId).toBe('entry');
     expect(inserted.revisionId).toBe('revision');
     expect(inserted.tokenEstimate).toBe(compiledWorldBook!.tokenEstimate);

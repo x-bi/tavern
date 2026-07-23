@@ -209,8 +209,7 @@ export type {
   PromptTruncatedHistoryItem,
   ProviderChatMessage,
   WorldBookContext,
-  WorldBookEntryContext,
-  WorldBookEntryPosition
+  WorldBookEntryContext
 } from './prompt-builder';
 export type {
   PromptPresetListResponse,
@@ -218,11 +217,11 @@ export type {
   PromptPresetResponse
 } from './prompt-preset';
 export type {
-  WorldBookEntryInsertionOrder,
   WorldBookEntryPayload,
   WorldBookEntryResponse,
   WorldBookEntryUpdatePayload,
   WorldBookListResponse,
+  WorldBookPlacement,
   WorldBookPayload,
   WorldBookRuntimeEntry,
   WorldBookRuntimeResponse,

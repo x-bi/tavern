@@ -321,9 +321,9 @@
             </n-form-item>
 
             <div class="world-book-editor__grid world-book-editor__grid--compact">
-              <n-form-item label="条目 Token Budget">
+              <n-form-item label="条目 Max Tokens">
                 <n-input-number
-                  v-model:value="entryForm.tokenBudget"
+                  v-model:value="entryForm.maxTokens"
                   clearable
                   :min="1"
                   :max="200000"
@@ -333,14 +333,14 @@
               </n-form-item>
 
               <n-form-item label="插入位置">
-                <div class="insertion-options">
+                <div class="placement-options">
                   <n-button
-                    v-for="option in insertionOrderOptions"
+                    v-for="option in placementOptions"
                     :key="option.value"
                     size="small"
-                    :type="entryForm.insertionOrder === option.value ? 'primary' : 'default'"
+                    :type="entryForm.placement === option.value ? 'primary' : 'default'"
                     secondary
-                    @click="entryForm.insertionOrder = option.value"
+                    @click="entryForm.placement = option.value"
                   >
                     {{ option.label }}
                   </n-button>
@@ -398,9 +398,9 @@
             <div class="entry-item__meta">
               <n-tag size="small">budget {{ entry.budgetPriority }}</n-tag>
               <n-tag size="small">sort {{ entry.sortOrder }}</n-tag>
-              <n-tag size="small">{{ insertionOrderLabel(entry.insertionOrder) }}</n-tag>
-              <n-tag v-if="entry.tokenBudget !== null" size="small">
-                budget {{ entry.tokenBudget }}
+              <n-tag size="small">{{ placementLabel(entry.placement) }}</n-tag>
+              <n-tag v-if="entry.maxTokens !== null" size="small">
+                max {{ entry.maxTokens }}
               </n-tag>
               <n-tag v-if="entry.compactStale" size="small" type="warning">压缩正文已失效</n-tag>
             </div>
@@ -427,7 +427,7 @@ import { getStoredCurrentUser } from '../api/auth';
 import { downloadJson } from '../utils/downloadJson';
 import EmptyState from './EmptyState.vue';
 import type {
-  WorldBookEntryInsertionOrder,
+  WorldBookPlacement,
   WorldBookEntryPayload,
   WorldBookEntryUpdatePayload,
   WorldBookPayload,
@@ -455,8 +455,8 @@ type EntryFormState = {
   secondaryKeywordsText: string;
   excludeKeywordsText: string;
   budgetPriority: number;
-  tokenBudget: number | null;
-  insertionOrder: WorldBookEntryInsertionOrder;
+  maxTokens: number | null;
+  placement: WorldBookPlacement;
   isEnabled: boolean;
   contentType: WorldBookEntry['contentType'];
   trustLevel: WorldBookEntry['trustLevel'];
@@ -530,11 +530,11 @@ async function exportCurrentWorldBook() {
   }
 }
 
-const insertionOrderOptions: { value: WorldBookEntryInsertionOrder; label: string }[] = [
+const placementOptions: { value: WorldBookPlacement; label: string }[] = [
+  { value: 'instruction', label: '指令区' },
   { value: 'before_history', label: '历史前' },
   { value: 'after_history', label: '历史后' },
-  { value: 'before_current_user_input', label: '用户输入前' },
-  { value: 'after_current_user_input', label: '用户输入后' }
+  { value: 'before_current_user', label: '当前输入前' }
 ];
 const contentTypeOptions = ['lore', 'state', 'behavior_rule', 'reference'].map((value) => ({
   label: value,
@@ -749,8 +749,8 @@ function createEmptyEntryForm(): EntryFormState {
     secondaryKeywordsText: '',
     excludeKeywordsText: '',
     budgetPriority: 0,
-    tokenBudget: null,
-    insertionOrder: 'before_history',
+    maxTokens: null,
+    placement: 'before_history',
     isEnabled: true,
     contentType: 'lore',
     trustLevel: 'user_authored',
@@ -780,8 +780,8 @@ function toEntryForm(entry: WorldBookEntry): EntryFormState {
     secondaryKeywordsText: entry.secondaryKeywords.join('\n'),
     excludeKeywordsText: entry.excludeKeywords.join('\n'),
     budgetPriority: entry.budgetPriority,
-    tokenBudget: entry.tokenBudget,
-    insertionOrder: entry.insertionOrder,
+    maxTokens: entry.maxTokens,
+    placement: entry.placement,
     isEnabled: entry.isEnabled,
     contentType: entry.contentType,
     trustLevel: entry.trustLevel,
@@ -828,8 +828,8 @@ function toEntryPayload(): WorldBookEntryPayload | WorldBookEntryUpdatePayload {
     cooldownPolicy: entryForm.cooldownPolicy,
     generationPurposes: [...entryForm.generationPurposes],
     compactContent: entryForm.compactContent.trim() || null,
-    tokenBudget: entryForm.tokenBudget ?? null,
-    insertionOrder: entryForm.insertionOrder,
+    maxTokens: entryForm.maxTokens ?? null,
+    placement: entryForm.placement,
     isEnabled: entryForm.isEnabled
   };
 }
@@ -841,8 +841,8 @@ function parseKeywords(value: string): string[] {
     .filter(Boolean);
 }
 
-function insertionOrderLabel(value: WorldBookEntryInsertionOrder): string {
-  return insertionOrderOptions.find((option) => option.value === value)?.label ?? value;
+function placementLabel(value: WorldBookPlacement): string {
+  return placementOptions.find((option) => option.value === value)?.label ?? value;
 }
 
 defineExpose({
@@ -919,7 +919,7 @@ defineExpose({
   padding: 16px;
 }
 
-.insertion-options {
+.placement-options {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;

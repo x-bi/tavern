@@ -134,7 +134,7 @@
               </div>
               <div>
                 <dt>位置</dt>
-                <dd>{{ insertionOrderLabel(item.placement) }}</dd>
+                <dd>{{ placementLabel(item.placement) }}</dd>
               </div>
               <div>
                 <dt>信任级别</dt>
@@ -292,12 +292,10 @@ const worldBookTokenEstimate = computed(() =>
   (worldBookDebug.value?.insertedSections ?? []).reduce((sum, item) => sum + item.tokenEstimate, 0)
 );
 
-function insertionOrderLabel(value: string) {
+function placementLabel(value: string) {
   const labels: Record<string, string> = {
     before_history: '历史前',
     after_history: '历史后',
-    before_current_user_input: '本轮前',
-    after_current_user_input: '本轮后',
     before_current_user: '本轮前',
     instruction: '指令区',
     history: '历史区',

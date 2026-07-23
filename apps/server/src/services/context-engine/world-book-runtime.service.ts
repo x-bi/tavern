@@ -493,11 +493,17 @@ function oneOf<T extends string>(value: unknown, values: readonly T[], fallback:
   return typeof value === 'string' && values.includes(value as T) ? (value as T) : fallback;
 }
 function placementFor(value: unknown): PromptSectionV2['placement'] {
-  return oneOf(
-    value,
-    ['instruction', 'before_history', 'after_history', 'before_current_user'],
-    'before_history'
-  );
+  if (
+    value === 'instruction' ||
+    value === 'before_history' ||
+    value === 'after_history' ||
+    value === 'before_current_user'
+  ) {
+    return value;
+  }
+  throw Object.assign(new Error(`Unsupported world-book placement: ${String(value)}.`), {
+    code: 'WORLD_BOOK_INVALID_PLACEMENT'
+  });
 }
 function contentTypeFor(value: unknown): NonNullable<PromptSectionV2['contentType']> {
   return oneOf(value, ['lore', 'state', 'behavior_rule', 'reference'], 'lore');

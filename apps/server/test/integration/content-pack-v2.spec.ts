@@ -53,7 +53,9 @@ describe('content pack V2 context fields', () => {
                     keywords: ['trigger'],
                     contentType: 'behavior_rule',
                     activationMode: 'keyword',
-                    stickyTurns: 2
+                    stickyTurns: 2,
+                    placement: 'before_current_user',
+                    maxTokens: 222
                   }
                 ]
               }
@@ -75,8 +77,49 @@ describe('content pack V2 context fields', () => {
       expect(JSON.parse(entry.activeRevision!.configJson)).toMatchObject({
         contentType: 'lore',
         trustLevel: 'imported_untrusted',
-        stickyTurns: 2
+        stickyTurns: 2,
+        placement: 'before_current_user',
+        maxTokens: 222
       });
+    } finally {
+      await database.close();
+    }
+  });
+
+  it('rejects legacy world-book entry fields inside content packs', async () => {
+    const database = await TestDatabase.create();
+    try {
+      const service = new ContentPacksService(database.client as unknown as PrismaService);
+      const user = await database.client.user.create({
+        data: { username: 'pack-legacy', displayName: 'Owner' }
+      });
+      await expect(
+        service.importContentPack(
+          { id: user.id, username: user.username, displayName: user.displayName, role: 'admin' },
+          {
+            commit: false,
+            duplicateStrategy: 'reject',
+            rawJson: JSON.stringify({
+              format: 'tavern-lite.content-pack.v2',
+              title: 'Legacy pack',
+              worldBooks: [
+                {
+                  ref: 'book',
+                  name: 'Legacy lore',
+                  entries: [
+                    {
+                      title: 'Legacy',
+                      content: 'Legacy content',
+                      keywords: ['legacy'],
+                      insertionOrder: 'before_current_user_input'
+                    }
+                  ]
+                }
+              ]
+            })
+          }
+        )
+      ).rejects.toThrow(/insertionOrder is not supported/);
     } finally {
       await database.close();
     }

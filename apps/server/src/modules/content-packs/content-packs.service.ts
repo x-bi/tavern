@@ -97,8 +97,8 @@ type NormalizedWorldBookEntry = Required<
     | 'sortOrder'
   >
 > & {
-  insertionOrder: NonNullable<ContentPackWorldBookEntry['insertionOrder']>;
-  tokenBudget: number | null;
+  placement: NonNullable<ContentPackWorldBookEntry['placement']>;
+  maxTokens: number | null;
   revisionConfig: JsonRecord;
 };
 
@@ -725,11 +725,24 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedWorldBookEntry {
+    if ('insertionOrder' in record) {
+      throw this.invalidFormat(`${path}.insertionOrder is not supported. Use placement instead.`);
+    }
+    if ('tokenBudget' in record) {
+      throw this.invalidFormat(`${path}.tokenBudget is not supported. Use maxTokens instead.`);
+    }
     const keywords = this.requiredStringArray(record, 'keywords', `${path}.keywords`);
 
     if (keywords.length === 0) {
       throw this.invalidFormat(`${path}.keywords must contain at least one string.`);
     }
+    const requestedContentType =
+      record.contentType === 'behavior_rule' ? 'lore' : String(record.contentType ?? 'lore');
+    const placement = this.normalizePlacement(
+      record.placement,
+      this.defaultPlacementForContentType(requestedContentType),
+      `${path}.placement`
+    );
 
     return {
       title: this.requiredLimitedString(record, 'title', `${path}.title`, 120, warnings),
@@ -743,15 +756,10 @@ export class ContentPacksService {
       isEnabled: this.optionalBoolean(record, 'isEnabled', true, `${path}.isEnabled`),
       budgetPriority: this.optionalInteger(record, 'budgetPriority', 0, `${path}.budgetPriority`),
       sortOrder: this.optionalInteger(record, 'sortOrder', 0, `${path}.sortOrder`),
-      insertionOrder: this.normalizeInsertionOrder(
-        record.insertionOrder,
-        `${path}.insertionOrder`,
-        warnings
-      ),
-      tokenBudget: this.optionalNullableInteger(record, 'tokenBudget', `${path}.tokenBudget`),
+      placement,
+      maxTokens: this.optionalNullableInteger(record, 'maxTokens', `${path}.maxTokens`),
       revisionConfig: {
-        contentType:
-          record.contentType === 'behavior_rule' ? 'lore' : (record.contentType ?? 'lore'),
+        contentType: requestedContentType,
         trustLevel: 'imported_untrusted',
         activationMode: record.activationMode ?? 'keyword',
         matchMode: record.matchMode ?? 'normalized_phrase',
@@ -802,8 +810,8 @@ export class ContentPacksService {
           : ['chat_reply', 'regenerate', 'continue'],
         budgetPriority: this.optionalInteger(record, 'budgetPriority', 0, `${path}.budgetPriority`),
         sortOrder: this.optionalInteger(record, 'sortOrder', 0, `${path}.sortOrder`),
-        placement: record.insertionOrder ?? 'before_history',
-        maxTokens: record.tokenBudget ?? null,
+        placement,
+        maxTokens: this.optionalNullableInteger(record, 'maxTokens', `${path}.maxTokens`),
         compactContent: this.optionalString(record, 'compactContent', `${path}.compactContent`)
       }
     };
@@ -1069,47 +1077,40 @@ export class ContentPacksService {
     return Object.keys(params).length > 0 ? params : null;
   }
 
-  private normalizeInsertionOrder(
+  private normalizePlacement(
     value: unknown,
-    path: string,
-    warnings: ContentPackImportWarning[]
-  ): NormalizedWorldBookEntry['insertionOrder'] {
+    fallback: NormalizedWorldBookEntry['placement'],
+    path: string
+  ): NormalizedWorldBookEntry['placement'] {
     if (value === undefined || value === null || value === '') {
-      return 'before_history';
+      return fallback;
     }
 
     if (typeof value !== 'string') {
       throw this.invalidFormat(`${path} must be a string when present.`);
     }
 
-    if (value === 'before_current_user_message') {
-      warnings.push({
-        code: 'INSERTION_ORDER_ALIAS_NORMALIZED',
-        path,
-        message: 'before_current_user_message 已归一化为 before_current_user_input。'
-      });
-      return 'before_current_user_input';
-    }
-
-    if (value === 'after_current_user_message') {
-      warnings.push({
-        code: 'INSERTION_ORDER_ALIAS_NORMALIZED',
-        path,
-        message: 'after_current_user_message 已归一化为 after_current_user_input。'
-      });
-      return 'after_current_user_input';
-    }
-
     if (
+      value === 'instruction' ||
       value === 'before_history' ||
       value === 'after_history' ||
-      value === 'before_current_user_input' ||
-      value === 'after_current_user_input'
+      value === 'before_current_user'
     ) {
       return value;
     }
 
-    throw this.invalidFormat(`${path} has unsupported insertion order: ${value}.`);
+    throw this.invalidFormat(
+      `${path} has unsupported placement: ${value}. Allowed values: instruction, before_history, after_history, before_current_user.`
+    );
+  }
+
+  private defaultPlacementForContentType(
+    contentType: string
+  ): NormalizedWorldBookEntry['placement'] {
+    if (contentType === 'state') return 'before_current_user';
+    if (contentType === 'behavior_rule') return 'instruction';
+    if (contentType === 'reference') return 'after_history';
+    return 'before_history';
   }
 
   private getRecordArray(value: unknown, path: string): JsonRecord[] {

@@ -18,8 +18,8 @@
       "isEnabled": true,
       "budgetPriority": 100,
       "sortOrder": 10,
-      "insertionOrder": "before_current_user_input",
-      "tokenBudget": 320,
+      "placement": "before_current_user",
+      "maxTokens": 320,
       "contentType": "lore",
       "activationMode": "keyword",
       "matchMode": "normalized_phrase"
@@ -32,8 +32,8 @@
       "isEnabled": true,
       "budgetPriority": 80,
       "sortOrder": 20,
-      "insertionOrder": "before_current_user_input",
-      "tokenBudget": 280,
+      "placement": "before_current_user",
+      "maxTokens": 280,
       "contentType": "lore",
       "activationMode": "keyword",
       "matchMode": "normalized_phrase"

@@ -13,7 +13,7 @@ import {
   Min
 } from 'class-validator';
 
-import { WORLD_BOOK_ENTRY_INSERTION_ORDERS } from '../world-books.constants';
+import { WORLD_BOOK_ENTRY_PLACEMENTS } from '../world-books.constants';
 
 const CONTENT_TYPES = ['lore', 'state', 'behavior_rule', 'reference'] as const;
 const TRUST_LEVELS = [
@@ -93,16 +93,16 @@ export class CreateWorldBookEntryDto {
   @IsBoolean()
   isEnabled?: boolean;
 
-  /** 插入位置，可选，默认 before_history。 */
+  /** V2 注入位置，可选，默认按内容类型决定。 */
   @IsOptional()
-  @IsIn(WORLD_BOOK_ENTRY_INSERTION_ORDERS)
-  insertionOrder?: string;
+  @IsIn(WORLD_BOOK_ENTRY_PLACEMENTS)
+  placement?: string;
 
-  /** 条目独立 token 预算，可选；传 null 用世界书的。 */
+  /** 条目独立最大 token，可选。 */
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
   @Max(200000)
-  tokenBudget?: number | null;
+  maxTokens?: number | null;
 }

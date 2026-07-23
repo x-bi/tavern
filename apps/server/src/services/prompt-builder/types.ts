@@ -27,12 +27,12 @@ export type PromptSectionKind =
   | 'current_user_input' // 当前用户输入
   | 'output_rules'; // 输出规则
 
-/** 世界书条目插入位置（决定 section 在最终消息序列中的插入点）。 */
-export type WorldBookEntryPosition =
-  | 'before_history' // 历史消息前
-  | 'after_history' // 历史消息后
-  | 'before_current_user_input' // 当前用户输入前
-  | 'after_current_user_input'; // 当前用户输入后
+/** 世界书条目 V2 注入位置。 */
+export type WorldBookPlacement =
+  | 'instruction'
+  | 'before_history'
+  | 'after_history'
+  | 'before_current_user';
 
 /** 通用消息形态（数据库消息、示例对话等都转成这个形态供 builder 使用）。 */
 export type ChatMessageLike = {
@@ -145,8 +145,8 @@ export type WorldBookEntryContext = {
   isEnabled: boolean;
   budgetPriority: number;
   sortOrder: number;
-  position: WorldBookEntryPosition;
-  tokenBudget?: number | null;
+  placement: WorldBookPlacement;
+  maxTokens?: number | null;
   config: Record<string, unknown>;
 };
 

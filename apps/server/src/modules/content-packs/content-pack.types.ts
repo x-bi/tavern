@@ -14,11 +14,11 @@ export type ContentPackMessage = {
 };
 
 /** 内容包世界书条目注入位置。 */
-export type ContentPackWorldBookEntryPosition =
+export type ContentPackWorldBookPlacement =
+  | 'instruction'
   | 'before_history'
   | 'after_history'
-  | 'before_current_user_input'
-  | 'after_current_user_input';
+  | 'before_current_user';
 
 /** 内容包世界书条目定义。 */
 export type ContentPackWorldBookEntry = {
@@ -37,8 +37,8 @@ export type ContentPackWorldBookEntry = {
   budgetPriority?: number;
   sortOrder?: number;
   compactContent?: string;
-  insertionOrder?: ContentPackWorldBookEntryPosition;
-  tokenBudget?: number | null;
+  placement?: ContentPackWorldBookPlacement;
+  maxTokens?: number | null;
   contentType?: 'lore' | 'state' | 'behavior_rule' | 'reference';
   activationMode?: 'constant' | 'keyword' | 'manual';
   matchMode?: 'contains' | 'normalized_phrase';

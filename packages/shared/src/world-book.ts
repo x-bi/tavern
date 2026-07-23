@@ -1,9 +1,12 @@
 import type { PageResult } from './pagination';
-import type { WorldBookEntryPosition } from './prompt-builder';
+import type { PromptPlacementV2 } from './context-engine';
 import type { GenerationPurpose } from './context-engine';
 
-/** 世界书条目插入位置（重命名导出，语义同 WorldBookEntryPosition）。 */
-export type WorldBookEntryInsertionOrder = WorldBookEntryPosition;
+/** 世界书条目 V2 注入位置。 */
+export type WorldBookPlacement = Extract<
+  PromptPlacementV2,
+  'instruction' | 'before_history' | 'after_history' | 'before_current_user'
+>;
 
 /** 单条世界书条目的响应体。 */
 export type WorldBookEntryResponse = {
@@ -45,10 +48,10 @@ export type WorldBookEntryResponse = {
   secondaryKeywords: string[];
   /** 是否启用。 */
   isEnabled: boolean;
-  /** 注入位置（相对历史消息与当前输入的前后）。 */
-  insertionOrder: WorldBookEntryInsertionOrder;
-  /** 条目 token 预算上限；未设置时为 null，沿用世界书预算。 */
-  tokenBudget: number | null;
+  /** V2 注入位置。 */
+  placement: WorldBookPlacement;
+  /** 条目独立最大 token；未设置时为 null。 */
+  maxTokens: number | null;
   /** 创建时间（ISO 字符串）。 */
   createdAt: string;
   /** 最近更新时间（ISO 字符串）。 */
@@ -180,10 +183,10 @@ export type WorldBookEntryPayload = {
   secondaryKeywords?: string[];
   /** 是否启用。 */
   isEnabled?: boolean;
-  /** 注入位置。 */
-  insertionOrder?: WorldBookEntryInsertionOrder;
-  /** 条目 token 预算上限；传 null 表示未设置。 */
-  tokenBudget?: number | null;
+  /** V2 注入位置。 */
+  placement?: WorldBookPlacement;
+  /** 条目独立最大 token；传 null 表示未设置。 */
+  maxTokens?: number | null;
 };
 
 /** 更新世界书条目的入参，所有字段可选（部分更新）。 */

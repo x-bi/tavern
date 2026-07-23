@@ -1,5 +1,5 @@
 import type { MessageRole } from './message';
-import type { CompiledPromptSection } from './context-engine';
+import type { CompiledPromptSection, PromptPlacementV2 } from './context-engine';
 
 /** Prompt 构建模式：真实聊天或预览。 */
 export type PromptBuildMode = 'chat' | 'preview';
@@ -40,18 +40,11 @@ export type PromptSectionKind =
   | 'current_user_input'
   | 'output_rules';
 
-/**
- * 世界书条目注入位置，相对历史消息与当前用户输入的前后：
- * - `before_history` 历史消息之前；
- * - `after_history` 历史消息之后；
- * - `before_current_user_input` 当前用户输入之前；
- * - `after_current_user_input` 当前用户输入之后。
- */
-export type WorldBookEntryPosition =
-  | 'before_history'
-  | 'after_history'
-  | 'before_current_user_input'
-  | 'after_current_user_input';
+/** 世界书条目 V2 注入位置。 */
+export type WorldBookPlacement = Extract<
+  PromptPlacementV2,
+  'instruction' | 'before_history' | 'after_history' | 'before_current_user'
+>;
 
 /** Builder 接受的、类消息结构的数据（不要求是完整数据库实体，便于复用）。 */
 export type ChatMessageLike = {
@@ -217,10 +210,10 @@ export type WorldBookEntryContext = {
   budgetPriority: number;
   /** 同一插入位置内的稳定顺序。 */
   sortOrder: number;
-  /** 注入位置。 */
-  position: WorldBookEntryPosition;
-  /** 条目 token 预算上限；未设置时为 null。 */
-  tokenBudget?: number | null;
+  /** V2 注入位置。 */
+  placement: WorldBookPlacement;
+  /** 条目独立最大 token；未设置时为 null。 */
+  maxTokens?: number | null;
   /** active revision 的规范化配置。 */
   config: Record<string, unknown>;
 };

@@ -38,9 +38,9 @@ import type { QueryWorldBooksDto } from './dto/query-world-books.dto';
 import type { UpdateWorldBookEntryDto } from './dto/update-world-book-entry.dto';
 import type { UpdateWorldBookDto } from './dto/update-world-book.dto';
 import type { SetManualWorldBookActivationDto } from './dto/set-manual-world-book-activation.dto';
-import { WORLD_BOOK_ENTRY_INSERTION_ORDERS } from './world-books.constants';
+import { WORLD_BOOK_ENTRY_PLACEMENTS } from './world-books.constants';
 import type {
-  WorldBookEntryInsertionOrder,
+  WorldBookPlacement,
   WorldBookEntryResponse,
   WorldBookListResponse,
   WorldBookResponse
@@ -52,8 +52,8 @@ type WorldBookEntryImportPreview = {
   keywords: string[];
   secondaryKeywords: string[];
   isEnabled: boolean;
-  insertionOrder: WorldBookEntryInsertionOrder;
-  tokenBudget: number | null;
+  placement: WorldBookPlacement;
+  maxTokens: number | null;
   contentType: string;
   trustLevel: string;
   activationMode: string;
@@ -517,8 +517,8 @@ export class WorldBooksService {
             budgetPriority: 0,
             sortOrder: 0,
             isEnabled: true,
-            insertionOrder: 'before_history',
-            tokenBudget: null,
+            placement: 'before_history',
+            maxTokens: null,
             compactContent: null
           }
         ]
@@ -604,8 +604,8 @@ export class WorldBooksService {
             budgetPriority: config.budgetPriority ?? 0,
             sortOrder: config.sortOrder ?? 0,
             isEnabled: entry.isEnabled,
-            insertionOrder: placementToInsertionOrder(config.placement),
-            tokenBudget: typeof config.maxTokens === 'number' ? config.maxTokens : null
+            placement: normalizePlacement(config.placement),
+            maxTokens: typeof config.maxTokens === 'number' ? config.maxTokens : null
           };
         }),
         exportedAt: new Date().toISOString()
@@ -906,7 +906,7 @@ export class WorldBooksService {
     // 先校验条目存在且属于当前用户（通过世界书关联校验）
     const current = await this.findOwnedActiveEntry(currentUser, id);
 
-    // 部分更新：仅写入 DTO 中实际传入的字段；keywords/insertionOrder 需转换存储格式
+    // 部分更新：仅写入 DTO 中实际传入的字段，未传字段沿用当前 active revision。
     const previousRevision = current.activeRevision;
     if (!previousRevision) {
       throw new ConflictException({
@@ -1365,15 +1365,16 @@ export class WorldBooksService {
         throw invalidModuleFormat(`entries[${index}].keywords must contain at least one string.`);
       }
 
-      const tokenBudget = optionalNullableInteger(
-        record,
-        'tokenBudget',
-        `entries[${index}].tokenBudget`
-      );
-      const insertionOrder = this.normalizeInsertionOrder(
-        record.insertionOrder,
-        `entries[${index}].insertionOrder`
-      );
+      if ('insertionOrder' in record) {
+        throw invalidModuleFormat(
+          `entries[${index}].insertionOrder is not supported. Use placement instead.`
+        );
+      }
+      if ('tokenBudget' in record) {
+        throw invalidModuleFormat(
+          `entries[${index}].tokenBudget is not supported. Use maxTokens instead.`
+        );
+      }
       const requestedContentType = importEnum(
         record.contentType,
         ['lore', 'state', 'behavior_rule', 'reference'],
@@ -1381,6 +1382,12 @@ export class WorldBooksService {
         `entries[${index}].contentType`
       );
       const contentType = requestedContentType === 'behavior_rule' ? 'lore' : requestedContentType;
+      const placement = importPlacement(
+        record.placement,
+        defaultPlacementForContentType(contentType),
+        `entries[${index}].placement`
+      );
+      const maxTokens = optionalNullableInteger(record, 'maxTokens', `entries[${index}].maxTokens`);
       if (requestedContentType === 'behavior_rule') {
         warnings.push({
           code: 'IMPORTED_BEHAVIOR_RULE_DOWNGRADED',
@@ -1482,8 +1489,8 @@ export class WorldBooksService {
           `entries[${index}].budgetPriority`
         ),
         sortOrder: optionalInteger(record, 'sortOrder', 0, `entries[${index}].sortOrder`),
-        placement: importPlacement(insertionOrder),
-        maxTokens: tokenBudget
+        placement,
+        maxTokens
       };
       return {
         title: limitText(
@@ -1505,8 +1512,8 @@ export class WorldBooksService {
           `entries[${index}].secondaryKeywords`
         ),
         isEnabled: optionalBoolean(record, 'isEnabled', true, `entries[${index}].isEnabled`),
-        insertionOrder,
-        tokenBudget,
+        placement,
+        maxTokens,
         contentType,
         trustLevel: 'imported_untrusted',
         activationMode: contextV2.activationMode,
@@ -1529,28 +1536,6 @@ export class WorldBooksService {
           optionalString(record, 'compactContent', `entries[${index}].compactContent`) || null
       };
     });
-  }
-
-  /**
-   * 校验导入条目的 V2 插入位置。
-   * @param value 原始 insertionOrder。
-   * @param path 字段路径。
-   * @returns 世界书条目插入位置。
-   */
-  private normalizeInsertionOrder(value: unknown, path: string): WorldBookEntryInsertionOrder {
-    if (value === undefined || value === null || value === '') {
-      return 'before_history';
-    }
-
-    if (typeof value !== 'string') {
-      throw invalidModuleFormat(`${path} must be a string when present.`);
-    }
-
-    if ((WORLD_BOOK_ENTRY_INSERTION_ORDERS as readonly string[]).includes(value)) {
-      return value as WorldBookEntryInsertionOrder;
-    }
-
-    throw invalidModuleFormat(`${path} has unsupported insertion order: ${value}.`);
   }
 
   /**
@@ -1919,8 +1904,8 @@ export class WorldBooksService {
       isEnabled: entry.isEnabled,
       budgetPriority: typeof config.budgetPriority === 'number' ? config.budgetPriority : 0,
       sortOrder: typeof config.sortOrder === 'number' ? config.sortOrder : 0,
-      position: placementToInsertionOrder(config.placement),
-      tokenBudget: typeof config.maxTokens === 'number' ? config.maxTokens : null,
+      placement: normalizePlacement(config.placement),
+      maxTokens: typeof config.maxTokens === 'number' ? config.maxTokens : null,
       config
     };
   }
@@ -1950,8 +1935,8 @@ export class WorldBooksService {
       keywords: this.arrayOfStrings(config.primaryKeywords),
       secondaryKeywords: this.arrayOfStrings(config.secondaryKeywords),
       isEnabled: entry.isEnabled,
-      insertionOrder: placementToInsertionOrder(config.placement),
-      tokenBudget: typeof config.maxTokens === 'number' ? config.maxTokens : null,
+      placement: normalizePlacement(config.placement),
+      maxTokens: typeof config.maxTokens === 'number' ? config.maxTokens : null,
       contentType: typeof config.contentType === 'string' ? config.contentType : 'lore',
       trustLevel: typeof config.trustLevel === 'string' ? config.trustLevel : 'user_authored',
       activationMode: typeof config.activationMode === 'string' ? config.activationMode : 'keyword',
@@ -1996,12 +1981,6 @@ export class WorldBooksService {
   ): Record<string, unknown> {
     const previous = this.parseRecord(previousJson ?? null) ?? {};
     const contentType = dto.contentType ?? previous.contentType ?? 'lore';
-    const placementDefaults: Record<string, string> = {
-      lore: 'before_history',
-      state: 'before_current_user',
-      behavior_rule: 'instruction',
-      reference: 'after_history'
-    };
     const trustLevel = dto.trustLevel ?? previous.trustLevel ?? 'user_authored';
     if (trustLevel === 'imported_untrusted' && contentType === 'behavior_rule') {
       throw new BadRequestException({
@@ -2035,8 +2014,8 @@ export class WorldBooksService {
       generationPurposes: pick('generationPurposes', ['chat_reply', 'regenerate', 'continue']),
       budgetPriority: pick('budgetPriority', 0),
       sortOrder: pick('sortOrder', 0),
-      placement: pick('insertionOrder', placementDefaults[String(contentType)] ?? 'before_history'),
-      maxTokens: pick('tokenBudget', null)
+      placement: pick('placement', defaultPlacementForContentType(String(contentType))),
+      maxTokens: pick('maxTokens', null)
     };
   }
 
@@ -2090,21 +2069,33 @@ function importEnum<T extends string>(
   return value as T;
 }
 
-function importPlacement(value: WorldBookEntryInsertionOrder): string {
-  if (value === 'before_current_user_input' || value === 'after_current_user_input') {
-    return 'before_current_user';
+function importPlacement(value: unknown, fallback: WorldBookPlacement, path: string): WorldBookPlacement {
+  if (value === undefined || value === null || value === '') return fallback;
+  if (typeof value !== 'string') {
+    throw invalidModuleFormat(`${path} must be a string when present.`);
   }
-  return value;
+  if ((WORLD_BOOK_ENTRY_PLACEMENTS as readonly string[]).includes(value)) {
+    return value as WorldBookPlacement;
+  }
+  throw invalidModuleFormat(
+    `${path} has unsupported placement: ${value}. Allowed values: ${WORLD_BOOK_ENTRY_PLACEMENTS.join(', ')}.`
+  );
 }
 
-function placementToInsertionOrder(value: unknown): WorldBookEntryInsertionOrder {
-  if (value === 'after_history') return 'after_history';
-  if (value === 'before_current_user' || value === 'before_current_user_input') {
-    return 'before_current_user_input';
+function normalizePlacement(value: unknown): WorldBookPlacement {
+  if ((WORLD_BOOK_ENTRY_PLACEMENTS as readonly unknown[]).includes(value)) {
+    return value as WorldBookPlacement;
   }
-  if (value === 'after_current_user' || value === 'after_current_user_input') {
-    return 'after_current_user_input';
-  }
+  throw new ConflictException({
+    code: 'WORLD_BOOK_INVALID_PLACEMENT',
+    message: `World book entry revision has unsupported placement: ${String(value)}.`
+  });
+}
+
+function defaultPlacementForContentType(contentType: string): WorldBookPlacement {
+  if (contentType === 'state') return 'before_current_user';
+  if (contentType === 'behavior_rule') return 'instruction';
+  if (contentType === 'reference') return 'after_history';
   return 'before_history';
 }
 

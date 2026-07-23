@@ -1,9 +1,9 @@
-/** 世界书条目的插入位置（决定条目内容插入到 prompt 的哪个位置）。 */
-export type WorldBookEntryInsertionOrder =
-  | 'before_history' // 历史消息前
-  | 'after_history' // 历史消息后
-  | 'before_current_user_input' // 当前用户输入前
-  | 'after_current_user_input'; // 当前用户输入后
+/** 世界书条目 V2 注入位置。 */
+export type WorldBookPlacement =
+  | 'instruction'
+  | 'before_history'
+  | 'after_history'
+  | 'before_current_user';
 
 /** 世界书条目对外响应。 */
 export type WorldBookEntryResponse = {
@@ -38,9 +38,9 @@ export type WorldBookEntryResponse = {
   /** 次要关键词。 */
   secondaryKeywords: string[];
   isEnabled: boolean;
-  insertionOrder: WorldBookEntryInsertionOrder;
-  /** 条目独立 token 预算，为 null 时用世界书的。 */
-  tokenBudget: number | null;
+  placement: WorldBookPlacement;
+  /** 条目独立最大 token。 */
+  maxTokens: number | null;
   createdAt: string;
   updatedAt: string;
 };

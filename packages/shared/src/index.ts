@@ -41,6 +41,7 @@ export type {
   ChatStreamPayload
 } from './chat';
 export {
+  createClientOperationId,
   createGenerationRequestId,
   createProvisionalAssistant,
   reduceProvisionalAssistant

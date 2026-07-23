@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue';
 import { useMessage } from 'naive-ui';
-import type { WorldBookRuntimeEntry } from '@tavern/shared';
+import { createClientOperationId, type WorldBookRuntimeEntry } from '@tavern/shared';
 import { fetchWorldBookRuntimeState, setManualWorldBookActivation } from '../api/worldBooks';
 
 const props = defineProps<{ targetType: 'conversation' | 'companion'; targetId: string }>();
@@ -76,7 +76,7 @@ async function toggle(entryId: string, active: boolean) {
   pendingId.value = entryId;
   try {
     await setManualWorldBookActivation(entryId, {
-      operationId: crypto.randomUUID(),
+      operationId: createClientOperationId(),
       targetType: props.targetType,
       targetId: props.targetId,
       active

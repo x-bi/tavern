@@ -199,7 +199,7 @@ let syncTimer: number | null = null;
 const targetEvents = useTargetEvents(() => {
   if (chatStore.isGenerating || !conversationId.value) return;
   if (syncTimer !== null) window.clearTimeout(syncTimer);
-  syncTimer = window.setTimeout(() => reloadMessages(), 80);
+  syncTimer = window.setTimeout(() => reloadMessages(true), 80);
 });
 
 const conversationId = computed(() => {
@@ -275,12 +275,16 @@ async function loadCurrentRoom() {
   ]);
 }
 
-function reloadMessages() {
+function reloadMessages(silent = false) {
   if (!conversationId.value || chatStore.isGenerating) {
     return;
   }
 
-  void chatStore.loadMessages(conversationId.value, { page: 1, pageSize: 100, order: 'asc' });
+  void chatStore.loadMessages(
+    conversationId.value,
+    { page: 1, pageSize: 100, order: 'asc' },
+    { silent }
+  );
 }
 
 function goConversations() {
@@ -532,7 +536,11 @@ async function runChatStream(activeConversationId: string, payload: ChatStreamPa
     await waitForAbortCleanup();
   }
 
-  await chatStore.loadMessages(activeConversationId, { page: 1, pageSize: 100, order: 'asc' });
+  await chatStore.loadMessages(
+    activeConversationId,
+    { page: 1, pageSize: 100, order: 'asc' },
+    { silent: true }
+  );
   chatStore.clearStreamingMessages();
 }
 

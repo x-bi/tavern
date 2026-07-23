@@ -283,10 +283,21 @@ export const useChatStore = defineStore('chat', {
       this.currentStreamTaskId = null;
       this.regeneratingMessageId = null;
     },
-    async loadMessages(conversationId: string, params: MessageListParams = {}) {
+    async loadMessages(
+      conversationId: string,
+      params: MessageListParams = {},
+      options?: { silent?: boolean }
+    ) {
+      // silent：静默刷新——不切换 loading，避免 ChatRoom 因 v-if="loading" 卸载整个消息列表、
+      // 重置 scrollTop（这正是“生成后回到第一条”的根因）；失败时保留现有消息不清空。
+      // 用于流式结束后 / 事件触发的隐式刷新。首次加载与按钮刷新仍走非静默。
+      const silent = options?.silent ?? false;
       this.conversationId = conversationId;
-      this.loading = true;
-      this.error = null;
+
+      if (!silent) {
+        this.loading = true;
+        this.error = null;
+      }
 
       try {
         const page = params.page ?? 1;
@@ -311,11 +322,14 @@ export const useChatStore = defineStore('chat', {
           return;
         }
 
-        this.error = error instanceof Error ? error.message : '消息列表加载失败。';
-        this.messages = [];
-        this.total = 0;
+        if (!silent) {
+          this.error = error instanceof Error ? error.message : '消息列表加载失败。';
+          this.messages = [];
+          this.total = 0;
+        }
+        // 静默刷新失败：保留现有消息，不打断滚动位置
       } finally {
-        if (this.conversationId === conversationId) {
+        if (this.conversationId === conversationId && !silent) {
           this.loading = false;
         }
       }

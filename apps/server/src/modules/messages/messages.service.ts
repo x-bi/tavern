@@ -51,9 +51,12 @@ export class MessagesService {
     const where: Prisma.MessageWhereInput = {
       conversationId,
       deletedAt: null,
-      // role/status 未传时不加条件，传了则按值过滤
+      // role 未传时不加条件，传了则按值过滤
       ...(query.role === undefined ? {} : { role: query.role }),
-      ...(query.status === undefined ? {} : { status: query.status }),
+      // status 未传时默认排除被重新生成取代的旧回复（replaced），
+      // 否则重新生成后旧 assistant 消息会随重载回流，越点越多；
+      // 显式传 status 时按传入值精确过滤（如审计查询 replaced）。
+      ...(query.status === undefined ? { status: { not: 'replaced' } } : { status: query.status }),
       // search 关键字：匹配 content 包含
       ...(query.search === undefined ? {} : { content: { contains: query.search } })
     };

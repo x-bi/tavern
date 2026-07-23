@@ -17,7 +17,8 @@ export class CompanionMessagesService {
   async list(user: CurrentUser, companionId: string) {
     await this.assertCompanion(user, companionId);
     return this.prisma.companionMessage.findMany({
-      where: { companionId, deletedAt: null },
+      // 排除被重新生成取代的旧回复（replaced），避免重新生成后旧消息堆积
+      where: { companionId, deletedAt: null, status: { not: 'replaced' } },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     });
   }

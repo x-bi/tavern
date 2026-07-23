@@ -241,11 +241,12 @@ export class SharesService {
     const rows =
       context.targetType === 'conversation'
         ? await this.prisma.message.findMany({
-            where: { conversationId: context.targetId, deletedAt: null },
+            // 排除被重新生成取代的旧回复（replaced），避免分享视图同样堆积
+            where: { conversationId: context.targetId, deletedAt: null, status: { not: 'replaced' } },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
           })
         : await this.prisma.companionMessage.findMany({
-            where: { companionId: context.targetId, deletedAt: null },
+            where: { companionId: context.targetId, deletedAt: null, status: { not: 'replaced' } },
             orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
           });
     return rows.map((row) => ({

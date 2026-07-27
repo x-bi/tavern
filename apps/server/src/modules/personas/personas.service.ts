@@ -4,6 +4,7 @@ import { Prisma, type UserPersona } from '@prisma/client';
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
 import {
+  assertAllowedFields,
   createAvailableName,
   limitText,
   optionalBoolean,
@@ -50,6 +51,18 @@ type NormalizedPersonaImport = {
   isDefault: boolean;
   warnings: ModuleJsonImportWarning[];
 };
+
+const PERSONA_FORMAT_VERSION = 'tavern-lite.persona.v2';
+const PERSONA_V2_IMPORT_FIELDS = [
+  'formatVersion',
+  'name',
+  'coreIdentity',
+  'background',
+  'interactionPreferences',
+  'metadata',
+  'isDefault',
+  'exportedAt'
+] as const;
 
 /**
  * 人设服务：用户人设的 CRUD + 设为默认。
@@ -188,7 +201,7 @@ export class PersonasService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<PersonaImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.persona.v2');
+    const parsed = parseModuleJson(dto.rawJson, PERSONA_FORMAT_VERSION);
     const normalized = this.normalizePersonaImport(parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -287,7 +300,7 @@ export class PersonasService {
     return {
       fileName: `${safeExportFileName(persona.name)}-persona.json`,
       card: {
-        formatVersion: 'tavern-lite.persona.v2',
+        formatVersion: PERSONA_FORMAT_VERSION,
         name: persona.name,
         coreIdentity: persona.coreIdentity,
         background: persona.background,
@@ -323,7 +336,7 @@ export class PersonasService {
     return {
       fileName: 'tavern-lite-persona-template.json',
       template: {
-        formatVersion: 'tavern-lite.persona.v2',
+        formatVersion: PERSONA_FORMAT_VERSION,
         name: '示例 Persona',
         coreIdentity: '用户不可被 AI 改写的核心身份。',
         background: '',
@@ -474,6 +487,7 @@ export class PersonasService {
    * @returns 可写入数据库的 Persona 导入数据。
    */
   private normalizePersonaImport(record: JsonRecord): NormalizedPersonaImport {
+    assertAllowedFields(record, PERSONA_V2_IMPORT_FIELDS, 'persona');
     const warnings: ModuleJsonImportWarning[] = [];
     const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
 

@@ -58,6 +58,20 @@ export function invalidModuleFormat(message: string): BadRequestException {
   });
 }
 
+/** 拒绝 V2 对象中的未知字段，避免旧字段或拼写错误被静默忽略。 */
+export function assertAllowedFields(
+  record: JsonRecord,
+  allowedFields: readonly string[],
+  path: string
+): void {
+  const allowed = new Set(allowedFields);
+  const unknown = Object.keys(record).find((field) => !allowed.has(field));
+
+  if (unknown) {
+    throw invalidModuleFormat(`${path}.${unknown} is not supported by the V2 format.`);
+  }
+}
+
 /** 读取必填字符串字段。 */
 export function requiredString(record: JsonRecord, field: string, path: string): string {
   const value = record[field];

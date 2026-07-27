@@ -31,7 +31,7 @@ export class DtoValidationPipe<T extends object> implements PipeTransform<unknow
     const instance = plainToInstance(this.dtoClass, value ?? {});
     const errors = validateSync(instance, {
       whitelist: true,
-      forbidNonWhitelisted: false
+      forbidNonWhitelisted: true
     });
 
     // 有校验错误：收集为字符串数组后抛 400

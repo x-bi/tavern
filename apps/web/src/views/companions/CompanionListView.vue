@@ -151,7 +151,7 @@
     <ModuleJsonImportDrawer
       v-model:show="importDrawerVisible"
       title="导入 AI 角色 JSON"
-      format-label="tavern-lite.companion.v2 / chara_card_v2"
+      format-label="tavern-lite.companion.v2"
       :preview="importPreview"
       :previewing="importPreviewing"
       :importing="importing"

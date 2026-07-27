@@ -5,6 +5,7 @@ import { ERROR_CODES } from '../../common/dto/error-codes';
 import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
 import {
   createAvailableName,
+  invalidModuleFormat,
   limitText,
   optionalBoolean,
   optionalRecord,
@@ -15,6 +16,7 @@ import {
   type ModuleJsonImportWarning
 } from '../../common/module-json-import';
 import { PrismaService } from '../../prisma/prisma.service';
+import { parsePresetOutputRuleOperations } from '../../services/context-engine/preset-rule-compiler';
 import { SettingsService } from '../settings/settings.service';
 import { ContentLibraryService } from '../content-library/content-library.service';
 import type { CurrentUser } from '../users/user.types';
@@ -26,6 +28,16 @@ import type {
   PromptPresetParams,
   PromptPresetResponse
 } from './prompt-preset.types';
+import {
+  PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES,
+  PROMPT_PRESET_FORMAT_VERSION
+} from './preset-constants';
+import {
+  validatePresetGenerationPurposes,
+  validatePresetInstructions,
+  validatePresetOutputRuleOperations,
+  validatePresetParameters
+} from './preset-validation';
 
 type PromptPresetImportPreview = {
   name: string;
@@ -110,7 +122,7 @@ export class PresetsService {
               { name: { contains: query.search } },
               { description: { contains: query.search } },
               { instructionsJson: { contains: query.search } },
-              { outputRulesJson: { contains: query.search } }
+              { outputRuleOperationsJson: { contains: query.search } }
             ]
           }
         : {})
@@ -157,9 +169,9 @@ export class PresetsService {
       name: dto.name,
       description: dto.description ?? '',
       instructionsJson: JSON.stringify(dto.instructions ?? []),
-      outputRulesJson: JSON.stringify(dto.outputRuleOperations ?? []),
+      outputRuleOperationsJson: JSON.stringify(dto.outputRuleOperations ?? []),
       generationPurposesJson: JSON.stringify(
-        dto.generationPurposes ?? ['chat_reply', 'regenerate', 'continue']
+        dto.generationPurposes ?? PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES
       ),
       // 参数提取后序列化成 JSON 存储
       parametersJson: this.stringifyParams(this.pickParams(dto)),
@@ -207,7 +219,7 @@ export class PresetsService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<PromptPresetImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.prompt-preset.v2');
+    const parsed = parseModuleJson(dto.rawJson, PROMPT_PRESET_FORMAT_VERSION);
     const normalized = this.normalizePromptPresetImport(parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -245,7 +257,7 @@ export class PresetsService {
         name,
         description: normalized.description,
         instructionsJson: JSON.stringify(normalized.instructions),
-        outputRulesJson: JSON.stringify(normalized.outputRuleOperations),
+        outputRuleOperationsJson: JSON.stringify(normalized.outputRuleOperations),
         generationPurposesJson: JSON.stringify(normalized.generationPurposes),
         parametersJson: this.stringifyParams(normalized.parameters),
         metadataJson: this.stringifyNullable(normalized.metadata),
@@ -296,11 +308,11 @@ export class PresetsService {
     return {
       fileName: `${safeExportFileName(preset.name)}-prompt-preset.json`,
       card: {
-        formatVersion: 'tavern-lite.prompt-preset.v2',
+        formatVersion: PROMPT_PRESET_FORMAT_VERSION,
         name: preset.name,
         description: preset.description,
         instructions: this.parseStringArray(preset.instructionsJson),
-        outputRuleOperations: this.parseOutputRuleOperations(preset.outputRulesJson),
+        outputRuleOperations: parsePresetOutputRuleOperations(preset.outputRuleOperationsJson),
         generationPurposes: this.parseStringArray(preset.generationPurposesJson),
         parameters: this.parseParams(preset.parametersJson),
         metadata: this.parseRecord(preset.metadataJson),
@@ -319,7 +331,7 @@ export class PresetsService {
         name: createAvailableName(source.name, names),
         description: source.description,
         instructionsJson: source.instructionsJson,
-        outputRulesJson: source.outputRulesJson,
+        outputRuleOperationsJson: source.outputRuleOperationsJson,
         generationPurposesJson: source.generationPurposesJson,
         parametersJson: source.parametersJson,
         metadataJson: source.metadataJson,
@@ -336,14 +348,14 @@ export class PresetsService {
     return {
       fileName: 'tavern-lite-prompt-preset-template.json',
       template: {
-        formatVersion: 'tavern-lite.prompt-preset.v2',
+        formatVersion: PROMPT_PRESET_FORMAT_VERSION,
         name: '示例参数预设',
         description: '适用于自然、稳定的日常角色对话。',
         instructions: ['遵循当前角色身份与最新对话事实。'],
         outputRuleOperations: [
           { key: 'style', content: '使用自然口语。', operation: 'add', sortOrder: 0 }
         ],
-        generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+        generationPurposes: [...PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES],
         parameters: {
           temperature: 0.8,
           topP: 0.9,
@@ -384,7 +396,7 @@ export class PresetsService {
         : { instructionsJson: JSON.stringify(dto.instructions) }),
       ...(dto.outputRuleOperations === undefined
         ? {}
-        : { outputRulesJson: JSON.stringify(dto.outputRuleOperations) }),
+        : { outputRuleOperationsJson: JSON.stringify(dto.outputRuleOperations) }),
       ...(dto.generationPurposes === undefined
         ? {}
         : { generationPurposesJson: JSON.stringify(dto.generationPurposes) }),
@@ -459,13 +471,67 @@ export class PresetsService {
   }
 
   /**
-   * 归一化 Prompt 预设导入 JSON。
-   * @param record 原始 JSON 对象。
-   * @returns 可写入数据库的预设导入数据。
+   * 独立预设 V2 导入允许的根字段白名单（见清理方案 §5.4）。
+   * 出现白名单外字段直接报错；V1 字段给出明确的旧格式错误。
+   */
+  private static readonly ALLOWED_IMPORT_ROOT_FIELDS = new Set([
+    'formatVersion',
+    'name',
+    'description',
+    'instructions',
+    'outputRuleOperations',
+    'generationPurposes',
+    'parameters',
+    'metadata',
+    'isDefault',
+    'exportedAt'
+  ]);
+
+  /** 命中即视为 V1 旧格式字段，给出明确错误（见清理方案 §5.4 / §2.1）。 */
+  private static readonly V1_ROOT_FIELDS = new Set([
+    'systemPrompt',
+    'outputRules',
+    'prompt',
+    'system'
+  ]);
+
+  /**
+   * 归一化 Prompt 预设导入 JSON（严格 V2-only，见清理方案 §5.4 / §5.5）。
+   *
+   * - 根字段白名单：未知字段 / V1 字段直接报错，禁止静默忽略。
+   * - 必填字段缺失直接报错，禁止 `?? []` 静默补默认值后导入成功。
+   * - instructions / outputRuleOperations / generationPurposes / parameters 复用
+   *   preset-validation 共享校验，与内容包导入同口径（见 §5.9）。
    */
   private normalizePromptPresetImport(record: JsonRecord): NormalizedPromptPresetImport {
+    for (const field of Object.keys(record)) {
+      if (PresetsService.V1_ROOT_FIELDS.has(field)) {
+        throw invalidModuleFormat(
+          `Unsupported Prompt Preset V1 field: "${field}". Only ${PROMPT_PRESET_FORMAT_VERSION} fields are accepted.`
+        );
+      }
+
+      if (!PresetsService.ALLOWED_IMPORT_ROOT_FIELDS.has(field)) {
+        throw invalidModuleFormat(
+          `Unsupported Prompt Preset field: "${field}". Only ${PROMPT_PRESET_FORMAT_VERSION} fields are accepted.`
+        );
+      }
+    }
+
     const warnings: ModuleJsonImportWarning[] = [];
     const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
+
+    if (record.instructions === undefined) {
+      throw invalidModuleFormat('instructions is required.');
+    }
+
+    if (record.outputRuleOperations === undefined) {
+      throw invalidModuleFormat('outputRuleOperations is required.');
+    }
+
+    if (record.generationPurposes === undefined) {
+      throw invalidModuleFormat('generationPurposes is required.');
+    }
 
     return {
       name,
@@ -475,18 +541,16 @@ export class PresetsService {
         'description',
         warnings
       ),
-      instructions: Array.isArray(record.instructions)
-        ? record.instructions.filter((item): item is string => typeof item === 'string')
-        : [],
-      outputRuleOperations: this.parseOutputRuleOperations(
-        JSON.stringify(
-          Array.isArray(record.outputRuleOperations) ? record.outputRuleOperations : []
-        )
+      instructions: validatePresetInstructions(record.instructions, 'instructions'),
+      outputRuleOperations: validatePresetOutputRuleOperations(
+        record.outputRuleOperations,
+        'outputRuleOperations'
       ),
-      generationPurposes: Array.isArray(record.generationPurposes)
-        ? record.generationPurposes.filter((item): item is string => typeof item === 'string')
-        : ['chat_reply', 'regenerate', 'continue'],
-      parameters: this.normalizeImportParams(optionalRecord(record, 'parameters', 'parameters')),
+      generationPurposes: validatePresetGenerationPurposes(
+        record.generationPurposes,
+        'generationPurposes'
+      ),
+      parameters: validatePresetParameters(record.parameters, 'parameters') ?? {},
       metadata: optionalRecord(record, 'metadata', 'metadata'),
       isDefault: optionalBoolean(record, 'isDefault', false, 'isDefault'),
       warnings
@@ -610,7 +674,7 @@ export class PresetsService {
       name: preset.name,
       description: preset.description,
       instructions: this.parseStringArray(preset.instructionsJson),
-      outputRuleOperations: this.parseOutputRuleOperations(preset.outputRulesJson),
+      outputRuleOperations: parsePresetOutputRuleOperations(preset.outputRuleOperationsJson),
       generationPurposes: this.parseStringArray(preset.generationPurposesJson),
       temperature: params.temperature ?? null,
       topP: params.topP ?? null,
@@ -691,51 +755,6 @@ export class PresetsService {
    */
   private stringifyParams(params: PromptPresetParams): string | null {
     return Object.keys(params).length > 0 ? JSON.stringify(params) : null;
-  }
-
-  /**
-   * 导入参数对象归一化，兼容 camelCase 与 OpenAI 风格 snake_case。
-   * @param value 原始 parameters 对象。
-   * @returns 预设参数对象。
-   */
-  private normalizeImportParams(value: JsonRecord | null): PromptPresetParams {
-    if (!value) {
-      return {};
-    }
-
-    const params: PromptPresetParams = {};
-    const temperature = value.temperature;
-    const topP = value.topP ?? value.top_p;
-    const maxTokens = value.maxTokens ?? value.max_tokens;
-    const timeout = value.timeout;
-    const frequencyPenalty = value.frequencyPenalty ?? value.frequency_penalty;
-    const presencePenalty = value.presencePenalty ?? value.presence_penalty;
-
-    if (typeof temperature === 'number' && Number.isFinite(temperature)) {
-      params.temperature = temperature;
-    }
-
-    if (typeof topP === 'number' && Number.isFinite(topP)) {
-      params.topP = topP;
-    }
-
-    if (typeof maxTokens === 'number' && Number.isFinite(maxTokens)) {
-      params.maxTokens = Math.trunc(maxTokens);
-    }
-
-    if (typeof timeout === 'number' && Number.isFinite(timeout)) {
-      params.timeout = Math.trunc(timeout);
-    }
-
-    if (typeof frequencyPenalty === 'number' && Number.isFinite(frequencyPenalty)) {
-      params.frequencyPenalty = frequencyPenalty;
-    }
-
-    if (typeof presencePenalty === 'number' && Number.isFinite(presencePenalty)) {
-      params.presencePenalty = presencePenalty;
-    }
-
-    return params;
   }
 
   /**
@@ -847,33 +866,6 @@ export class PresetsService {
       return Array.isArray(parsed)
         ? parsed.filter((item): item is string => typeof item === 'string')
         : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private parseOutputRuleOperations(value: string): PromptPresetResponse['outputRuleOperations'] {
-    try {
-      const parsed = JSON.parse(value) as unknown;
-      if (!Array.isArray(parsed)) return [];
-      return parsed.flatMap((item) => {
-        if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-        const rule = item as Record<string, unknown>;
-        if (
-          typeof rule.key !== 'string' ||
-          typeof rule.content !== 'string' ||
-          !['add', 'replace_optional', 'disable_optional'].includes(String(rule.operation))
-        )
-          return [];
-        return [
-          {
-            key: rule.key,
-            content: rule.content,
-            operation: rule.operation as 'add' | 'replace_optional' | 'disable_optional',
-            sortOrder: typeof rule.sortOrder === 'number' ? rule.sortOrder : 0
-          }
-        ];
-      });
     } catch {
       return [];
     }

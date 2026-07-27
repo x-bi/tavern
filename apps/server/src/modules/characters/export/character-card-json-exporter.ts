@@ -16,7 +16,7 @@ const SENSITIVE_FIELD_PATTERN = /api[_-]?key|secret|token|password|authorization
  *
  * 设计要点：
  * - 核心字段直接写入；可选字段（creator_notes/system_prompt/tags 等）有值才写入，避免输出空字段；
- * - 扩展字段保留原导入卡片的 extensions，并追加 tavernLite 自己的元数据；
+ * - 扩展字段只读取当前 V2 metadata.extensions，并追加 tavernLite 元数据；
  * - 导出前递归清理敏感字段，防止泄露；
  * - 示例对话格式化为文本（`<START>` + `说话人: 内容`）。
  */
@@ -34,10 +34,7 @@ export class CharacterCardJsonExporter {
     exampleMessages: ExampleMessage[]
   ): CharacterExportResponse {
     const exportedAt = new Date().toISOString();
-    // 取原导入卡片的快照（导入时保存在 metadata.importedCard）
-    const importedCard = this.asRecord(metadata?.importedCard);
-    // 构建扩展字段（含原卡片扩展 + tavernLite 元数据）
-    const extensions = this.buildExtensions(metadata, importedCard, exportedAt);
+    const extensions = this.buildExtensions(metadata, exportedAt);
     // 构建 data：核心字段直接写入；以下可选字段有值才写入卡片（避免空字段）
     const data = {
       name: character.name,
@@ -61,14 +58,18 @@ export class CharacterCardJsonExporter {
       ...(this.pickStringArray(metadata, 'tags').length > 0
         ? { tags: this.pickStringArray(metadata, 'tags') }
         : {}),
-      ...(this.pickString(importedCard, 'creator')
-        ? { creator: this.pickString(importedCard, 'creator') }
+      ...(this.pickString(metadata, 'creator')
+        ? { creator: this.pickString(metadata, 'creator') }
         : {}),
-      ...(this.pickString(importedCard, 'characterVersion')
-        ? { character_version: this.pickString(importedCard, 'characterVersion') }
+      ...(this.pickString(metadata, 'characterVersion')
+        ? { character_version: this.pickString(metadata, 'characterVersion') }
         : {}),
-      ...(this.pickStringArray(importedCard, 'alternateGreetings').length > 0
-        ? { alternate_greetings: this.pickStringArray(importedCard, 'alternateGreetings') }
+      ...(this.pickStringArray(metadata, 'alternateGreetings').length > 0
+        ? { alternate_greetings: this.pickStringArray(metadata, 'alternateGreetings') }
+        : {}),
+      ...(metadata?.depthPrompt !== undefined ? { depth_prompt: metadata.depthPrompt } : {}),
+      ...(this.pickString(metadata, 'postHistoryInstructions')
+        ? { post_history_instructions: this.pickString(metadata, 'postHistoryInstructions') }
         : {}),
       ...(Object.keys(extensions).length > 0 ? { extensions } : {})
     };
@@ -87,20 +88,19 @@ export class CharacterCardJsonExporter {
   }
 
   /**
-   * 构建扩展字段：保留原卡片的 extensions，并追加 tavernLite 元数据。
+   * 构建扩展字段：保留当前 V2 metadata.extensions，并追加 tavernLite 元数据。
    */
-  private buildExtensions(
-    metadata: JsonRecord | null,
-    importedCard: JsonRecord | null,
-    exportedAt: string
-  ): JsonRecord {
-    // 取原卡片的 extensions 并清理敏感字段
-    const importedExtensions = this.asRecord(importedCard?.extensions);
+  private buildExtensions(metadata: JsonRecord | null, exportedAt: string): JsonRecord {
+    const importedExtensions = this.asRecord(metadata?.extensions);
     const extensions: JsonRecord = {
       ...(importedExtensions ? this.sanitizeRecord(importedExtensions) : {})
     };
-    // tavernLite 自己的元数据（清理敏感字段后）
-    const tavernLiteMetadata = this.sanitizeRecord(metadata ?? {});
+    const portableMetadata = Object.fromEntries(
+      Object.entries(metadata ?? {}).filter(
+        ([key]) => key !== 'extensions' && key !== 'importedCard'
+      )
+    );
+    const tavernLiteMetadata = this.sanitizeRecord(portableMetadata);
 
     // 有内容则挂到 extensions.tavernLite，记录导出时间和元数据
     if (Object.keys(tavernLiteMetadata).length > 0) {

@@ -624,6 +624,43 @@ COMMIT;
 - 备份导入覆盖前被物理删除的目标范围数据。
 - 已从 `uploads/` 物理删除的素材文件。
 
+## 4.1 清空账号和模型之外的全部数据
+
+仓库提供 `scripts/reset-keep-accounts-models.sh`，用于保留以下数据库表：
+
+- `User`
+- `ModelProvider`
+- `ProviderModel`
+- `ModelFallbackGroup`
+- `ModelFallbackCandidate`
+- `_prisma_migrations`
+
+角色、会话、消息、AI 角色、长期记忆、世界书、预设、Persona、分享、素材记录和应用设置会被硬删除；`uploads/` 会在完成操作前备份，然后清空。脚本不会修改服务器 `.env`，也不会执行 `db:seed`。
+
+先只做预检：
+
+```bash
+cd /opt/tavern
+bash scripts/reset-keep-accounts-models.sh --check
+```
+
+检查通过后正式执行：
+
+```bash
+cd /opt/tavern
+bash scripts/reset-keep-accounts-models.sh
+```
+
+按提示输入 `RESET KEEP ACCOUNTS AND MODELS`。已人工确认并需要非交互执行时，可使用：
+
+```bash
+bash scripts/reset-keep-accounts-models.sh --yes
+```
+
+脚本会校验数据库实际表集合；如果当前数据库比脚本支持的 schema 多表或少表，会在停服和修改数据前终止，避免新增业务表被遗漏。
+
+需要单独清理酒馆会话、角色、AI 角色聊天、AI 角色、世界书、Persona、PromptPreset、分享、素材、设置或模型配置时，使用 `scripts/reset-module-data.sh`。完整模块名、级联边界、执行命令和恢复方式见 [服务器数据清理脚本使用手册](server-data-cleanup.md)。
+
 ## 5. 清空全部业务数据，只保留管理员账号
 
 本节的结果是：

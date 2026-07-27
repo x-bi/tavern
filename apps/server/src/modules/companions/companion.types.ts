@@ -1,3 +1,6 @@
+/** AI 角色独立导入/导出格式版本。 */
+export const COMPANION_FORMAT_VERSION = 'tavern-lite.companion.v2';
+
 /** 独立 AI 角色对外响应。 */
 export type CompanionResponse = {
   id: string;
@@ -31,7 +34,7 @@ export type CompanionResponse = {
 };
 
 export type CompanionImportPreview = {
-  format: 'tavern-lite.companion.v2' | 'chara_card_v2';
+  format: typeof COMPANION_FORMAT_VERSION;
   name: string;
   coreIdentity: string;
   personality: string;
@@ -51,7 +54,7 @@ export type CompanionImportResponse = {
 export type CompanionExportResponse = {
   fileName: string;
   card: {
-    formatVersion: 'tavern-lite.companion.v2';
+    formatVersion: typeof COMPANION_FORMAT_VERSION;
     name: string;
     coreIdentity: string;
     personality: string;

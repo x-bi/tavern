@@ -14,6 +14,7 @@ import { SettingsService } from '../settings/settings.service';
 import type { CurrentUser } from '../users/user.types';
 import { CreateCompanionDto } from './dto/create-companion.dto';
 import { UpdateCompanionDto } from './dto/update-companion.dto';
+import { COMPANION_FORMAT_VERSION } from './companion.types';
 import type {
   CompanionExportResponse,
   CompanionImportPreview,
@@ -104,7 +105,7 @@ export class CompanionsService {
     return this.toResponse(item, currentUser);
   }
 
-  /** 导入 Companion JSON 或通用 chara_card_v2；用户专属配置不会从文件恢复。 */
+  /** 仅导入 Companion V2 JSON；用户专属配置不会从文件恢复。 */
   async importJson(
     currentUser: CurrentUser,
     dto: ImportCompanionDto
@@ -149,7 +150,7 @@ export class CompanionsService {
     return {
       fileName: 'tavern-lite-companion-template.json',
       template: {
-        formatVersion: 'tavern-lite.companion.v2',
+        formatVersion: COMPANION_FORMAT_VERSION,
         name: '示例 AI 角色',
         coreIdentity: '温柔、真诚的长期陪伴者',
         personality: '克制而有耐心',
@@ -166,7 +167,7 @@ export class CompanionsService {
     return {
       fileName: `${this.toSafeFileName(item.name)}-companion.json`,
       card: {
-        formatVersion: 'tavern-lite.companion.v2',
+        formatVersion: COMPANION_FORMAT_VERSION,
         name: item.name,
         coreIdentity: item.coreIdentity,
         personality: item.personality,
@@ -212,7 +213,7 @@ export class CompanionsService {
                   ),
                   description: source.promptPreset.description,
                   instructionsJson: source.promptPreset.instructionsJson,
-                  outputRulesJson: source.promptPreset.outputRulesJson,
+                  outputRuleOperationsJson: source.promptPreset.outputRuleOperationsJson,
                   generationPurposesJson: source.promptPreset.generationPurposesJson,
                   parametersJson: source.promptPreset.parametersJson,
                   metadataJson: source.promptPreset.metadataJson,
@@ -509,50 +510,44 @@ export class CompanionsService {
       });
     }
 
-    if (root.formatVersion === 'tavern-lite.companion.v2') {
-      return {
-        format: 'tavern-lite.companion.v2',
-        name: this.requiredText(root.name, 'name'),
-        coreIdentity: this.optionalText(root.coreIdentity),
-        personality: this.optionalText(root.personality),
-        speechStyle: this.optionalText(root.speechStyle),
-        relationshipDefaults: this.optionalText(root.relationshipDefaults),
-        warnings: ['模型链、Persona、头像和记忆设置不会从导入文件恢复。']
-      };
-    }
-
-    if (root.spec !== 'chara_card_v2') {
+    if (root.formatVersion !== COMPANION_FORMAT_VERSION) {
       throw new BadRequestException({
         code: 'COMPANION_IMPORT_INVALID_FORMAT',
-        message: 'Companion import only accepts tavern-lite.companion.v2 or chara_card_v2.'
+        message: `Companion import only accepts ${COMPANION_FORMAT_VERSION}.`
       });
     }
 
-    const data = this.asRecord(root.data);
-    if (!data) {
+    const allowedFields = new Set([
+      'formatVersion',
+      'name',
+      'coreIdentity',
+      'personality',
+      'speechStyle',
+      'relationshipDefaults',
+      'exportedAt'
+    ]);
+    const unsupportedField = Object.keys(root).find((field) => !allowedFields.has(field));
+
+    if (unsupportedField) {
       throw new BadRequestException({
         code: 'COMPANION_IMPORT_INVALID_FORMAT',
-        message: 'chara_card_v2 import requires an object data field.'
+        message: `Companion V2 field is not supported: ${unsupportedField}.`
       });
     }
-    const description = this.optionalText(data.description);
-    const personality = this.optionalText(data.personality);
-    const scenario = this.optionalText(data.scenario);
-    const systemPrompt = this.optionalText(data.system_prompt);
 
     return {
-      format: 'chara_card_v2',
-      name: this.requiredText(data.name, 'name'),
-      coreIdentity: description,
-      personality,
-      speechStyle: systemPrompt,
-      relationshipDefaults: scenario,
-      warnings: ['已映射通用角色卡字段；开场白和示例对话不会写入 Companion 的长期关系线程。']
+      format: COMPANION_FORMAT_VERSION,
+      name: this.requiredText(root.name, 'name', 80),
+      coreIdentity: this.optionalText(root.coreIdentity, 'coreIdentity'),
+      personality: this.optionalText(root.personality, 'personality'),
+      speechStyle: this.optionalText(root.speechStyle, 'speechStyle'),
+      relationshipDefaults: this.optionalText(root.relationshipDefaults, 'relationshipDefaults'),
+      warnings: ['模型链、Persona、头像和记忆设置不会从导入文件恢复。']
     };
   }
 
-  private requiredText(value: unknown, field: string) {
-    const text = this.optionalText(value);
+  private requiredText(value: unknown, field: string, maxLength: number) {
+    const text = this.optionalText(value, field, maxLength);
 
     if (!text) {
       throw new BadRequestException({
@@ -561,17 +556,26 @@ export class CompanionsService {
       });
     }
 
-    return text.slice(0, 80);
+    return text;
   }
 
-  private optionalText(value: unknown) {
-    return typeof value === 'string' ? value.trim().slice(0, 12_000) : '';
-  }
+  private optionalText(value: unknown, field: string, maxLength = 12_000) {
+    if (value === undefined || value === null) return '';
+    if (typeof value !== 'string') {
+      throw new BadRequestException({
+        code: 'COMPANION_IMPORT_INVALID_FORMAT',
+        message: `Companion V2 field ${field} must be a string.`
+      });
+    }
 
-  private asRecord(value: unknown): Record<string, unknown> | null {
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : null;
+    const text = value.trim();
+    if (text.length > maxLength) {
+      throw new BadRequestException({
+        code: 'COMPANION_IMPORT_INVALID_FORMAT',
+        message: `Companion V2 field ${field} must be at most ${maxLength} characters.`
+      });
+    }
+    return text;
   }
 
   private toSafeFileName(name: string) {

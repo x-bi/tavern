@@ -4,6 +4,13 @@ import { ERROR_CODES } from '../../common/dto/error-codes';
 import { canonicalSha256 } from '../../common/canonical-json';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { CurrentUser } from '../users/user.types';
+import { PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES } from '../presets/preset-constants';
+import {
+  validatePresetGenerationPurposes,
+  validatePresetInstructions,
+  validatePresetOutputRuleOperations,
+  validatePresetParameters
+} from '../presets/preset-validation';
 import {
   CONTENT_PACK_FORMAT_VERSION,
   type ContentPackDocument,
@@ -21,6 +28,101 @@ import {
 import type { ImportContentPackDto } from './dto/import-content-pack.dto';
 
 type JsonRecord = Record<string, unknown>;
+
+const CONTENT_PACK_ROOT_FIELDS = [
+  'format',
+  'title',
+  'description',
+  'genre',
+  'tone',
+  'characters',
+  'personas',
+  'promptPresets',
+  'worldBooks',
+  'starterConversations'
+] as const;
+const CONTENT_PACK_CHARACTER_FIELDS = [
+  'ref',
+  'name',
+  'coreIdentity',
+  'personality',
+  'persistentPremise',
+  'initialScenario',
+  'extendedBackground',
+  'characterRules',
+  'speechStyle',
+  'firstMessage',
+  'exampleMessages',
+  'metadata'
+] as const;
+const CONTENT_PACK_PERSONA_FIELDS = [
+  'ref',
+  'name',
+  'coreIdentity',
+  'background',
+  'interactionPreferences',
+  'metadata',
+  'isDefault'
+] as const;
+const CONTENT_PACK_PRESET_FIELDS = [
+  'ref',
+  'name',
+  'description',
+  'instructions',
+  'outputRuleOperations',
+  'generationPurposes',
+  'parameters',
+  'metadata',
+  'isDefault'
+] as const;
+const CONTENT_PACK_WORLD_BOOK_FIELDS = [
+  'ref',
+  'characterRef',
+  'name',
+  'description',
+  'isEnabled',
+  'scanDepth',
+  'tokenBudget',
+  'metadata',
+  'entries'
+] as const;
+const CONTENT_PACK_WORLD_BOOK_ENTRY_FIELDS = [
+  'title',
+  'content',
+  'keywords',
+  'secondaryKeywords',
+  'isEnabled',
+  'primaryLogic',
+  'secondaryLogic',
+  'excludeKeywords',
+  'sameMessageOnly',
+  'scanSources',
+  'userHistoryScanDepth',
+  'cooldownPolicy',
+  'budgetPriority',
+  'sortOrder',
+  'compactContent',
+  'placement',
+  'maxTokens',
+  'contentType',
+  'activationMode',
+  'matchMode',
+  'stickyTurns',
+  'continuationTurns',
+  'cooldownTurns',
+  'delayTurns',
+  'generationPurposes'
+] as const;
+const CONTENT_PACK_STARTER_CONVERSATION_FIELDS = [
+  'ref',
+  'title',
+  'characterRef',
+  'personaRef',
+  'promptPresetRef',
+  'metadata',
+  'messages'
+] as const;
+const CONTENT_PACK_MESSAGE_FIELDS = ['role', 'content'] as const;
 type ContentPackPresetRule = {
   key: string;
   content: string;
@@ -205,6 +307,8 @@ export class ContentPacksService {
     if (!this.isRecord(parsed)) {
       throw this.invalidFormat('Content pack root must be an object.');
     }
+
+    this.assertAllowedFields(parsed, CONTENT_PACK_ROOT_FIELDS, 'contentPack');
 
     const sensitivePath = this.findSensitiveFieldPath(parsed);
 
@@ -397,7 +501,7 @@ export class ContentPacksService {
             name: preset.finalName,
             description: preset.description,
             instructionsJson: JSON.stringify(preset.instructions),
-            outputRulesJson: JSON.stringify(preset.outputRuleOperations),
+            outputRuleOperationsJson: JSON.stringify(preset.outputRuleOperations),
             generationPurposesJson: JSON.stringify(preset.generationPurposes),
             parametersJson: this.stringifyNullable(preset.parameters),
             metadataJson: this.stringifyNullable(preset.metadata),
@@ -561,6 +665,7 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedCharacter {
+    this.assertAllowedFields(record, CONTENT_PACK_CHARACTER_FIELDS, path);
     const name = this.requiredLimitedString(record, 'name', `${path}.name`, 120, warnings);
 
     return {
@@ -630,6 +735,7 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedPersona {
+    this.assertAllowedFields(record, CONTENT_PACK_PERSONA_FIELDS, path);
     const name = this.requiredLimitedString(record, 'name', `${path}.name`, 120, warnings);
 
     return {
@@ -660,7 +766,26 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedPromptPreset {
+    this.assertAllowedFields(record, CONTENT_PACK_PRESET_FIELDS, path);
     const name = this.requiredLimitedString(record, 'name', `${path}.name`, 120, warnings);
+
+    // 内容包预设字段缺失时回退默认值（内容包是聚合包，字段可选），
+    // 但只要字段存在就严格校验，与独立预设导入同口径（见清理方案 §5.9）。
+    const instructions =
+      record.instructions === undefined || record.instructions === null
+        ? []
+        : validatePresetInstructions(record.instructions, `${path}.instructions`);
+    const outputRuleOperations =
+      record.outputRuleOperations === undefined || record.outputRuleOperations === null
+        ? []
+        : validatePresetOutputRuleOperations(
+            record.outputRuleOperations,
+            `${path}.outputRuleOperations`
+          );
+    const generationPurposes =
+      record.generationPurposes === undefined || record.generationPurposes === null
+        ? [...PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES]
+        : validatePresetGenerationPurposes(record.generationPurposes, `${path}.generationPurposes`);
 
     return {
       ref: this.requiredString(record, 'ref', `${path}.ref`),
@@ -672,18 +797,10 @@ export class ContentPacksService {
         `${path}.description`,
         warnings
       ),
-      instructions: this.optionalStringArray(record, 'instructions', `${path}.instructions`),
-      outputRuleOperations: Array.isArray(record.outputRuleOperations)
-        ? (record.outputRuleOperations as ContentPackPresetRule[])
-        : [],
-      generationPurposes: this.optionalStringArray(
-        record,
-        'generationPurposes',
-        `${path}.generationPurposes`
-      ).length
-        ? this.optionalStringArray(record, 'generationPurposes', `${path}.generationPurposes`)
-        : ['chat_reply', 'regenerate', 'continue'],
-      parameters: this.normalizeParameters(record.parameters, `${path}.parameters`),
+      instructions,
+      outputRuleOperations,
+      generationPurposes,
+      parameters: validatePresetParameters(record.parameters, `${path}.parameters`),
       metadata: this.optionalRecord(record, 'metadata', `${path}.metadata`),
       isDefault: this.optionalBoolean(record, 'isDefault', false, `${path}.isDefault`),
       skipped: false
@@ -695,6 +812,7 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedWorldBook {
+    this.assertAllowedFields(record, CONTENT_PACK_WORLD_BOOK_FIELDS, path);
     const name = this.requiredLimitedString(record, 'name', `${path}.name`, 120, warnings);
     const entries = this.getRecordArray(record.entries, `${path}.entries`).map((entry, index) =>
       this.normalizeWorldBookEntry(entry, `${path}.entries[${index}]`, warnings)
@@ -725,12 +843,7 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedWorldBookEntry {
-    if ('insertionOrder' in record) {
-      throw this.invalidFormat(`${path}.insertionOrder is not supported. Use placement instead.`);
-    }
-    if ('tokenBudget' in record) {
-      throw this.invalidFormat(`${path}.tokenBudget is not supported. Use maxTokens instead.`);
-    }
+    this.assertAllowedFields(record, CONTENT_PACK_WORLD_BOOK_ENTRY_FIELDS, path);
     const keywords = this.requiredStringArray(record, 'keywords', `${path}.keywords`);
 
     if (keywords.length === 0) {
@@ -801,13 +914,10 @@ export class ContentPacksService {
         cooldownTurns: this.optionalInteger(record, 'cooldownTurns', 0, `${path}.cooldownTurns`),
         delayTurns: this.optionalInteger(record, 'delayTurns', 0, `${path}.delayTurns`),
         cooldownPolicy: record.cooldownPolicy ?? 'strict',
-        generationPurposes: this.optionalStringArray(
-          record,
-          'generationPurposes',
-          `${path}.generationPurposes`
-        ).length
-          ? this.optionalStringArray(record, 'generationPurposes', `${path}.generationPurposes`)
-          : ['chat_reply', 'regenerate', 'continue'],
+        generationPurposes:
+          record.generationPurposes === undefined || record.generationPurposes === null
+            ? ['chat_reply', 'regenerate', 'continue']
+            : this.optionalStringArray(record, 'generationPurposes', `${path}.generationPurposes`),
         budgetPriority: this.optionalInteger(record, 'budgetPriority', 0, `${path}.budgetPriority`),
         sortOrder: this.optionalInteger(record, 'sortOrder', 0, `${path}.sortOrder`),
         placement,
@@ -822,6 +932,7 @@ export class ContentPacksService {
     path: string,
     warnings: ContentPackImportWarning[]
   ): NormalizedStarterConversation {
+    this.assertAllowedFields(record, CONTENT_PACK_STARTER_CONVERSATION_FIELDS, path);
     return {
       ref: this.requiredString(record, 'ref', `${path}.ref`),
       title: this.requiredLimitedString(record, 'title', `${path}.title`, 120, warnings),
@@ -1025,6 +1136,7 @@ export class ContentPacksService {
 
     return value.map((item, index) => {
       const record = this.asRecord(item, `${path}[${index}]`);
+      this.assertAllowedFields(record, CONTENT_PACK_MESSAGE_FIELDS, `${path}[${index}]`);
       const role = this.requiredString(record, 'role', `${path}[${index}].role`);
 
       if (!this.isContentPackMessageRole(role)) {
@@ -1042,39 +1154,6 @@ export class ContentPacksService {
         )
       };
     });
-  }
-
-  private normalizeParameters(value: unknown, path: string): JsonRecord | null {
-    if (value === undefined || value === null) {
-      return null;
-    }
-
-    const record = this.asRecord(value, path);
-    const params: JsonRecord = {};
-
-    for (const [source, target] of [
-      ['temperature', 'temperature'],
-      ['topP', 'topP'],
-      ['top_p', 'topP'],
-      ['maxTokens', 'maxTokens'],
-      ['max_tokens', 'maxTokens'],
-      ['timeout', 'timeout']
-    ] as const) {
-      const paramValue = record[source];
-
-      if (paramValue === undefined || paramValue === null) {
-        continue;
-      }
-
-      if (typeof paramValue !== 'number' || !Number.isFinite(paramValue)) {
-        throw this.invalidFormat(`${path}.${source} must be a number when present.`);
-      }
-
-      params[target] =
-        target === 'maxTokens' || target === 'timeout' ? Math.trunc(paramValue) : paramValue;
-    }
-
-    return Object.keys(params).length > 0 ? params : null;
   }
 
   private normalizePlacement(
@@ -1353,6 +1432,20 @@ export class ContentPacksService {
 
   private isRecord(value: unknown): value is JsonRecord {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  /** V2 导入对象只接受契约字段；旧字段和拼写错误均直接拒绝。 */
+  private assertAllowedFields(
+    record: JsonRecord,
+    allowedFields: readonly string[],
+    path: string
+  ): void {
+    const allowed = new Set(allowedFields);
+    const unknown = Object.keys(record).find((field) => !allowed.has(field));
+
+    if (unknown) {
+      throw this.invalidFormat(`${path}.${unknown} is not supported by the V2 format.`);
+    }
   }
 
   private stringifyNullable(value: unknown): string | null {

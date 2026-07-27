@@ -91,7 +91,7 @@ POST                  /api/companions/:id/memory/restore/:revisionId
 
 前端仅有独立 `/companion` 角色列表、角色设置和直达聊天页；不显示会话列表或新建会话入口。记忆管理放在角色聊天菜单中，默认不打扰用户。
 
-AI 角色支持下载 `tavern-lite.companion.v2` 导入模板、预览后导入和导出为同格式 JSON；同时接受外部标准 `chara_card_v2`，并将其字段一次性转换为 Companion V2 的核心身份、性格、说话风格和关系默认设定。模型链、Persona、头像和记忆配置属于当前用户本地资源，不随导入导出迁移。聊天页复用酒馆消息操作语义：复制、编辑 user 消息、软删除和仅最新 assistant 消息重新生成。
+AI 角色只接受 `tavern-lite.companion.v2`：支持下载同格式导入模板、预览后导入和导出，不再接收普通角色卡或任何旧字段别名。模型链、Persona、头像和记忆配置属于当前用户本地资源，不随导入导出迁移。聊天页复用酒馆消息操作语义：复制、编辑 user 消息、软删除和仅最新 assistant 消息重新生成。
 
 记忆 API 契约：
 

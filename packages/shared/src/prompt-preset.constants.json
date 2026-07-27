@@ -1,0 +1,12 @@
+{
+  "formatVersion": "tavern-lite.prompt-preset.v2",
+  "generationPurposes": [
+    "chat_reply",
+    "regenerate",
+    "continue",
+    "user_suggestions",
+    "memory_summary"
+  ],
+  "defaultGenerationPurposes": ["chat_reply", "regenerate", "continue"],
+  "outputRuleOperations": ["add", "replace_optional", "disable_optional"]
+}

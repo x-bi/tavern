@@ -3,7 +3,7 @@ import type { CharacterImportExampleMessage } from './character-import';
 /**
  * 角色卡导出数据体，对齐 SillyTavern Character Card V2 的 `data` 字段。
  *
- * 其中 `first_mes` / `mes_example` 为下划线命名，刻意保留以兼容 V2 规范。
+ * 其中 `first_mes` / `mes_example` 是 chara_card_v2 规范字段，不属于项目旧字段兼容。
  */
 export type CharacterExportCardData = {
   /** 角色名。 */
@@ -38,6 +38,10 @@ export type CharacterExportCardData = {
   alternate_greetings?: string[];
   /** 扩展字段，承载规范之外的自定义数据。 */
   extensions?: Record<string, unknown>;
+  /** 角色深度提示配置（chara_card_v2 标准扩展字段）。 */
+  depth_prompt?: unknown;
+  /** 历史消息后的附加指令。 */
+  post_history_instructions?: string;
 };
 
 /**

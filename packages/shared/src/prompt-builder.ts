@@ -1,5 +1,9 @@
 import type { MessageRole } from './message';
 import type { CompiledPromptSection, PromptPlacementV2 } from './context-engine';
+import type {
+  PromptPresetGenerationPurpose,
+  PromptPresetOutputRuleOperation
+} from './prompt-preset';
 
 /** Prompt 构建模式：真实聊天或预览。 */
 export type PromptBuildMode = 'chat' | 'preview';
@@ -140,15 +144,8 @@ export type PromptPresetContext = {
   /** 预设描述。 */
   description: string;
   instructions: string[];
-  outputRuleOperations: Array<{
-    key: string;
-    content: string;
-    operation: 'add' | 'replace_optional' | 'disable_optional';
-    sortOrder: number;
-  }>;
-  generationPurposes: Array<
-    'chat_reply' | 'regenerate' | 'continue' | 'user_suggestions' | 'memory_summary'
-  >;
+  outputRuleOperations: PromptPresetOutputRuleOperation[];
+  generationPurposes: PromptPresetGenerationPurpose[];
   /** 生成参数；未设置时为 null。 */
   parameters?: PromptModelParameters | null;
   /** 附加元数据。 */
@@ -159,7 +156,7 @@ export type PromptPresetContext = {
 export type PromptModelParameters = {
   /** 采样温度；未设置时为 null。 */
   temperature?: number | null;
-  /** top_p；未设置时为 null。 */
+  /** topP（核采样）；未设置时为 null。 */
   topP?: number | null;
   /** 最大输出 token 数；未设置时为 null。 */
   maxTokens?: number | null;

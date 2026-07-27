@@ -1,4 +1,8 @@
 import type { MessageRole } from './message';
+import type {
+  PromptPresetGenerationPurpose,
+  PromptPresetOutputRuleOperation
+} from './prompt-preset';
 import type { WorldBookPlacement } from './world-book';
 
 /** 内容包格式版本标识，供 AI 生成设定包和 Tavern Lite 增量导入使用。 */
@@ -64,13 +68,8 @@ export type ContentPackPromptPreset = {
   /** 预设说明。 */
   description?: string;
   instructions?: string[];
-  outputRuleOperations?: Array<{
-    key: string;
-    content: string;
-    operation: 'add' | 'replace_optional' | 'disable_optional';
-    sortOrder: number;
-  }>;
-  generationPurposes?: string[];
+  outputRuleOperations?: PromptPresetOutputRuleOperation[];
+  generationPurposes?: PromptPresetGenerationPurpose[];
   /** 模型参数。 */
   parameters?: Record<string, unknown> | null;
   /** 扩展元数据。 */

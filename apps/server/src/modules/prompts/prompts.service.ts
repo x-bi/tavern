@@ -319,7 +319,7 @@ export class PromptsService {
             description: conversation.promptPreset.description,
             instructions: parsePresetStringArray(conversation.promptPreset.instructionsJson),
             outputRuleOperations: parsePresetOutputRuleOperations(
-              conversation.promptPreset.outputRulesJson
+              conversation.promptPreset.outputRuleOperationsJson
             ),
             generationPurposes: parsePresetStringArray(
               conversation.promptPreset.generationPurposesJson

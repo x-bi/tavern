@@ -164,9 +164,9 @@ model PromptPreset {
   userId                 String
   name                   String
   description            String    @default("")
-  instructionsJson       String    @default("[]")
-  outputRulesJson        String    @default("[]")
-  generationPurposesJson String    @default("[\"chat_reply\",\"regenerate\",\"continue\"]")
+  instructionsJson              String    @default("[]")
+  outputRuleOperationsJson      String    @default("[]")
+  generationPurposesJson        String    @default("[\"chat_reply\",\"regenerate\",\"continue\"]")
   parametersJson         String?
   metadataJson           String?
   isSensitive            Boolean   @default(false)

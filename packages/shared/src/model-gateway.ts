@@ -25,7 +25,7 @@ export type ModelGatewayProviderOptions = {
   modelName: string;
   /** 采样温度；未设置时为 null，沿用模型默认。 */
   temperature?: number | null;
-  /** top_p；未设置时为 null。 */
+  /** topP（核采样）；未设置时为 null。 */
   topP?: number | null;
   /** 最大输出 token 数；未设置时为 null。 */
   maxTokens?: number | null;

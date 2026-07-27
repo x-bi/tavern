@@ -85,4 +85,37 @@ describe('Tavern atomic prompt section builder', () => {
     expect(sections.some((section) => section.sourceId === 'preset')).toBe(false);
     expect(sections.some((section) => section.id === 'output-rule:natural_expression')).toBe(true);
   });
+
+  it('replace_optional overrides optional base rules and disable_optional drops them', () => {
+    const base = input();
+    base.promptPreset = {
+      ...base.promptPreset!,
+      outputRuleOperations: [
+        {
+          key: 'natural_expression',
+          content: '替换后的自然表达',
+          operation: 'replace_optional',
+          sortOrder: 200
+        },
+        { key: 'direct_response', content: '', operation: 'disable_optional', sortOrder: 201 }
+      ]
+    };
+    const sections = buildTavernPromptSections(base, 'chat_reply');
+    const natural = sections.find((section) => section.id === 'output-rule:natural_expression');
+    expect(natural?.content).toBe('替换后的自然表达');
+    expect(sections.some((section) => section.id === 'output-rule:direct_response')).toBe(false);
+  });
+
+  it('add creates a new optional rule that is present in the compiled sections', () => {
+    const base = input();
+    base.promptPreset = {
+      ...base.promptPreset!,
+      outputRuleOperations: [
+        { key: 'extra_rule', content: '额外规则正文', operation: 'add', sortOrder: 5 }
+      ]
+    };
+    const sections = buildTavernPromptSections(base, 'chat_reply');
+    const extra = sections.find((section) => section.id === 'preset:preset:output-rule:extra_rule');
+    expect(extra?.content).toBe('额外规则正文');
+  });
 });

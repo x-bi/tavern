@@ -1,5 +1,8 @@
 import type { PageResult } from './pagination';
 
+/** Persona 独立导入/导出格式版本。 */
+export const PERSONA_FORMAT_VERSION = 'tavern-lite.persona.v2';
+
 /** 用户 Persona（人设）的响应体。 */
 export type PersonaResponse = {
   /** Persona ID。 */

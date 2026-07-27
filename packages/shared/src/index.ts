@@ -68,6 +68,7 @@ export type {
   ContentPackWorldBookEntry
 } from './content-pack';
 export type { ContentLibraryFields, ContentLibraryScope } from './content-library';
+export { COMPANION_FORMAT_VERSION } from './companion';
 export type {
   CompanionChatStreamPayload,
   CompanionExportResponse,
@@ -172,6 +173,7 @@ export type {
   TimelineTurnStatus
 } from './timeline';
 export type { PageQuery, PageResult } from './pagination';
+export { PERSONA_FORMAT_VERSION } from './persona';
 export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
 export type { ApplicationSettings, ApplicationSettingsPayload } from './settings';
 export type {
@@ -211,8 +213,16 @@ export type {
   WorldBookContext,
   WorldBookEntryContext
 } from './prompt-builder';
+export {
+  PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES,
+  PROMPT_PRESET_FORMAT_VERSION,
+  PROMPT_PRESET_GENERATION_PURPOSES,
+  PROMPT_PRESET_OUTPUT_RULE_OPERATIONS
+} from './prompt-preset';
 export type {
+  PromptPresetGenerationPurpose,
   PromptPresetListResponse,
+  PromptPresetOutputRuleOperation,
   PromptPresetPayload,
   PromptPresetResponse
 } from './prompt-preset';

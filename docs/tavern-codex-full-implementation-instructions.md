@@ -1263,7 +1263,7 @@ type PresetOutputRule = {
 type PromptPreset = {
   name: string;
   instructions: string[];
-  outputRules: PresetOutputRule[];
+  outputRuleOperations: PresetOutputRule[];
   parameters: {
     temperature?: number;
     topP?: number;
@@ -1591,7 +1591,7 @@ Preview 必须复用真实 Context Resolver、Matcher、Budget 和 Compiler。
 - `updatedAt` 影响 Prompt 顺序
 - 固定四位置直接生成 system 世界书消息
 - Character、Persona、Preset 聚合大文本的旧 Builder 逻辑
-- Preset outputRules 与默认规则二选一逻辑
+- Preset 旧版整段输出规则与默认规则二选一逻辑
 - 非 ready Memory 直接读取逻辑
 - assistant 前缀历史删除逻辑
 - Preview 单独实现的 Prompt 组装逻辑

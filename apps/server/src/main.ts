@@ -43,11 +43,12 @@ async function bootstrap() {
     origin: serverConfig.corsOrigins,
     credentials: true
   });
-  // 全局 DTO 校验管道：自动剥离多余字段、把入参转换成 DTO 类型实例
+  // 全局 DTO 校验管道：拒绝契约外字段，避免旧字段被静默剥离后仍返回成功。
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
-      whitelist: true
+      whitelist: true,
+      forbidNonWhitelisted: true
     })
   );
   // 全局异常过滤器：把异常统一转成 { success: false, error } 结构

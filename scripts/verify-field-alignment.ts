@@ -14,6 +14,12 @@ import type {
   ProviderModelResponse
 } from '../apps/server/src/modules/models/model.types';
 import { PresetsService } from '../apps/server/src/modules/presets/presets.service';
+import {
+  PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES,
+  PROMPT_PRESET_FORMAT_VERSION,
+  PROMPT_PRESET_GENERATION_PURPOSES,
+  PROMPT_PRESET_OUTPUT_RULE_OPERATIONS
+} from '../apps/server/src/modules/presets/preset-constants';
 import type { PromptPresetParams } from '../apps/server/src/modules/presets/prompt-preset.types';
 import { resolveModelPromptBudget } from '../apps/server/src/services/prompt-builder/prompt-budget';
 
@@ -204,6 +210,38 @@ assert.match(
   companionChatSource,
   /for \(const \[candidateIndex, candidate\] of candidates\.entries\(\)\)[\s\S]*promptBudget\(candidate,[\s\S]*buildCompanionPromptSections[\s\S]*streamChat\(compiled\.messages/,
   'AI 角色聊天必须在候选循环内按当前候选重新构建 Prompt。'
+);
+
+const presetConstants = JSON.parse(
+  readFileSync(
+    resolve(process.cwd(), '../../packages/shared/src/prompt-preset.constants.json'),
+    'utf8'
+  )
+) as {
+  formatVersion: string;
+  generationPurposes: string[];
+  defaultGenerationPurposes: string[];
+  outputRuleOperations: string[];
+};
+assert.equal(PROMPT_PRESET_FORMAT_VERSION, presetConstants.formatVersion);
+assert.deepEqual(PROMPT_PRESET_GENERATION_PURPOSES, presetConstants.generationPurposes);
+assert.deepEqual(
+  PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES,
+  presetConstants.defaultGenerationPurposes
+);
+assert.deepEqual(PROMPT_PRESET_OUTPUT_RULE_OPERATIONS, presetConstants.outputRuleOperations);
+
+const schemaSource = readFileSync(resolve(process.cwd(), '../../prisma/schema.prisma'), 'utf8');
+const escapedDefaultPurposes = JSON.stringify(presetConstants.defaultGenerationPurposes).replace(
+  /"/g,
+  '\\"'
+);
+const generationPurposesSchemaLine = schemaSource
+  .split(/\r?\n/)
+  .find((line) => line.includes('generationPurposesJson'));
+assert.ok(
+  generationPurposesSchemaLine?.includes(`@default("${escapedDefaultPurposes}")`),
+  'Prisma generationPurposesJson 默认值必须与 shared JSON 真源一致。'
 );
 
 console.log('OK frontend/backend field alignment regression checks passed.');

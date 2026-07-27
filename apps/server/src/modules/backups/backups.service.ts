@@ -295,6 +295,21 @@ export class BackupsService {
     if (!this.isRecord(parsed)) {
       throw this.invalidFormat('Backup root must be an object.');
     }
+    this.assertAllowedFields(
+      parsed,
+      [
+        'formatVersion',
+        'exportedAt',
+        'app',
+        'scope',
+        'strategy',
+        'security',
+        'summary',
+        'data',
+        'resources'
+      ],
+      'backup'
+    );
 
     // 版本必须匹配
     if (parsed.formatVersion !== APPLICATION_BACKUP_FORMAT_VERSION) {
@@ -317,6 +332,19 @@ export class BackupsService {
     if (!this.isRecord(parsed.data)) {
       throw this.invalidFormat('data must be an object.');
     }
+    this.assertAllowedFields(
+      parsed.data,
+      [
+        'characters',
+        'conversations',
+        'messages',
+        'worldBooks',
+        'promptPresets',
+        'personas',
+        'appSettings'
+      ],
+      'data'
+    );
 
     // data 下各字段必须是数组
     for (const key of [
@@ -337,6 +365,7 @@ export class BackupsService {
     if (!this.isRecord(parsed.resources) || !Array.isArray(parsed.resources.assets)) {
       throw this.invalidFormat('resources.assets must be an array.');
     }
+    this.assertAllowedFields(parsed.resources, ['assets', 'note'], 'resources');
 
     return parsed as ApplicationBackupExport;
   }
@@ -704,6 +733,32 @@ export class BackupsService {
     assetIds: Set<string>,
     warnings: string[]
   ): Prisma.CharacterCreateManyInput {
+    this.assertAllowedFields(
+      record,
+      [
+        'id',
+        'userId',
+        'avatarAssetId',
+        'name',
+        'coreIdentity',
+        'personality',
+        'persistentPremise',
+        'initialScenario',
+        'extendedBackground',
+        'characterRules',
+        'speechStyle',
+        'firstMessage',
+        'exampleMessagesJson',
+        'metadataJson',
+        'isSensitive',
+        'isShared',
+        'isArchived',
+        'createdAt',
+        'updatedAt',
+        'deletedAt'
+      ],
+      path
+    );
     const avatarAssetId = this.resolveOptionalReference(
       this.optionalString(record, 'avatarAssetId', `${path}.avatarAssetId`),
       assetIds,
@@ -759,13 +814,38 @@ export class BackupsService {
     record: BackupJsonRecord,
     path: string
   ): Prisma.PromptPresetCreateManyInput {
+    this.assertAllowedFields(
+      record,
+      [
+        'id',
+        'userId',
+        'name',
+        'description',
+        'instructionsJson',
+        'outputRuleOperationsJson',
+        'generationPurposesJson',
+        'parametersJson',
+        'metadataJson',
+        'isDefault',
+        'isSensitive',
+        'isShared',
+        'createdAt',
+        'updatedAt',
+        'deletedAt'
+      ],
+      path
+    );
     return {
       id: this.requiredString(record, 'id', `${path}.id`),
       userId: currentUser.id,
       name: this.requiredString(record, 'name', `${path}.name`),
       description: this.requiredString(record, 'description', `${path}.description`),
       instructionsJson: this.requiredString(record, 'instructionsJson', `${path}.instructionsJson`),
-      outputRulesJson: this.requiredString(record, 'outputRulesJson', `${path}.outputRulesJson`),
+      outputRuleOperationsJson: this.requiredString(
+        record,
+        'outputRuleOperationsJson',
+        `${path}.outputRuleOperationsJson`
+      ),
       generationPurposesJson: this.requiredString(
         record,
         'generationPurposesJson',
@@ -794,6 +874,25 @@ export class BackupsService {
     record: BackupJsonRecord,
     path: string
   ): Prisma.UserPersonaCreateManyInput {
+    this.assertAllowedFields(
+      record,
+      [
+        'id',
+        'userId',
+        'name',
+        'coreIdentity',
+        'background',
+        'interactionPreferences',
+        'metadataJson',
+        'isDefault',
+        'isSensitive',
+        'isShared',
+        'createdAt',
+        'updatedAt',
+        'deletedAt'
+      ],
+      path
+    );
     return {
       id: this.requiredString(record, 'id', `${path}.id`),
       userId: currentUser.id,
@@ -928,6 +1027,27 @@ export class BackupsService {
     record: BackupJsonRecord,
     path: string
   ): Prisma.WorldBookCreateManyInput {
+    this.assertAllowedFields(
+      record,
+      [
+        'id',
+        'userId',
+        'name',
+        'description',
+        'isEnabled',
+        'scanDepth',
+        'tokenBudget',
+        'metadataJson',
+        'isSensitive',
+        'isShared',
+        'createdAt',
+        'updatedAt',
+        'deletedAt',
+        'entries',
+        'characterIds'
+      ],
+      path
+    );
     return {
       id: this.requiredString(record, 'id', `${path}.id`),
       userId: currentUser.id,
@@ -987,6 +1107,20 @@ export class BackupsService {
     path: string,
     worldBookIds: Set<string>
   ): Prisma.WorldBookEntryCreateManyInput {
+    this.assertAllowedFields(
+      record,
+      [
+        'id',
+        'worldBookId',
+        'activeRevisionId',
+        'isEnabled',
+        'createdAt',
+        'updatedAt',
+        'deletedAt',
+        'activeRevision'
+      ],
+      path
+    );
     const worldBookId = this.requiredString(record, 'worldBookId', `${path}.worldBookId`);
 
     // worldBookId 是必填关联，引用缺失直接报错
@@ -1013,6 +1147,21 @@ export class BackupsService {
       throw this.invalidFormat(`${path} must be an object.`);
     }
     const revision = record.activeRevision;
+    this.assertAllowedFields(
+      revision,
+      [
+        'id',
+        'entryId',
+        'version',
+        'configJson',
+        'content',
+        'compactContent',
+        'compactSourceHash',
+        'contentHash',
+        'createdAt'
+      ],
+      path
+    );
     const entryId = this.requiredString(record, 'id', `${path}.entryId`);
     return {
       id: this.requiredString(revision, 'id', `${path}.id`),
@@ -1329,6 +1478,19 @@ export class BackupsService {
    */
   private isIsoDateString(value: unknown): value is string {
     return typeof value === 'string' && !Number.isNaN(Date.parse(value));
+  }
+
+  /** V2 备份对象只接受当前契约字段，旧列和未知列不得被静默忽略。 */
+  private assertAllowedFields(
+    record: BackupJsonRecord,
+    allowedFields: readonly string[],
+    path: string
+  ): void {
+    const allowed = new Set(allowedFields);
+    const unknown = Object.keys(record).find((field) => !allowed.has(field));
+    if (unknown) {
+      throw this.invalidFormat(`${path}.${unknown} is not supported by the V2 backup format.`);
+    }
   }
 
   /**

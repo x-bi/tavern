@@ -12,6 +12,7 @@ import { ERROR_CODES } from '../../common/dto/error-codes';
 import { canonicalJson, canonicalSha256 } from '../../common/canonical-json';
 import type { ImportModuleJsonDto } from '../../common/dto/import-module-json.dto';
 import {
+  assertAllowedFields,
   createAvailableName,
   invalidModuleFormat,
   limitText,
@@ -99,6 +100,50 @@ type WorldBookImportResponse = {
 };
 
 type NormalizedWorldBookImport = Omit<WorldBookImportPreview, 'nameConflict' | 'suggestedName'>;
+
+const WORLD_BOOK_V2_IMPORT_FIELDS = [
+  'formatVersion',
+  'name',
+  'description',
+  'characterIds',
+  'personaIds',
+  'conversationIds',
+  'companionIds',
+  'isEnabled',
+  'scanDepth',
+  'tokenBudget',
+  'metadata',
+  'entries',
+  'exportedAt'
+] as const;
+const WORLD_BOOK_ENTRY_V2_IMPORT_FIELDS = [
+  'title',
+  'content',
+  'compactContent',
+  'contentType',
+  'trustLevel',
+  'activationMode',
+  'matchMode',
+  'keywords',
+  'primaryLogic',
+  'secondaryKeywords',
+  'secondaryLogic',
+  'excludeKeywords',
+  'sameMessageOnly',
+  'scanSources',
+  'userHistoryScanDepth',
+  'stickyTurns',
+  'continuationTurns',
+  'cooldownTurns',
+  'delayTurns',
+  'cooldownPolicy',
+  'generationPurposes',
+  'budgetPriority',
+  'sortOrder',
+  'isEnabled',
+  'placement',
+  'maxTokens'
+] as const;
 
 /** 世界书 + 其条目（include 后的形态）。 */
 type WorldBookWithEntries = WorldBook & {
@@ -1296,6 +1341,7 @@ export class WorldBooksService {
     currentUser: CurrentUser,
     record: JsonRecord
   ): Promise<NormalizedWorldBookImport> {
+    assertAllowedFields(record, WORLD_BOOK_V2_IMPORT_FIELDS, 'worldBook');
     const warnings: ModuleJsonImportWarning[] = [];
     const name = limitText(requiredString(record, 'name', 'name'), 120, 'name', warnings);
 
@@ -1359,22 +1405,13 @@ export class WorldBooksService {
       }
 
       const record = item as JsonRecord;
+      assertAllowedFields(record, WORLD_BOOK_ENTRY_V2_IMPORT_FIELDS, `entries[${index}]`);
       const keywords = requiredStringArray(record, 'keywords', `entries[${index}].keywords`);
 
       if (keywords.length === 0) {
         throw invalidModuleFormat(`entries[${index}].keywords must contain at least one string.`);
       }
 
-      if ('insertionOrder' in record) {
-        throw invalidModuleFormat(
-          `entries[${index}].insertionOrder is not supported. Use placement instead.`
-        );
-      }
-      if ('tokenBudget' in record) {
-        throw invalidModuleFormat(
-          `entries[${index}].tokenBudget is not supported. Use maxTokens instead.`
-        );
-      }
       const requestedContentType = importEnum(
         record.contentType,
         ['lore', 'state', 'behavior_rule', 'reference'],
@@ -1479,9 +1516,10 @@ export class WorldBooksService {
           'strict',
           `entries[${index}].cooldownPolicy`
         ),
-        generationPurposes: generationPurposes.length
-          ? generationPurposes
-          : ['chat_reply', 'regenerate', 'continue'],
+        generationPurposes:
+          record.generationPurposes === undefined || record.generationPurposes === null
+            ? ['chat_reply', 'regenerate', 'continue']
+            : generationPurposes,
         budgetPriority: optionalInteger(
           record,
           'budgetPriority',
@@ -2069,7 +2107,11 @@ function importEnum<T extends string>(
   return value as T;
 }
 
-function importPlacement(value: unknown, fallback: WorldBookPlacement, path: string): WorldBookPlacement {
+function importPlacement(
+  value: unknown,
+  fallback: WorldBookPlacement,
+  path: string
+): WorldBookPlacement {
   if (value === undefined || value === null || value === '') return fallback;
   if (typeof value !== 'string') {
     throw invalidModuleFormat(`${path} must be a string when present.`);

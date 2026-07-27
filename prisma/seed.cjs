@@ -1,4 +1,7 @@
 const { PrismaClient } = require('@prisma/client');
+const {
+  defaultGenerationPurposes: promptPresetDefaultGenerationPurposes
+} = require('../packages/shared/src/prompt-preset.constants.json');
 
 const prisma = new PrismaClient();
 
@@ -159,7 +162,7 @@ async function main() {
     update: {
       description: 'Balanced defaults for character chat and prompt preview.',
       instructionsJson: json(['Stay consistent with the current character and latest facts.']),
-      outputRulesJson: json([
+      outputRuleOperationsJson: json([
         {
           key: 'balanced_prose',
           content: 'Use concise but vivid prose suited to the current roleplay scene.',
@@ -167,7 +170,7 @@ async function main() {
           sortOrder: 10
         }
       ]),
-      generationPurposesJson: json(['chat_reply', 'regenerate', 'continue']),
+      generationPurposesJson: json(promptPresetDefaultGenerationPurposes),
       parametersJson: json({
         temperature: 0.8,
         presencePenalty: 0.2,
@@ -186,7 +189,7 @@ async function main() {
       name: 'Balanced Roleplay',
       description: 'Balanced defaults for character chat and prompt preview.',
       instructionsJson: json(['Stay consistent with the current character and latest facts.']),
-      outputRulesJson: json([
+      outputRuleOperationsJson: json([
         {
           key: 'balanced_prose',
           content: 'Use concise but vivid prose suited to the current roleplay scene.',
@@ -194,7 +197,7 @@ async function main() {
           sortOrder: 10
         }
       ]),
-      generationPurposesJson: json(['chat_reply', 'regenerate', 'continue']),
+      generationPurposesJson: json(promptPresetDefaultGenerationPurposes),
       parametersJson: json({
         temperature: 0.8,
         presencePenalty: 0.2,

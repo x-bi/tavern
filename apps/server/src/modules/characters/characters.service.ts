@@ -178,7 +178,7 @@ export class CharactersService {
     currentUser: CurrentUser,
     dto: ImportCharacterDto
   ): Promise<CharacterImportResponse> {
-    // 解析卡片 JSON，映射成结构化字段（importer 内部做格式兼容、字段提取、敏感字段过滤）
+    // 严格解析 chara_card_v2 2.0，拒绝旧别名、未知字段和敏感字段。
     const mapped = this.importer.map(dto.rawJson);
     // 生成导入预览：检测同名角色冲突，冲突时生成建议副本名
     const preview = await this.toImportPreview(currentUser, mapped);

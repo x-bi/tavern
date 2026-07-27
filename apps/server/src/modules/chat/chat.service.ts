@@ -1039,7 +1039,7 @@ export class ChatService {
             description: params.promptPreset.description,
             instructions: parsePresetStringArray(params.promptPreset.instructionsJson),
             outputRuleOperations: parsePresetOutputRuleOperations(
-              params.promptPreset.outputRulesJson
+              params.promptPreset.outputRuleOperationsJson
             ),
             generationPurposes: parseGenerationPurposes(params.promptPreset.generationPurposesJson),
             parameters: this.parseParams(params.promptPreset.parametersJson),

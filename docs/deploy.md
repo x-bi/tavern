@@ -122,6 +122,18 @@ docker compose up -d
 
 服务器需要硬删除管理员之外的全部数据时，可先执行 `bash scripts/reset-keep-admin.sh --admin <管理员用户名> --check`，检查通过后再去掉 `--check` 正式执行。
 
+服务器需要保留全部账号和模型配置、硬删除其他数据时，执行：
+
+```bash
+cd /opt/tavern
+bash scripts/reset-keep-accounts-models.sh --check
+bash scripts/reset-keep-accounts-models.sh
+```
+
+正式执行时按提示输入 `RESET KEEP ACCOUNTS AND MODELS`。脚本会先备份 `data/` 和 `uploads/`，不会运行 `db:seed`。
+
+完整的数据清理脚本说明、模块清理命令、级联边界和备份恢复方式，见 [服务器数据清理脚本使用手册](server-data-cleanup.md)。
+
 ### 重置数据库
 
 ```bash

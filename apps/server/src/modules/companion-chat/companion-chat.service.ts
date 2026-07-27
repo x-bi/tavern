@@ -481,7 +481,7 @@ export class CompanionChatService {
       ? {
           id: preset.id,
           instructions: parsePresetStringArray(preset.instructionsJson),
-          outputRuleOperations: parsePresetOutputRuleOperations(preset.outputRulesJson),
+          outputRuleOperations: parsePresetOutputRuleOperations(preset.outputRuleOperationsJson),
           generationPurposes: parsePresetStringArray(preset.generationPurposesJson),
           parameters: this.parsePresetParameters(preset.parametersJson)
         }

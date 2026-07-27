@@ -152,7 +152,11 @@ import type { FormInst, FormRules } from 'naive-ui';
 import { reactive, ref, watch } from 'vue';
 
 import type { PromptPreset, PromptPresetMutationPayload } from '../api/presets';
-import type { PromptPresetPayload } from '@tavern/shared';
+import {
+  PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES,
+  type PromptPresetGenerationPurpose,
+  type PromptPresetPayload
+} from '@tavern/shared';
 import { getStoredCurrentUser } from '../api/auth';
 
 type PromptPresetFormState = {
@@ -160,7 +164,7 @@ type PromptPresetFormState = {
   description: string;
   instructionsText: string;
   outputRuleOperationsText: string;
-  generationPurposes: string[];
+  generationPurposes: PromptPresetGenerationPurpose[];
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
@@ -306,7 +310,7 @@ function createEmptyForm(): PromptPresetFormState {
     description: '',
     instructionsText: '',
     outputRuleOperationsText: '[]',
-    generationPurposes: ['chat_reply', 'regenerate', 'continue'],
+    generationPurposes: [...PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES],
     temperature: null,
     topP: null,
     maxTokens: null,

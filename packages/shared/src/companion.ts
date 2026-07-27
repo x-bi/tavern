@@ -1,5 +1,8 @@
 import type { PromptModelParameters, ProviderChatMessage } from './prompt-builder';
 
+/** AI 角色独立导入/导出格式版本。 */
+export const COMPANION_FORMAT_VERSION = 'tavern-lite.companion.v2';
+
 export type CompanionPayload = {
   name: string;
   coreIdentity?: string;
@@ -110,7 +113,7 @@ export type CompanionChatStreamPayload = {
   turnId?: string;
 };
 export type CompanionImportPreview = {
-  format: 'tavern-lite.companion.v2' | 'chara_card_v2';
+  format: typeof COMPANION_FORMAT_VERSION;
   name: string;
   coreIdentity: string;
   personality: string;
@@ -128,7 +131,7 @@ export type CompanionImportResponse = {
 export type CompanionExportResponse = {
   fileName: string;
   card: {
-    formatVersion: 'tavern-lite.companion.v2';
+    formatVersion: typeof COMPANION_FORMAT_VERSION;
     name: string;
     coreIdentity: string;
     personality: string;
@@ -140,7 +143,7 @@ export type CompanionExportResponse = {
 export type CompanionImportTemplateResponse = {
   fileName: string;
   template: {
-    formatVersion: 'tavern-lite.companion.v2';
+    formatVersion: typeof COMPANION_FORMAT_VERSION;
     name: string;
     coreIdentity: string;
     personality: string;

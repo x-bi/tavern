@@ -119,6 +119,8 @@ export type CharacterExportCardData = {
   alternate_greetings?: string[];
   /** 扩展字段，工具可自定义。 */
   extensions?: Record<string, unknown>;
+  depth_prompt?: unknown;
+  post_history_instructions?: string;
 };
 
 /** 角色卡 v2 完整结构。 */

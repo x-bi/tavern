@@ -1,5 +1,7 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayUnique,
   IsBoolean,
   IsArray,
   IsIn,
@@ -7,10 +9,16 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
-  Min
+  Min,
+  ValidateNested
 } from 'class-validator';
+
+import { PROMPT_PRESET_GENERATION_PURPOSES } from '../preset-constants';
+
+import { PromptPresetOutputRuleOperationDto } from './prompt-preset-output-rule-operation.dto';
 
 /** 更新预设入参，全部可选（部分更新）。 */
 export class UpdatePromptPresetDto {
@@ -27,24 +35,33 @@ export class UpdatePromptPresetDto {
   description?: string;
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    Array.isArray(value)
+      ? value.map((item) => (typeof item === 'string' ? item.trim() : item))
+      : value
+  )
   @IsArray()
+  @ArrayMaxSize(100)
   @IsString({ each: true })
+  @Matches(/\S/, { each: true, message: 'instructions must not contain blank items.' })
+  @MaxLength(2000, { each: true })
   instructions?: string[];
 
   @IsOptional()
   @IsArray()
-  outputRuleOperations?: Array<{
-    key: string;
-    content: string;
-    operation: 'add' | 'replace_optional' | 'disable_optional';
-    sortOrder: number;
-  }>;
+  @ArrayMaxSize(100)
+  @ArrayUnique((item: PromptPresetOutputRuleOperationDto) =>
+    typeof item?.key === 'string' ? item.key.trim() : item?.key
+  )
+  @ValidateNested({ each: true })
+  @Type(() => PromptPresetOutputRuleOperationDto)
+  outputRuleOperations?: PromptPresetOutputRuleOperationDto[];
 
   @IsOptional()
   @IsArray()
-  @IsIn(['chat_reply', 'regenerate', 'continue', 'user_suggestions', 'memory_summary'], {
-    each: true
-  })
+  @ArrayMaxSize(PROMPT_PRESET_GENERATION_PURPOSES.length)
+  @ArrayUnique()
+  @IsIn([...PROMPT_PRESET_GENERATION_PURPOSES], { each: true })
   generationPurposes?: string[];
 
   /** 采样温度 0~2。 */
@@ -55,7 +72,7 @@ export class UpdatePromptPresetDto {
   @Max(2)
   temperature?: number | null;
 
-  /** top_p 0~1。 */
+  /** topP（核采样）0~1。 */
   @IsOptional()
   @Type(() => Number)
   @IsNumber()

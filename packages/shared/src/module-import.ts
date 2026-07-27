@@ -1,3 +1,8 @@
+import type {
+  PromptPresetGenerationPurpose,
+  PromptPresetOutputRuleOperation
+} from './prompt-preset';
+
 /** 单模块 JSON 导入时遇到同名资源的处理策略。 */
 export type ModuleImportDuplicateNameStrategy = 'reject' | 'rename';
 
@@ -69,13 +74,8 @@ export type PromptPresetImportPreview = ModuleImportPreviewBase & {
   /** 预设说明。 */
   description: string;
   instructions: string[];
-  outputRuleOperations: Array<{
-    key: string;
-    content: string;
-    operation: 'add' | 'replace_optional' | 'disable_optional';
-    sortOrder: number;
-  }>;
-  generationPurposes: string[];
+  outputRuleOperations: PromptPresetOutputRuleOperation[];
+  generationPurposes: PromptPresetGenerationPurpose[];
   /** 参数 JSON。 */
   parameters: Record<string, unknown> | null;
   /** 扩展元数据。 */

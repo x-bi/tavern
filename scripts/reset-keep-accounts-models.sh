@@ -180,8 +180,37 @@ const expectedTables = [
   }
 
   const foreignKeyErrors = await prisma.$queryRawUnsafe("PRAGMA foreign_key_check");
-  if (!Array.isArray(foreignKeyErrors) || foreignKeyErrors.length > 0) {
-    throw new Error("清理前数据库已存在外键异常，请先修复或恢复数据库。");
+  if (!Array.isArray(foreignKeyErrors)) {
+    throw new Error("无法读取数据库外键检查结果。");
+  }
+  const printableForeignKeyErrors = foreignKeyErrors.map((item) =>
+    Object.fromEntries(
+      Object.entries(item).map(([key, value]) => [
+        key,
+        typeof value === "bigint" ? value.toString() : value
+      ])
+    )
+  );
+  const preservedTables = new Set([
+    "User",
+    "ModelProvider",
+    "ProviderModel",
+    "ModelFallbackGroup",
+    "ModelFallbackCandidate"
+  ]);
+  const preservedTableErrors = printableForeignKeyErrors.filter((item) =>
+    preservedTables.has(String(item.table))
+  );
+  if (preservedTableErrors.length > 0) {
+    throw new Error(
+      `要保留的账号或模型表存在外键异常，拒绝清理：${JSON.stringify(preservedTableErrors)}`
+    );
+  }
+  if (printableForeignKeyErrors.length > 0) {
+    console.warn(
+      `警告：发现 ${printableForeignKeyErrors.length} 条外键异常，但都位于本次将清空的业务表中：${JSON.stringify(printableForeignKeyErrors)}`
+    );
+    console.warn("正式清理后脚本会再次执行外键检查。");
   }
 
   const counts = {

@@ -211,8 +211,21 @@ const expectedTables = [
   }
 
   const foreignKeyErrors = await prisma.$queryRawUnsafe("PRAGMA foreign_key_check");
-  if (!Array.isArray(foreignKeyErrors) || foreignKeyErrors.length > 0) {
-    throw new Error("清理前数据库已存在外键异常，请先修复或恢复数据库。");
+  if (!Array.isArray(foreignKeyErrors)) {
+    throw new Error("无法读取数据库外键检查结果。");
+  }
+  if (foreignKeyErrors.length > 0) {
+    const printableForeignKeyErrors = foreignKeyErrors.map((item) =>
+      Object.fromEntries(
+        Object.entries(item).map(([key, value]) => [
+          key,
+          typeof value === "bigint" ? value.toString() : value
+        ])
+      )
+    );
+    throw new Error(
+      `清理前数据库存在外键异常，请先确认具体坏表：${JSON.stringify(printableForeignKeyErrors)}`
+    );
   }
 
   const counters = {

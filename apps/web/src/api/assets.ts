@@ -5,7 +5,7 @@
  */
 import type { ApiResponse } from '@tavern/shared';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
+import { API_BASE_URL, authHeaders } from './http';
 
 /** 已上传资源的元信息。 */
 export type Asset = {
@@ -61,6 +61,7 @@ export async function uploadAsset(file: File): Promise<Asset> {
 
   const response = await fetch(`${API_BASE_URL}/assets/upload`, {
     method: 'POST',
+    headers: authHeaders(),
     body
   });
   const payload = (await response.json()) as ApiResponse<Asset>;

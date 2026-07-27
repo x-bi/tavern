@@ -6,8 +6,7 @@
  */
 import type { ApplicationBackupImportResponse } from '@tavern/shared';
 
-import { requestJson } from './http';
-import { toApiUrl } from './http';
+import { authHeaders, requestJson, toApiUrl } from './http';
 
 /** 备份导出的下载结果。 */
 export type BackupDownload = {
@@ -55,7 +54,8 @@ export async function exportApplicationBackup(): Promise<BackupDownload> {
   const response = await fetch(toApiUrl('/backups/export'), {
     method: 'GET',
     headers: {
-      Accept: 'application/json'
+      Accept: 'application/json',
+      ...authHeaders()
     }
   });
 

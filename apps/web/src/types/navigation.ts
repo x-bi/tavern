@@ -9,6 +9,10 @@ export type NavigationItem = {
 /** 侧边栏导航项列表，AppLayout 据此渲染 n-menu。 */
 export const navigationItems: NavigationItem[] = [
   {
+    path: '/ai-imports',
+    label: 'AI 智能导入'
+  },
+  {
     path: '/characters',
     label: '角色'
   },

@@ -308,6 +308,7 @@ export class ChatService {
             baseUrl: candidate.baseUrl,
             modelName: candidate.modelName,
             apiKey: candidate.apiKey,
+            requestSource: 'tavern_chat',
             signal: abortController.signal,
             ...modelParameters
           })) {
@@ -594,6 +595,7 @@ export class ChatService {
           baseUrl: candidate.baseUrl,
           modelName: candidate.modelName,
           apiKey: candidate.apiKey,
+          requestSource: 'chat_suggestion',
           ...this.toSuggestionModelParams(this.mergeModelParams(candidate.params, promptPreset))
         });
         const suggestions = this.parseSuggestionTexts(result.text, count, templateVariables);

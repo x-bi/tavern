@@ -17,6 +17,12 @@ export type ServerConfig = {
   requestBodyLimit: string;
   /** 允许的 CORS 来源列表，从 CORS_ORIGINS 逗号分隔得到。 */
   corsOrigins: string[];
+  aiImport: {
+    sourceMaxChars: number;
+    fileMaxBytes: number;
+    customInstructionsMaxChars: number;
+    modelOutputMaxChars: number;
+  };
 };
 
 /**
@@ -36,6 +42,14 @@ export default registerAs('server', (): ServerConfig => {
     corsOrigins: corsOrigins
       .split(',')
       .map((origin) => origin.trim())
-      .filter(Boolean)
+      .filter(Boolean),
+    aiImport: {
+      sourceMaxChars: Number(process.env.AI_IMPORT_SOURCE_MAX_CHARS ?? 50000),
+      fileMaxBytes: Number(process.env.AI_IMPORT_FILE_MAX_BYTES ?? 1048576),
+      customInstructionsMaxChars: Number(
+        process.env.AI_IMPORT_CUSTOM_INSTRUCTIONS_MAX_CHARS ?? 2000
+      ),
+      modelOutputMaxChars: Number(process.env.AI_IMPORT_MODEL_OUTPUT_MAX_CHARS ?? 200000)
+    }
   };
 });

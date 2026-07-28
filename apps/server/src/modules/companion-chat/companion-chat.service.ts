@@ -300,6 +300,7 @@ export class CompanionChatService {
             baseUrl: candidate.baseUrl,
             modelName: candidate.modelName,
             apiKey: candidate.apiKey,
+            requestSource: 'companion_chat',
             ...parameters,
             signal: abort.signal
           })) {

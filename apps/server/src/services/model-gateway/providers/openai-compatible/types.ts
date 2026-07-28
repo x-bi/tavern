@@ -64,6 +64,7 @@ export type OpenAICompatibleLogEntry = {
   providerName: string;
   modelName: string;
   operation: 'testConnection' | 'chat' | 'streamChat';
+  requestSource: ModelGatewayRequestOptions['requestSource'];
   status: 'started' | 'succeeded' | 'failed';
   statusCode?: number | null;
   latencyMs?: number;
@@ -78,6 +79,7 @@ export type OpenAICompatibleRequestOptions = ModelGatewayRequestOptions & {
 export type OpenAICompatibleHttpResult = {
   response: Response;
   requestId: string;
+  requestSource: ModelGatewayRequestOptions['requestSource'];
   cleanup: () => void;
 };
 

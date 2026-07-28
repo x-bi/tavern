@@ -1,4 +1,5 @@
 import type { CharacterImportExampleMessage } from './character-import';
+import { CHARACTER_CARD_SPEC, CHARACTER_CARD_SPEC_VERSION } from './character-import';
 
 /**
  * 角色卡导出数据体，对齐 SillyTavern Character Card V2 的 `data` 字段。
@@ -49,9 +50,9 @@ export type CharacterExportCardData = {
  */
 export type CharacterExportCard = {
   /** 角色卡规范标识，固定为 `chara_card_v2`。 */
-  spec: 'chara_card_v2';
+  spec: typeof CHARACTER_CARD_SPEC;
   /** 规范版本，固定为 `2.0`。 */
-  spec_version: '2.0';
+  spec_version: typeof CHARACTER_CARD_SPEC_VERSION;
   /** 角色卡数据体。 */
   data: CharacterExportCardData;
 };

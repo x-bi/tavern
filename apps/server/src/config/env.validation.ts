@@ -12,6 +12,10 @@ export type ValidatedEnv = {
   AUTH_TOKEN_SECRET: string;
   AUTH_TOKEN_TTL_SECONDS: string;
   SHARE_PUBLIC_BASE_URL: string;
+  AI_IMPORT_SOURCE_MAX_CHARS: string;
+  AI_IMPORT_FILE_MAX_BYTES: string;
+  AI_IMPORT_CUSTOM_INSTRUCTIONS_MAX_CHARS: string;
+  AI_IMPORT_MODEL_OUTPUT_MAX_CHARS: string;
 };
 
 /** 环境变量默认值（未显式设置时使用）。 */
@@ -25,7 +29,11 @@ const DEFAULT_ENV: ValidatedEnv = {
   AUTH_PRESET_USERS_JSON: '',
   AUTH_TOKEN_SECRET: 'dev-only-change-me',
   AUTH_TOKEN_TTL_SECONDS: '604800',
-  SHARE_PUBLIC_BASE_URL: 'http://127.0.0.1:5174'
+  SHARE_PUBLIC_BASE_URL: 'http://127.0.0.1:5174',
+  AI_IMPORT_SOURCE_MAX_CHARS: '50000',
+  AI_IMPORT_FILE_MAX_BYTES: '1048576',
+  AI_IMPORT_CUSTOM_INSTRUCTIONS_MAX_CHARS: '2000',
+  AI_IMPORT_MODEL_OUTPUT_MAX_CHARS: '200000'
 };
 
 /**
@@ -64,6 +72,18 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     throw new Error('AUTH_TOKEN_TTL_SECONDS must be an integer greater than or equal to 60.');
   }
 
+  for (const key of [
+    'AI_IMPORT_SOURCE_MAX_CHARS',
+    'AI_IMPORT_FILE_MAX_BYTES',
+    'AI_IMPORT_CUSTOM_INSTRUCTIONS_MAX_CHARS',
+    'AI_IMPORT_MODEL_OUTPUT_MAX_CHARS'
+  ] as const) {
+    const value = Number(merged[key]);
+    if (!Number.isInteger(value) || value < 1) {
+      throw new Error(`${key} must be a positive integer.`);
+    }
+  }
+
   return {
     NODE_ENV: merged.NODE_ENV,
     SERVER_HOST: merged.SERVER_HOST,
@@ -74,7 +94,11 @@ export function validateEnv(config: RawEnv): ValidatedEnv {
     AUTH_PRESET_USERS_JSON: merged.AUTH_PRESET_USERS_JSON,
     AUTH_TOKEN_SECRET: merged.AUTH_TOKEN_SECRET,
     AUTH_TOKEN_TTL_SECONDS: String(tokenTtlSeconds),
-    SHARE_PUBLIC_BASE_URL: merged.SHARE_PUBLIC_BASE_URL.replace(/\/$/, '')
+    SHARE_PUBLIC_BASE_URL: merged.SHARE_PUBLIC_BASE_URL.replace(/\/$/, ''),
+    AI_IMPORT_SOURCE_MAX_CHARS: merged.AI_IMPORT_SOURCE_MAX_CHARS,
+    AI_IMPORT_FILE_MAX_BYTES: merged.AI_IMPORT_FILE_MAX_BYTES,
+    AI_IMPORT_CUSTOM_INSTRUCTIONS_MAX_CHARS: merged.AI_IMPORT_CUSTOM_INSTRUCTIONS_MAX_CHARS,
+    AI_IMPORT_MODEL_OUTPUT_MAX_CHARS: merged.AI_IMPORT_MODEL_OUTPUT_MAX_CHARS
   };
 }
 

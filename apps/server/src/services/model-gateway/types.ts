@@ -27,10 +27,21 @@ export type ModelGatewayProviderOptions = {
   metadata?: Record<string, unknown> | null;
 };
 
+/** 受控原始日志的稳定业务来源；不会发送给供应商。 */
+export type ModelGatewayRequestSource =
+  | 'tavern_chat'
+  | 'companion_chat'
+  | 'companion_memory'
+  | 'chat_suggestion'
+  | 'ai_import_transform'
+  | 'ai_import_repair'
+  | 'connection_test';
+
 /** 请求选项：供应商选项 + apiKey + 请求标识 + 中断信号。 */
 export type ModelGatewayRequestOptions = ModelGatewayProviderOptions & {
   apiKey?: string | null;
   requestId?: string;
+  requestSource: ModelGatewayRequestSource;
   signal?: AbortSignal;
 };
 

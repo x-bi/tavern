@@ -23,6 +23,7 @@ import type { CreatePersonaDto } from './dto/create-persona.dto';
 import type { QueryPersonasDto } from './dto/query-personas.dto';
 import type { UpdatePersonaDto } from './dto/update-persona.dto';
 import type { PersonaListResponse, PersonaResponse } from './persona.types';
+import * as importFormatConstants from '../../../../../packages/shared/src/import-format.constants.json';
 
 type PersonaImportPreview = {
   name: string;
@@ -52,7 +53,6 @@ type NormalizedPersonaImport = {
   warnings: ModuleJsonImportWarning[];
 };
 
-const PERSONA_FORMAT_VERSION = 'tavern-lite.persona.v2';
 const PERSONA_V2_IMPORT_FIELDS = [
   'formatVersion',
   'name',
@@ -201,7 +201,7 @@ export class PersonasService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<PersonaImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, PERSONA_FORMAT_VERSION);
+    const parsed = parseModuleJson(dto.rawJson, importFormatConstants.personaFormatVersion);
     const normalized = this.normalizePersonaImport(parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -300,7 +300,7 @@ export class PersonasService {
     return {
       fileName: `${safeExportFileName(persona.name)}-persona.json`,
       card: {
-        formatVersion: PERSONA_FORMAT_VERSION,
+        formatVersion: importFormatConstants.personaFormatVersion,
         name: persona.name,
         coreIdentity: persona.coreIdentity,
         background: persona.background,
@@ -336,13 +336,31 @@ export class PersonasService {
     return {
       fileName: 'tavern-lite-persona-template.json',
       template: {
-        formatVersion: PERSONA_FORMAT_VERSION,
+        formatVersion: importFormatConstants.personaFormatVersion,
         name: '示例 Persona',
         coreIdentity: '用户不可被 AI 改写的核心身份。',
         background: '',
         interactionPreferences: '称呼、互动偏好与边界。',
         metadata: {},
         isDefault: false
+      }
+    };
+  }
+
+  /** 将当前 Persona 模板与导入校验限制投影为 AI 导入只读规格。 */
+  getImportSpecification() {
+    return {
+      targetDescription: '用户在对话中的身份、背景和互动偏好，不是 AI 扮演的角色。',
+      template: this.getImportTemplate().template,
+      constraints: {
+        allowedFields: PERSONA_V2_IMPORT_FIELDS,
+        requiredFields: ['formatVersion', 'name'],
+        maxLengths: {
+          name: 120,
+          coreIdentity: 8000,
+          background: 12000,
+          interactionPreferences: 8000
+        }
       }
     };
   }

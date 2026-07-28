@@ -1,3 +1,5 @@
+import * as importFormatConstants from './import-format.constants.json';
+
 /**
  * 导入时遇到同名角色的处理策略：
  * - `reject` 直接拒绝导入；
@@ -98,3 +100,7 @@ export type CharacterImportResponse<TCharacter = unknown> = {
   /** 落库成功后的角色记录；仅预览时为 null。 */
   character: TCharacter | null;
 };
+/** Character Card V2 规范标识。 */
+export const CHARACTER_CARD_SPEC = importFormatConstants.characterCardSpec as 'chara_card_v2';
+/** Character Card V2 当前规范版本。 */
+export const CHARACTER_CARD_SPEC_VERSION = importFormatConstants.characterCardSpecVersion as '2.0';

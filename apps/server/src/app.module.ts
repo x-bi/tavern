@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env.validation';
 import serverConfig from './config/server.config';
 import { AssetsModule } from './modules/assets/assets.module';
+import { AiImportsModule } from './modules/ai-imports/ai-imports.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { ChatModule } from './modules/chat/chat.module';
@@ -46,6 +47,7 @@ import { TargetEventsModule } from './services/target-events/target-events.modul
     ContextEngineModule,
     TargetEventsModule,
     AssetsModule,
+    AiImportsModule,
     AuthModule,
     BackupsModule,
     CharactersModule,

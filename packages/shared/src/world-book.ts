@@ -1,6 +1,11 @@
 import type { PageResult } from './pagination';
 import type { PromptPlacementV2 } from './context-engine';
 import type { GenerationPurpose } from './context-engine';
+import * as importFormatConstants from './import-format.constants.json';
+
+/** 世界书独立导入/导出格式版本。 */
+export const WORLD_BOOK_FORMAT_VERSION =
+  importFormatConstants.worldBookFormatVersion as 'tavern-lite.world-book.v2';
 
 /** 世界书条目 V2 注入位置。 */
 export type WorldBookPlacement = Extract<

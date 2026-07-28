@@ -2,6 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 
 import { ERROR_CODES } from '../../../common/dto/error-codes';
 import type { ExampleMessage } from '../character.types';
+import * as importFormatConstants from '../../../../../../packages/shared/src/import-format.constants.json';
 
 export type CharacterImportFieldAction = 'mapped' | 'metadata' | 'ignored';
 
@@ -94,7 +95,10 @@ export class CharacterCardJsonImporter {
     const root = this.requireRecord(this.parseJson(rawJson), 'Character card JSON root');
     this.assertAllowedFields(root, ROOT_FIELDS, 'root');
 
-    if (root.spec !== 'chara_card_v2' || root.spec_version !== '2.0') {
+    if (
+      root.spec !== importFormatConstants.characterCardSpec ||
+      root.spec_version !== importFormatConstants.characterCardSpecVersion
+    ) {
       throw this.invalidFormat('Character import only accepts chara_card_v2 spec_version 2.0.');
     }
 

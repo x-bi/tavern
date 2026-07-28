@@ -5,6 +5,7 @@ import type {
   CharacterExportResponse,
   ExampleMessage
 } from '../character.types';
+import * as importFormatConstants from '../../../../../../packages/shared/src/import-format.constants.json';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -74,8 +75,8 @@ export class CharacterCardJsonExporter {
       ...(Object.keys(extensions).length > 0 ? { extensions } : {})
     };
     const card: CharacterExportCard = {
-      spec: 'chara_card_v2',
-      spec_version: '2.0',
+      spec: importFormatConstants.characterCardSpec as 'chara_card_v2',
+      spec_version: importFormatConstants.characterCardSpecVersion as '2.0',
       data
     };
 

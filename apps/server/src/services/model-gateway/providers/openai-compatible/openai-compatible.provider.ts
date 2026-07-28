@@ -115,7 +115,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       try {
         responseText = await response.text();
         // 原始响应体写日志（脱敏 apiKey）
-        this.writeRawResponseBodyLog(result.requestId, responseText, config.apiKey);
+        this.writeRawResponseBodyLog(
+          result.requestId,
+          result.requestSource,
+          responseText,
+          config.apiKey
+        );
       } finally {
         result.cleanup();
       }
@@ -181,7 +186,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     try {
       responseText = await response.text();
       // 原始响应体写日志（脱敏）
-      this.writeRawResponseBodyLog(result.requestId, responseText, options.apiKey);
+      this.writeRawResponseBodyLog(
+        result.requestId,
+        result.requestSource,
+        responseText,
+        options.apiKey
+      );
     } catch (error) {
       // 读取响应体失败：归一化错误后抛出
       throw this.normalizeRequestError(error, this.resolveTimeoutMs(options.timeout));
@@ -234,7 +244,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     // 2. HTTP 非 ok：读响应体转 error 事件
     if (!response.ok) {
       const responseText = await response.text();
-      this.writeRawResponseBodyLog(result.requestId, responseText, options.apiKey);
+      this.writeRawResponseBodyLog(
+        result.requestId,
+        result.requestSource,
+        responseText,
+        options.apiKey
+      );
       yield this.toStreamErrorEvent(
         this.toRequestFailedError(response.status, responseText, options),
         options
@@ -267,6 +282,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       // 4. 逐帧读取 SSE 流
       for await (const payload of this.readSseJsonPayloads(response.body, {
         requestId: result.requestId,
+        requestSource: result.requestSource,
         apiKey: options.apiKey
       })) {
         // [DONE] 标记流结束
@@ -409,19 +425,21 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       requestId,
       at: new Date().toISOString(),
       operation: options.operation,
+      requestSource: options.requestSource,
       providerName: options.providerName,
       modelName: options.modelName,
       stream,
       method: 'POST',
       url,
       headers: this.sanitizeHeaders(headers, options.apiKey),
-      body: requestBody
+      body: this.sanitizeLogValue(requestBody, options.apiKey)
     });
     // 记录调用开始（供调用统计）
     this.recordCall({
       providerName: options.providerName,
       modelName: options.modelName,
       operation: options.operation,
+      requestSource: options.requestSource,
       status: 'started'
     });
 
@@ -439,6 +457,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         providerName: options.providerName,
         modelName: options.modelName,
         operation: options.operation,
+        requestSource: options.requestSource,
         status: response.ok ? 'succeeded' : 'failed',
         statusCode: response.status,
         latencyMs: Date.now() - startedAt
@@ -449,6 +468,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         requestId,
         at: new Date().toISOString(),
         operation: options.operation,
+        requestSource: options.requestSource,
         providerName: options.providerName,
         modelName: options.modelName,
         ok: response.ok,
@@ -461,6 +481,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       return {
         response,
         requestId,
+        requestSource: options.requestSource,
         cleanup
       };
     } catch (error) {
@@ -469,6 +490,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         providerName: options.providerName,
         modelName: options.modelName,
         operation: options.operation,
+        requestSource: options.requestSource,
         status: 'failed'
       });
       this.writeRawLog({
@@ -476,9 +498,13 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         requestId,
         at: new Date().toISOString(),
         operation: options.operation,
+        requestSource: options.requestSource,
         providerName: options.providerName,
         modelName: options.modelName,
-        message: error instanceof Error && error.message ? error.message : 'Model request failed.'
+        message: this.sanitizeProviderText(
+          error instanceof Error && error.message ? error.message : 'Model request failed.',
+          options.apiKey
+        )
       });
       cleanup();
       throw this.normalizeRequestError(error, timeoutMs);
@@ -596,6 +622,7 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     body: ReadableStream<Uint8Array>,
     logContext: {
       requestId: string;
+      requestSource: ModelGatewayRequestOptions['requestSource'];
       apiKey?: string | null;
     }
   ): AsyncIterable<string> {
@@ -618,7 +645,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         const decodedChunk = decoder.decode(value, { stream: true });
         buffer += decodedChunk;
         // 当前 chunk 写原日志（脱敏）
-        this.writeRawResponseChunkLog(logContext.requestId, decodedChunk, logContext.apiKey);
+        this.writeRawResponseChunkLog(
+          logContext.requestId,
+          logContext.requestSource,
+          decodedChunk,
+          logContext.apiKey
+        );
 
         // 按空行分帧（SSE 帧以空行分隔）；pop 取出最后不完整的部分留 buffer
         const frames = buffer.split(/\r?\n\r?\n/);
@@ -937,12 +969,14 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
   /** 写响应体原日志（脱敏后截断）。 */
   private writeRawResponseBodyLog(
     requestId: string,
+    requestSource: ModelGatewayRequestOptions['requestSource'],
     responseText: string,
     apiKey: string | null | undefined
   ): void {
     this.writeRawLog({
       type: 'response-body',
       requestId,
+      requestSource,
       at: new Date().toISOString(),
       bodyText: this.truncateLogText(this.sanitizeProviderText(responseText, apiKey)),
       bodyLength: responseText.length
@@ -952,12 +986,14 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
   /** 写响应分块原日志（脱敏后截断）。 */
   private writeRawResponseChunkLog(
     requestId: string,
+    requestSource: ModelGatewayRequestOptions['requestSource'],
     chunkText: string,
     apiKey: string | null | undefined
   ): void {
     this.writeRawLog({
       type: 'response-chunk',
       requestId,
+      requestSource,
       at: new Date().toISOString(),
       chunkText: this.truncateLogText(this.sanitizeProviderText(chunkText, apiKey)),
       chunkLength: chunkText.length
@@ -1013,6 +1049,27 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     return Object.fromEntries(
       Object.entries(headers).map(([key, value]) => [key, this.sanitizeProviderText(value, apiKey)])
     );
+  }
+
+  /** 递归脱敏原始日志值，确保完整 Prompt 中的密钥形态也不会落盘。 */
+  private sanitizeLogValue(value: unknown, apiKey: string | null | undefined): unknown {
+    if (typeof value === 'string') {
+      return this.sanitizeProviderText(value, apiKey);
+    }
+    if (Array.isArray(value)) {
+      return value.map((item) => this.sanitizeLogValue(item, apiKey));
+    }
+    if (typeof value === 'object' && value !== null) {
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [
+          key,
+          /authorization|api[_-]?key|secret|password/i.test(key)
+            ? '[redacted]'
+            : this.sanitizeLogValue(item, apiKey)
+        ])
+      );
+    }
+    return value;
   }
 
   /** Headers 对象 → 普通对象。 */

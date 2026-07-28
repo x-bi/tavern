@@ -5,6 +5,26 @@
  * 这里只放跨端稳定契约，不放业务实现。
  */
 export type { ApiError, ApiResponse } from './api';
+export { AI_IMPORT_MODES, AI_IMPORT_TARGETS } from './ai-import';
+export type {
+  AiImportDecision,
+  AiImportDecisionBasis,
+  AiImportDecisionConfidence,
+  AiImportMode,
+  AiImportModeOption,
+  AiImportOptionsResponse,
+  AiImportPreview,
+  AiImportSafeModelMetadata,
+  AiImportStrategyOption,
+  AiImportTarget,
+  AiImportTargetOption,
+  AiImportTransformPayload,
+  AiImportTransformResult,
+  AiImportValidatePayload,
+  AiImportValidationError,
+  AiImportValidationResult,
+  AiImportWarning
+} from './ai-import';
 export { APPLICATION_BACKUP_FORMAT_VERSION } from './backup';
 export type {
   ApplicationBackupExport,
@@ -31,6 +51,7 @@ export type {
   CharacterImportResponse,
   CharacterImportWarning
 } from './character-import';
+export { CHARACTER_CARD_SPEC, CHARACTER_CARD_SPEC_VERSION } from './character-import';
 export type {
   ChatSuggestion,
   ChatSuggestionPayload,
@@ -238,3 +259,4 @@ export type {
   WorldBookResponse,
   WorldBookUpdatePayload
 } from './world-book';
+export { WORLD_BOOK_FORMAT_VERSION } from './world-book';

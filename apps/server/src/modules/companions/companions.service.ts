@@ -160,6 +160,19 @@ export class CompanionsService {
     };
   }
 
+  /** 将 Companion V2 模板投影为 AI 导入只读规格。 */
+  getImportSpecification() {
+    return {
+      targetDescription:
+        '独立长期陪伴 AI 角色；不创建普通 Character、Conversation、消息或长期记忆内容。',
+      template: this.getImportTemplate().template,
+      constraints: {
+        requiredFields: ['formatVersion', 'name', 'coreIdentity'],
+        forbiddenResourceIds: ['modelFallbackGroupId', 'promptPresetId', 'personaId']
+      }
+    };
+  }
+
   async exportJson(currentUser: CurrentUser, id: string): Promise<CompanionExportResponse> {
     const item = await this.findOwned(currentUser, id);
     const exportedAt = new Date().toISOString();

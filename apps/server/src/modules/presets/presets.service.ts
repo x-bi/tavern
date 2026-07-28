@@ -30,7 +30,9 @@ import type {
 } from './prompt-preset.types';
 import {
   PROMPT_PRESET_DEFAULT_GENERATION_PURPOSES,
-  PROMPT_PRESET_FORMAT_VERSION
+  PROMPT_PRESET_FORMAT_VERSION,
+  PROMPT_PRESET_GENERATION_PURPOSES,
+  PROMPT_PRESET_OUTPUT_RULE_OPERATIONS
 } from './preset-constants';
 import {
   validatePresetGenerationPurposes,
@@ -363,6 +365,26 @@ export class PresetsService {
         },
         metadata: {},
         isDefault: false
+      }
+    };
+  }
+
+  /** 将当前预设模板、枚举和校验器限制投影为 AI 导入只读规格。 */
+  getImportSpecification() {
+    return {
+      targetDescription: '跨角色复用的提示词预设与生成参数，不应包含具体角色私有背景。',
+      template: this.getImportTemplate().template,
+      constraints: {
+        generationPurposes: PROMPT_PRESET_GENERATION_PURPOSES,
+        outputRuleOperations: PROMPT_PRESET_OUTPUT_RULE_OPERATIONS,
+        parameterFields: [
+          'temperature',
+          'topP',
+          'maxTokens',
+          'timeout',
+          'frequencyPenalty',
+          'presencePenalty'
+        ]
       }
     };
   }

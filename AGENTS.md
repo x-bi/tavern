@@ -146,6 +146,7 @@ flowchart LR
 - `views/conversations` / `views/chat`：会话列表和聊天页。
 - `views/prompts`：Prompt 预览与组成解释。
 - `views/content-packs`：内容包导入。
+- `views/ai-imports`：AI 智能导入；强制经用户选择的共享模型链转换，结果确定性校验后复用目标模块原导入接口。
 - `views/shares`：成员管理自己的全部分享；管理员审计并撤销其他成员的分享。
 - `views/admin`：成员管理（`requiresAdmin` 路由）。
 - `views/settings`：本地设置、备份恢复入口。
@@ -194,6 +195,7 @@ flowchart LR
 - `chat`：`POST /api/chat/stream` 编排与 SSE 输出。
 - `assets`：头像、JSON 导入、静态资源访问。
 - `content-packs`：内容包导入。
+- `ai-imports`：无状态 AI 智能导入，负责策略、独立 Prompt、非流式模型链回退、一次修复和五目标预览；转换接口不落库。
 - `content-library`：固定管理员内容库的 scope 查询与 fork（服务型模块，被 `characters` / `companions` / `world-books` / `presets` / `personas` 注入，无 HTTP 入口）。
 - `users`：成员与角色领域能力（服务型模块，被 `auth` 等模块复用，无独立 HTTP 入口）。
 - `backups`：SQLite 与 uploads 的备份恢复。
@@ -450,6 +452,7 @@ data: {"code":"...","message":"..."}
 - `backups`：导入导出、备份恢复。
 - `settings`：本地设置。
 - `content-packs`：内容包导入。
+- `ai-imports`：AI 智能导入转换与校验；不直接创建业务数据。
 - `health`：健康检查。
 
 基础设施服务：`services/context-engine`（Prompt section 构建与编译、生成生命周期、世界书运行时）、`services/prompt-builder`（酒馆 Prompt 共享类型与 token 工具）、`services/model-gateway`（模型供应商适配）、`services/target-events`（目标级 SSE 分发）、`prisma`（唯一数据库访问入口）。

@@ -137,6 +137,9 @@ export type WorldBookImportPreview = ModuleImportPreviewBase & {
   description: string;
   /** 导入后关联的角色 ID；普通世界书导入固定为空。 */
   characterIds: string[];
+  personaIds: string[];
+  conversationIds: string[];
+  companionIds: string[];
   /** 是否启用。 */
   isEnabled: boolean;
   /** 扫描深度。 */

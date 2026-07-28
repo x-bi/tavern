@@ -28,6 +28,7 @@ import type { QueryCharactersDto } from './dto/query-characters.dto';
 import type { UpdateCharacterDto } from './dto/update-character.dto';
 import { CharacterCardJsonExporter } from './export/character-card-json-exporter';
 import { CharacterCardJsonImporter } from './import/character-card-json-importer';
+import * as importFormatConstants from '../../../../../packages/shared/src/import-format.constants.json';
 
 /** 角色记录 + 关联的头像素材（include avatarAsset 后的形态）。 */
 type CharacterWithAvatar = Character & {
@@ -264,8 +265,8 @@ export class CharactersService {
     return {
       fileName: 'tavern-lite-character-template.json',
       template: {
-        spec: 'chara_card_v2',
-        spec_version: '2.0',
+        spec: importFormatConstants.characterCardSpec,
+        spec_version: importFormatConstants.characterCardSpecVersion,
         data: {
           name: '示例角色',
           description: '角色的背景、身份与外观设定。',
@@ -280,6 +281,20 @@ export class CharactersService {
           first_mes: '你好，很高兴见到你。',
           mes_example: '<START>\n{{user}}: 你好\n示例角色: 你好呀，今天过得怎么样？'
         }
+      }
+    };
+  }
+
+  /** 将当前角色模板与严格 importer 约束投影为 AI 导入只读规格。 */
+  getImportSpecification() {
+    return {
+      targetDescription: '单个 Tavern 角色卡；Persona、世界书和临时剧情不得混入角色事实。',
+      template: this.getImportTemplate().template,
+      constraints: {
+        rootFields: ['spec', 'spec_version', 'data'],
+        requiredFields: ['spec', 'spec_version', 'data.name'],
+        maxNameLength: 120,
+        maxTextLength: 10_000
       }
     };
   }

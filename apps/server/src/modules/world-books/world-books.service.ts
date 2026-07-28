@@ -46,6 +46,7 @@ import type {
   WorldBookListResponse,
   WorldBookResponse
 } from './world-book.types';
+import * as importFormatConstants from '../../../../../packages/shared/src/import-format.constants.json';
 
 type WorldBookEntryImportPreview = {
   title: string;
@@ -397,7 +398,7 @@ export class WorldBooksService {
     currentUser: CurrentUser,
     dto: ImportModuleJsonDto
   ): Promise<WorldBookImportResponse> {
-    const parsed = parseModuleJson(dto.rawJson, 'tavern-lite.world-book.v2');
+    const parsed = parseModuleJson(dto.rawJson, importFormatConstants.worldBookFormatVersion);
     const normalized = await this.normalizeWorldBookImport(currentUser, parsed);
     const existingNames = await this.loadExistingNames(currentUser);
     const nameConflict = existingNames.has(normalized.name);
@@ -526,7 +527,7 @@ export class WorldBooksService {
     return {
       fileName: 'tavern-lite-world-book-template.json',
       template: {
-        formatVersion: 'tavern-lite.world-book.v2',
+        formatVersion: importFormatConstants.worldBookFormatVersion,
         name: '示例世界书',
         description: '描述这本世界书适用的角色、场景或背景设定。',
         characterIds: [],
@@ -571,6 +572,21 @@ export class WorldBooksService {
     };
   }
 
+  /** 将世界书 V2 模板与运行枚举投影为 AI 导入只读规格。 */
+  getImportSpecification() {
+    const entryTemplate = this.getImportTemplate().template.entries[0];
+    return {
+      targetDescription: '按职责拆分的世界书条目及其 V2 触发、扫描、注入和冷却配置。',
+      template: this.getImportTemplate().template,
+      constraints: {
+        allowedRootFields: WORLD_BOOK_V2_IMPORT_FIELDS,
+        allowedEntryFields: WORLD_BOOK_ENTRY_V2_IMPORT_FIELDS,
+        placements: WORLD_BOOK_ENTRY_PLACEMENTS,
+        entryDefaults: entryTemplate
+      }
+    };
+  }
+
   /**
    * 获取单个世界书（含条目）。
    * @param currentUser 当前登录用户。
@@ -607,7 +623,7 @@ export class WorldBooksService {
     return {
       fileName: `${safeExportFileName(worldBook.name)}-world-book.json`,
       card: {
-        formatVersion: 'tavern-lite.world-book.v2',
+        formatVersion: importFormatConstants.worldBookFormatVersion,
         name: worldBook.name,
         description: worldBook.description,
         characterIds: worldBook.characterLinks.map((link) => link.characterId),

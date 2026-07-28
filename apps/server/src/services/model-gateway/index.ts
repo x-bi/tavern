@@ -13,6 +13,7 @@ export type {
   ModelGatewayMessageRole,
   ModelGatewayProviderOptions,
   ModelGatewayRequestOptions,
+  ModelGatewayRequestSource,
   ModelGatewayStreamDeltaEvent,
   ModelGatewayStreamDoneEvent,
   ModelGatewayStreamErrorEvent,

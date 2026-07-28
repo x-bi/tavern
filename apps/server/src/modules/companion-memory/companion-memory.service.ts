@@ -656,6 +656,7 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
           baseUrl: candidate.baseUrl,
           modelName: candidate.modelName,
           apiKey: candidate.apiKey,
+          requestSource: 'companion_memory',
           ...candidate.params,
           temperature: Math.min(candidate.params.temperature ?? 0.2, 0.3),
           maxTokens: 1800,

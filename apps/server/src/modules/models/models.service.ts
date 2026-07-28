@@ -601,7 +601,10 @@ export class ModelsService {
   ): Promise<ModelConnectionTestResponse> {
     const model = await this.findOwnedActiveProviderModel(currentUser, id);
 
-    return this.modelGateway.testConnection(this.toGatewayConfigFromProviderModel(model, null));
+    return this.modelGateway.testConnection({
+      ...this.toGatewayConfigFromProviderModel(model, null),
+      requestSource: 'connection_test'
+    });
   }
 
   /**

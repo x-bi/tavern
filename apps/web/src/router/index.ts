@@ -11,6 +11,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 
 import AppLayout from '../layouts/AppLayout.vue';
+import AiImportView from '../views/ai-imports/AiImportView.vue';
 import BackupView from '../views/BackupView.vue';
 import CharacterCreateView from '../views/characters/CharacterCreateView.vue';
 import CharacterDetailView from '../views/characters/CharacterDetailView.vue';
@@ -54,6 +55,14 @@ export const router = createRouter({
         {
           path: '',
           redirect: '/characters'
+        },
+        {
+          path: 'ai-imports',
+          name: 'ai-imports',
+          component: AiImportView,
+          meta: {
+            title: 'AI 智能导入'
+          }
         },
         {
           path: 'characters',

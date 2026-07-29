@@ -1,4 +1,6 @@
 /** 模型调用参数（采样/超时等，存为 JSON）。 */
+export type ModelCapability = 'chat' | 'image';
+
 export type ModelGenerationParams = {
   temperature?: number;
   topP?: number;
@@ -32,6 +34,7 @@ export type ModelGatewayConfig = {
   providerName: string;
   baseUrl: string;
   modelName: string;
+  capability: ModelCapability;
   apiKey: string | null;
   contextLength?: number | null;
   capabilities: {
@@ -68,6 +71,7 @@ export type ProviderModelResponse = {
   providerDisplayName: string;
   name: string;
   modelName: string;
+  capability: ModelCapability;
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
@@ -103,6 +107,7 @@ export type ModelFallbackGroupResponse = {
   id: string;
   userId: string;
   name: string;
+  capability: ModelCapability;
   isDefault: boolean;
   isEnabled: boolean;
   candidates: ModelFallbackCandidateResponse[];

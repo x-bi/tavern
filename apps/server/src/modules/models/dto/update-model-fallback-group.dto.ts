@@ -3,6 +3,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   MaxLength,
@@ -17,6 +18,10 @@ export class UpdateModelFallbackGroupDto {
   @IsString()
   @MaxLength(120)
   name?: string;
+
+  @IsOptional()
+  @IsIn(['chat', 'image'])
+  capability?: 'chat' | 'image';
 
   @IsOptional()
   @IsBoolean()

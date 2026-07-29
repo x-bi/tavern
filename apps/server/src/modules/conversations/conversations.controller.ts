@@ -21,6 +21,7 @@ import { ConversationsService } from './conversations.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { QueryConversationsDto } from './dto/query-conversations.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
+import { UpdateConversationImageGenerationDto } from './dto/update-conversation-image-generation.dto';
 
 /**
  * 会话控制器，路由前缀 `/conversations`，需登录。
@@ -56,6 +57,17 @@ export class ConversationsController {
   @Get(':id')
   getById(@CurrentUser() currentUser: CurrentUserType, @Param('id') id: string) {
     return this.conversationsService.getById(currentUser, id);
+  }
+
+  /** 更新当前会话的显式生图模型链和参数。 */
+  @Put(':id/image-generation-config')
+  updateImageGenerationConfig(
+    @CurrentUser() currentUser: CurrentUserType,
+    @Param('id') id: string,
+    @Body(new DtoValidationPipe(UpdateConversationImageGenerationDto))
+    dto: UpdateConversationImageGenerationDto
+  ) {
+    return this.conversationsService.updateImageGenerationConfig(currentUser, id, dto);
   }
 
   /** 更新会话。PUT /conversations/:id */

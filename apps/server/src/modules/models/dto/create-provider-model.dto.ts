@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsBoolean,
   IsInt,
+  IsIn,
   IsNumber,
   IsOptional,
   IsString,
@@ -23,6 +24,9 @@ export class CreateProviderModelDto {
   @IsString()
   @MaxLength(160)
   modelName!: string;
+
+  @IsIn(['chat', 'image'])
+  capability!: 'chat' | 'image';
 
   @IsOptional()
   @Type(() => Number)

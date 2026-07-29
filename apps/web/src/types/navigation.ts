@@ -29,6 +29,10 @@ export const navigationItems: NavigationItem[] = [
     label: '聊天'
   },
   {
+    path: '/images',
+    label: '我的图片'
+  },
+  {
     path: '/models',
     label: '模型'
   },

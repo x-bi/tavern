@@ -7,11 +7,16 @@ import {
   fetchConversation,
   fetchConversations,
   updateConversation,
+  updateConversationImageGenerationConfig,
   type Conversation,
   type ConversationListParams,
   type ConversationMutationPayload
 } from '../api/conversations';
-import type { ConversationPayload, ConversationStatus } from '@tavern/shared';
+import type {
+  ConversationImageGenerationConfigPayload,
+  ConversationPayload,
+  ConversationStatus
+} from '@tavern/shared';
 
 type ConversationState = {
   items: Conversation[];
@@ -135,6 +140,25 @@ export const useConversationStore = defineStore('conversation', {
       } catch (error) {
         this.saveError = error instanceof Error ? error.message : '会话保存失败。';
 
+        return null;
+      } finally {
+        this.saving = false;
+      }
+    },
+    async updateImageGenerationConfig(
+      id: string,
+      payload: ConversationImageGenerationConfigPayload
+    ): Promise<Conversation | null> {
+      this.saving = true;
+      this.saveError = null;
+      try {
+        const conversation = await updateConversationImageGenerationConfig(id, payload);
+        const index = this.items.findIndex((item) => item.id === id);
+        if (index >= 0) this.items[index] = conversation;
+        else this.items.unshift(conversation);
+        return conversation;
+      } catch (error) {
+        this.saveError = error instanceof Error ? error.message : '生图设置保存失败。';
         return null;
       } finally {
         this.saving = false;

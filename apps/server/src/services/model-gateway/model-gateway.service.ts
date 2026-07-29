@@ -8,7 +8,9 @@ import type {
   ModelGatewayConnectionTestResult,
   ModelGatewayMessage,
   ModelGatewayRequestOptions,
-  ModelGatewayStreamEvent
+  ModelGatewayStreamEvent,
+  ImageGenerationRequest,
+  ImageGenerationResult
 } from './types';
 
 /**
@@ -100,6 +102,23 @@ export class ModelGatewayService {
     }
 
     yield* adapter.streamChat(messages, options);
+  }
+
+  async generateImage(input: ImageGenerationRequest): Promise<ImageGenerationResult> {
+    const adapter = this.registry.get(input.providerName);
+    if (!adapter) {
+      throw new ModelGatewayError(
+        ERROR_CODES.MODEL_GATEWAY_PROVIDER_UNSUPPORTED,
+        this.toUnsupportedProviderMessage(input.providerName)
+      );
+    }
+    if (!adapter.generateImage) {
+      throw new ModelGatewayError(
+        'IMAGE_PROVIDER_UNSUPPORTED',
+        `Model provider "${input.providerName}" does not support image generation.`
+      );
+    }
+    return adapter.generateImage(input);
   }
 
   /**

@@ -1,5 +1,10 @@
 import { defineStore } from 'pinia';
-import type { ChatSuggestion, ChatSuggestionPayload } from '@tavern/shared';
+import {
+  createClientOperationId,
+  type ChatSuggestion,
+  type ChatSuggestionPayload,
+  type SceneImage
+} from '@tavern/shared';
 
 import { fetchChatSuggestions } from '../api/chat';
 import {
@@ -9,6 +14,13 @@ import {
   type Message,
   type MessageListParams
 } from '../api/messages';
+import {
+  createMessageImageGeneration,
+  fetchConversationMessageImages,
+  fetchImageGenerationBatch,
+  fetchRunningImageBatches,
+  regenerateImageBatch
+} from '../api/images';
 
 let localMessageSeed = 0;
 
@@ -34,6 +46,9 @@ type ChatState = {
   suggestions: ChatSuggestion[];
   suggestionsLoading: boolean;
   suggestionsError: string | null;
+  messageImages: Record<string, SceneImage[]>;
+  imageGeneratingMessageIds: string[];
+  imageGenerationErrors: Record<string, string>;
 };
 
 export const useChatStore = defineStore('chat', {
@@ -58,7 +73,10 @@ export const useChatStore = defineStore('chat', {
     operationError: null,
     suggestions: [],
     suggestionsLoading: false,
-    suggestionsError: null
+    suggestionsError: null,
+    messageImages: {},
+    imageGeneratingMessageIds: [],
+    imageGenerationErrors: {}
   }),
   getters: {
     visibleMessages: (state): Message[] => [
@@ -98,6 +116,9 @@ export const useChatStore = defineStore('chat', {
       this.suggestions = [];
       this.suggestionsLoading = false;
       this.suggestionsError = null;
+      this.messageImages = {};
+      this.imageGeneratingMessageIds = [];
+      this.imageGenerationErrors = {};
     },
     clearSuggestions() {
       this.suggestions = [];
@@ -334,6 +355,81 @@ export const useChatStore = defineStore('chat', {
         }
       }
     },
+    async loadMessageImages(conversationId: string) {
+      const groups = await fetchConversationMessageImages(conversationId);
+      if (this.conversationId !== conversationId) return;
+      this.messageImages = Object.fromEntries(
+        groups.map((group) => [group.messageId, group.images])
+      );
+    },
+    async recoverImageGenerations(conversationId: string) {
+      const batches = await fetchRunningImageBatches(conversationId);
+      for (const batch of batches) {
+        if (!batch.sourceMessageId) continue;
+        this.markImageGenerating(batch.sourceMessageId);
+        void this.pollImageBatch(batch.id, batch.sourceMessageId);
+      }
+    },
+    async generateSceneImage(messageId: string) {
+      this.markImageGenerating(messageId);
+      delete this.imageGenerationErrors[messageId];
+      try {
+        const batch = await createMessageImageGeneration(messageId, {
+          requestId: createClientOperationId()
+        });
+        await this.pollImageBatch(batch.id, messageId);
+      } catch (error) {
+        this.imageGenerationErrors[messageId] =
+          error instanceof Error ? error.message : '场景图片生成失败。';
+        this.unmarkImageGenerating(messageId);
+        throw error;
+      }
+    },
+    async regenerateSceneImage(messageId: string) {
+      const parentBatchId = this.messageImages[messageId]?.[0]?.batchId;
+      if (!parentBatchId) return this.generateSceneImage(messageId);
+      this.markImageGenerating(messageId);
+      delete this.imageGenerationErrors[messageId];
+      try {
+        const batch = await regenerateImageBatch(parentBatchId, {
+          requestId: createClientOperationId()
+        });
+        await this.pollImageBatch(batch.id, messageId);
+      } catch (error) {
+        this.imageGenerationErrors[messageId] =
+          error instanceof Error ? error.message : '图片重新生成失败。';
+        this.unmarkImageGenerating(messageId);
+        throw error;
+      }
+    },
+    async pollImageBatch(batchId: string, messageId: string) {
+      const terminal = new Set(['succeeded', 'partially_succeeded', 'failed', 'cancelled']);
+      try {
+        for (;;) {
+          const batch = await fetchImageGenerationBatch(batchId);
+          if (terminal.has(batch.status)) {
+            if (batch.status === 'failed' || batch.status === 'cancelled') {
+              this.imageGenerationErrors[messageId] = batch.errorMessage ?? '场景图片生成失败。';
+            }
+            if (this.conversationId) await this.loadMessageImages(this.conversationId);
+            return;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+      } finally {
+        this.unmarkImageGenerating(messageId);
+      }
+    },
+    markImageGenerating(messageId: string) {
+      if (!this.imageGeneratingMessageIds.includes(messageId)) {
+        this.imageGeneratingMessageIds = [...this.imageGeneratingMessageIds, messageId];
+      }
+    },
+    unmarkImageGenerating(messageId: string) {
+      this.imageGeneratingMessageIds = this.imageGeneratingMessageIds.filter(
+        (id) => id !== messageId
+      );
+    },
     async editMessage(id: string, content: string) {
       const nextContent = content.trim();
 
@@ -347,6 +443,12 @@ export const useChatStore = defineStore('chat', {
       try {
         const updated = await updateMessage(id, { content: nextContent });
         this.messages = this.messages.map((message) => (message.id === id ? updated : message));
+        if (updated.role === 'user' && updated.turnId) {
+          const assistant = this.messages.find(
+            (message) => message.turnId === updated.turnId && message.role === 'assistant'
+          );
+          if (assistant) delete this.messageImages[assistant.id];
+        }
 
         if (this.streamingMessage?.id === id) {
           this.streamingMessage = updated;
@@ -375,6 +477,7 @@ export const useChatStore = defineStore('chat', {
         const removedPending = this.pendingUserMessage?.id === id;
         const removedStreaming = this.streamingMessage?.id === id;
         this.messages = this.messages.filter((message) => message.id !== id);
+        delete this.messageImages[id];
 
         if (removedPending) {
           this.pendingUserMessage = null;

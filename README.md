@@ -21,7 +21,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 
 - 支付、公开市场、创作者收益。
 - 多租户 SaaS、复杂后台权限、大规模审核。
-- 机器人平台、TTS、图片生成、向量数据库、RAG。
+- 机器人平台、TTS、自动生图、图生图、图片编辑、向量数据库、RAG。
 - Redis、队列系统、微服务架构。
 - 桌面端、小程序、移动 App、浏览器插件。
 
@@ -42,7 +42,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话系统，目标是先完�
 - `prisma/seed.cjs`：默认用户、模型链、Prompt 预设、Persona、样例角色和世界书 seed。
 - `data`：本地 SQLite 数据库与运行时数据目录。
 
-已实现的核心闭环：模型链配置与连接测试、角色与会话消息管理、Context Engine 与 Prompt 预览、Model Gateway、SSE 流式聊天、停止 / 重新生成 / 消息编辑删除、世界书匹配与运行态管理、导入导出与备份恢复。独立 AI 角色形态也已落地首版闭环：角色即唯一长期关系线程，使用隔离的数据模型、上下文构建、聊天路由和可选长期记忆；见 `AGENTS.md` §17 与 `docs/conversation-long-term-memory.md`。
+已实现的核心闭环：模型链配置与连接测试、角色与会话消息管理、Context Engine 与 Prompt 预览、Model Gateway、SSE 流式聊天、停止 / 重新生成 / 消息编辑删除、手动聊天场景生图、世界书匹配与运行态管理、导入导出与备份恢复。独立 AI 角色形态也已落地首版闭环：角色即唯一长期关系线程，使用隔离的数据模型、上下文构建、聊天路由和可选长期记忆；见 `AGENTS.md` §17 与 `docs/conversation-long-term-memory.md`。
 
 ## 启动方式
 

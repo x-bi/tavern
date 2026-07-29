@@ -1,5 +1,7 @@
 import type { PageResult } from './pagination';
 
+export type ModelCapability = 'chat' | 'image';
+
 /** 连通性测试的响应体，记录一次真实探测的结果。 */
 export type ModelConnectionTestResponse = {
   /** 是否连通成功。 */
@@ -62,6 +64,7 @@ export type ProviderModelResponse = {
   providerDisplayName: string;
   name: string;
   modelName: string;
+  capability: ModelCapability;
   temperature: number | null;
   topP: number | null;
   maxTokens: number | null;
@@ -90,6 +93,7 @@ export type ProviderModelPayload = {
   providerId: string;
   name: string;
   modelName: string;
+  capability: ModelCapability;
   temperature?: number | null;
   topP?: number | null;
   maxTokens?: number | null;
@@ -120,6 +124,7 @@ export type ModelFallbackGroupResponse = {
   id: string;
   userId: string;
   name: string;
+  capability: ModelCapability;
   isDefault: boolean;
   isEnabled: boolean;
   candidates: ModelFallbackCandidateResponse[];
@@ -137,6 +142,7 @@ export type ModelFallbackCandidatePayload = {
 
 export type ModelFallbackGroupPayload = {
   name: string;
+  capability: ModelCapability;
   isDefault?: boolean;
   isEnabled?: boolean;
   candidates: ModelFallbackCandidatePayload[];

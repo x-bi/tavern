@@ -35,6 +35,8 @@ export type ModelGatewayRequestSource =
   | 'chat_suggestion'
   | 'ai_import_transform'
   | 'ai_import_repair'
+  | 'scene_image_prompt'
+  | 'chat_scene_image'
   | 'connection_test';
 
 /** 请求选项：供应商选项 + apiKey + 请求标识 + 中断信号。 */
@@ -43,6 +45,46 @@ export type ModelGatewayRequestOptions = ModelGatewayProviderOptions & {
   requestId?: string;
   requestSource: ModelGatewayRequestSource;
   signal?: AbortSignal;
+};
+
+export type ImageGenerationOptions = {
+  aspectRatio?: '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
+  width?: number;
+  height?: number;
+  imageCount?: number;
+  quality?: string;
+  style?: string;
+  seed?: number;
+  negativePrompt?: string;
+  providerOptions?: Record<string, unknown>;
+};
+
+export type ImageGenerationRequest = {
+  providerName: string;
+  baseUrl: string;
+  modelName: string;
+  apiKey?: string | null;
+  requestId?: string;
+  requestSource: 'chat_scene_image';
+  timeout?: number | null;
+  prompt: string;
+  options?: ImageGenerationOptions;
+  signal?: AbortSignal;
+};
+
+export type GeneratedImageOutput = {
+  data?: Buffer;
+  remoteUrl?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  revisedPrompt?: string;
+  providerMetadata?: Record<string, unknown>;
+};
+
+export type ImageGenerationResult = {
+  images: GeneratedImageOutput[];
+  usage?: Record<string, unknown>;
 };
 
 /** token 用量统计。 */
@@ -127,6 +169,7 @@ export interface ModelProviderAdapter {
     messages: ModelGatewayMessage[],
     options: ModelGatewayRequestOptions
   ): AsyncIterable<ModelGatewayStreamEvent>;
+  generateImage?(input: ImageGenerationRequest): Promise<ImageGenerationResult>;
 }
 
 /** 供应商注册表接口。 */

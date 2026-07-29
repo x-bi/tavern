@@ -4,6 +4,7 @@ import {
   IsArray,
   IsBoolean,
   IsInt,
+  IsIn,
   IsOptional,
   IsString,
   Max,
@@ -34,6 +35,9 @@ export class CreateModelFallbackGroupDto {
   @IsString()
   @MaxLength(120)
   name!: string;
+
+  @IsIn(['chat', 'image'])
+  capability!: 'chat' | 'image';
 
   @IsOptional()
   @IsBoolean()

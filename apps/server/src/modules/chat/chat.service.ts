@@ -193,6 +193,7 @@ export class ChatService {
       templateVariables = this.createTemplateVariables(conversation);
       const modelCandidates = await this.modelsService.getGatewayCandidates({
         currentUser,
+        capability: 'chat',
         modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId
       });
       const promptPreset = await this.resolvePromptPreset(currentUser, dto, conversation);
@@ -538,6 +539,7 @@ export class ChatService {
     const templateVariables = this.createTemplateVariables(conversation);
     const modelCandidates = await this.modelsService.getGatewayCandidates({
       currentUser,
+      capability: 'chat',
       modelFallbackGroupId: dto.modelFallbackGroupId ?? conversation.modelFallbackGroupId
     });
     if (!modelCandidates[0]) {

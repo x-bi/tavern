@@ -32,6 +32,8 @@ import SettingView from '../views/settings/SettingView.vue';
 import ShareManagementView from '../views/shares/ShareManagementView.vue';
 import WorldBookView from '../views/world-books/WorldBookView.vue';
 import UserManagementView from '../views/admin/UserManagementView.vue';
+import AdminImageManagementView from '../views/admin/AdminImageManagementView.vue';
+import ImageLibraryView from '../views/images/ImageLibraryView.vue';
 import { fetchCurrentUser, getStoredCurrentUser, logout } from '../api/auth';
 import { getAccessToken } from '../api/http';
 
@@ -134,6 +136,12 @@ export const router = createRouter({
           }
         },
         {
+          path: 'images',
+          name: 'images',
+          component: ImageLibraryView,
+          meta: { title: '我的图片' }
+        },
+        {
           path: 'models',
           name: 'models',
           component: ModelConfigView,
@@ -178,6 +186,12 @@ export const router = createRouter({
           name: 'admin-users',
           component: UserManagementView,
           meta: { title: '成员管理', requiresAdmin: true }
+        },
+        {
+          path: 'admin/images',
+          name: 'admin-images',
+          component: AdminImageManagementView,
+          meta: { title: '图片管理', requiresAdmin: true }
         },
         {
           path: 'shares',

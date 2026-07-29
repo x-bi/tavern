@@ -1,4 +1,5 @@
 import type { PageResult } from './pagination';
+import type { ConversationImageGenerationConfig, ImageStylePreset } from './image-generation';
 
 /** 会话状态：活跃进行中或已归档。 */
 export type ConversationStatus = 'active' | 'archived';
@@ -33,6 +34,7 @@ export type ConversationModelFallbackGroupSummary = {
   isEnabled: boolean;
   /** 候选模型数量。 */
   candidateCount: number;
+  capability?: 'chat' | 'image';
 };
 
 /** 会话关联 Prompt 预设的摘要信息。 */
@@ -53,6 +55,10 @@ export type ConversationResponse = {
   characterId: string;
   /** 关联模型链 ID；未绑定或绑定后删除时为 null。 */
   modelFallbackGroupId: string | null;
+  /** 会话显式选择的生图模型链；不使用全局默认回退。 */
+  imageModelFallbackGroupId: string | null;
+  /** 统一校验后的会话生图配置。 */
+  imageGenerationConfig: ConversationImageGenerationConfig;
   /** 关联 Prompt 预设 ID；未绑定时为 null。 */
   promptPresetId: string | null;
   /** 关联 Persona ID；未绑定时为 null。 */
@@ -73,6 +79,8 @@ export type ConversationResponse = {
   persona: ConversationPersonaSummary | null;
   /** 关联模型链摘要；未绑定时为 null。 */
   modelFallbackGroup: ConversationModelFallbackGroupSummary | null;
+  /** 生图模型链摘要。 */
+  imageModelFallbackGroup: ConversationModelFallbackGroupSummary | null;
   /** 关联 Prompt 预设摘要；未绑定时为 null。 */
   promptPreset: ConversationPromptPresetSummary | null;
   /** 创建时间（ISO 字符串）。 */
@@ -92,6 +100,8 @@ export type ConversationPayload = {
   characterId: string;
   /** 关联模型链 ID；未绑定时传 null 或省略。 */
   modelFallbackGroupId?: string | null;
+  imageModelFallbackGroupId?: string | null;
+  imageGenerationConfig?: ConversationImageGenerationConfig;
   /** 关联 Prompt 预设 ID；未绑定时传 null 或省略。 */
   promptPresetId?: string | null;
   /** 关联 Persona ID；未绑定时传 null 或省略。 */
@@ -104,6 +114,16 @@ export type ConversationPayload = {
 
 /** 更新会话的入参，所有字段可选（部分更新）。 */
 export type ConversationUpdatePayload = Partial<ConversationPayload>;
+
+export type ConversationImageGenerationConfigPayload = {
+  imageModelFallbackGroupId: string | null;
+  config: ConversationImageGenerationConfig;
+};
+
+export type ConversationImageStyleOption = {
+  value: ImageStylePreset;
+  label: string;
+};
 
 /** 清空会话消息的响应体。 */
 export type ConversationClearResponse = {

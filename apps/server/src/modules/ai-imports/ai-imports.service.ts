@@ -268,6 +268,7 @@ export class AiImportsService {
     try {
       candidates = await this.models.getGatewayCandidates({
         currentUser,
+        capability: 'chat',
         modelFallbackGroupId: groupId
       });
     } catch (error) {

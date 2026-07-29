@@ -38,10 +38,16 @@
           :operation-pending="mutatingMessageIds.includes(message.id)"
           :edit-disabled="isGenerating"
           :delete-disabled="isGenerating"
+          :images="messageImages[message.id] ?? []"
+          :image-generating="imageGeneratingMessageIds.includes(message.id)"
+          :image-generation-error="imageGenerationErrors[message.id]"
+          :image-generation-enabled="imageGenerationEnabled"
           @copy="$emit('copy', $event)"
           @edit="$emit('edit', $event)"
           @delete="$emit('delete', $event)"
           @regenerate="$emit('regenerate', $event)"
+          @generate-image="$emit('generate-image', $event)"
+          @regenerate-image="$emit('regenerate-image', $event)"
         />
       </template>
     </div>
@@ -78,7 +84,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import type { ChatSuggestion } from '@tavern/shared';
+import type { ChatSuggestion, SceneImage } from '@tavern/shared';
 
 import type { Message } from '../api/messages';
 import ChatInput from './ChatInput.vue';
@@ -106,10 +112,18 @@ const props = withDefaults(
     suggestions?: ChatSuggestion[];
     suggestionsLoading?: boolean;
     suggestionsError?: string | null;
+    messageImages?: Record<string, SceneImage[]>;
+    imageGeneratingMessageIds?: string[];
+    imageGenerationErrors?: Record<string, string>;
+    imageGenerationEnabled?: boolean;
   }>(),
   {
     mutatingMessageIds: () => [],
-    suggestions: () => []
+    suggestions: () => [],
+    messageImages: () => ({}),
+    imageGeneratingMessageIds: () => [],
+    imageGenerationErrors: () => ({}),
+    imageGenerationEnabled: false
   }
 );
 
@@ -129,6 +143,8 @@ defineEmits<{
   ];
   delete: [message: Message];
   regenerate: [message: Message];
+  'generate-image': [message: Message];
+  'regenerate-image': [message: Message];
   'regenerate-latest': [];
   'preview-prompt': [];
   'request-suggestions': [];

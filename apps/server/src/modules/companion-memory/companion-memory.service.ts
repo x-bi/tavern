@@ -127,6 +127,7 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
       try {
         await this.models.getGatewayCandidates({
           currentUser: user,
+          capability: 'chat',
           modelFallbackGroupId: dto.memoryModelFallbackGroupId
         });
       } catch {
@@ -324,6 +325,7 @@ export class CompanionMemoryService implements OnModuleInit, OnModuleDestroy {
       }
       const candidates = await this.models.getGatewayCandidates({
         currentUser: user,
+        capability: 'chat',
         modelFallbackGroupId:
           memory.memoryModelFallbackGroupId ?? memory.companion.modelFallbackGroupId ?? undefined
       });

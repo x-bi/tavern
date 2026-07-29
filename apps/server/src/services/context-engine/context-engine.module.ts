@@ -4,9 +4,12 @@ import { CompanionTimelineService, ConversationTimelineService } from './timelin
 import { ContextOwnershipValidator } from './context-ownership-validator';
 import { CompanionReplayService, ConversationReplayService } from './replay.service';
 import { WorldBookRuntimeService } from './world-book-runtime.service';
+import { ModelGatewayModule } from '../model-gateway';
+import { SceneImagePromptService } from './scene-image-prompt.service';
 
 @Global()
 @Module({
+  imports: [ModelGatewayModule],
   providers: [
     GenerationLifecycleService,
     ConversationTimelineService,
@@ -14,7 +17,8 @@ import { WorldBookRuntimeService } from './world-book-runtime.service';
     ContextOwnershipValidator,
     WorldBookRuntimeService,
     ConversationReplayService,
-    CompanionReplayService
+    CompanionReplayService,
+    SceneImagePromptService
   ],
   exports: [
     GenerationLifecycleService,
@@ -23,7 +27,8 @@ import { WorldBookRuntimeService } from './world-book-runtime.service';
     ContextOwnershipValidator,
     WorldBookRuntimeService,
     ConversationReplayService,
-    CompanionReplayService
+    CompanionReplayService,
+    SceneImagePromptService
   ]
 })
 export class ContextEngineModule {}

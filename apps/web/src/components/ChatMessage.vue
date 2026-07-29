@@ -31,6 +31,16 @@
 
       <p v-else class="chat-message__content">{{ message.content }}</p>
 
+      <MessageImageSection
+        v-if="canGenerateImage"
+        :images="images"
+        :generating="imageGenerating"
+        :error="imageGenerationError"
+        :enabled="imageGenerationEnabled"
+        @generate="$emit('generate-image', message)"
+        @regenerate="$emit('regenerate-image', message)"
+      />
+
       <footer class="chat-message__actions">
         <n-button size="tiny" quaternary @click="$emit('copy', message)">复制</n-button>
         <n-button
@@ -71,6 +81,8 @@
 import { computed, ref, watch } from 'vue';
 
 import type { Message } from '../api/messages';
+import type { SceneImage } from '@tavern/shared';
+import MessageImageSection from './MessageImageSection.vue';
 
 const props = defineProps<{
   message: Message;
@@ -81,6 +93,10 @@ const props = defineProps<{
   operationPending?: boolean;
   editDisabled?: boolean;
   deleteDisabled?: boolean;
+  images?: SceneImage[];
+  imageGenerating?: boolean;
+  imageGenerationError?: string | null;
+  imageGenerationEnabled?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -95,6 +111,8 @@ const emit = defineEmits<{
   ];
   delete: [message: Message];
   regenerate: [message: Message];
+  'generate-image': [message: Message];
+  'regenerate-image': [message: Message];
 }>();
 
 const isEditing = ref(false);
@@ -174,6 +192,12 @@ const canRegenerate = computed(
     props.message.role === 'assistant' &&
     props.message.status !== 'generating' &&
     props.message.status !== 'deleted' &&
+    !isLocalMessage.value
+);
+const canGenerateImage = computed(
+  () =>
+    props.message.role === 'assistant' &&
+    props.message.status === 'complete' &&
     !isLocalMessage.value
 );
 const formattedTime = computed(() =>

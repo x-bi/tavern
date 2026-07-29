@@ -21,6 +21,7 @@ export type ConversationModelFallbackGroupSummary = {
   name: string;
   isEnabled: boolean;
   candidateCount: number;
+  capability: 'chat' | 'image';
 };
 
 /** 会话关联的预设摘要。 */
@@ -35,6 +36,8 @@ export type ConversationResponse = {
   userId: string;
   characterId: string;
   modelFallbackGroupId: string | null;
+  imageModelFallbackGroupId: string | null;
+  imageGenerationConfig: import('../image-generations/image-generation.types').ConversationImageGenerationConfig;
   promptPresetId: string | null;
   personaId: string | null;
   title: string;
@@ -47,6 +50,7 @@ export type ConversationResponse = {
   character: ConversationCharacterSummary;
   persona: ConversationPersonaSummary | null;
   modelFallbackGroup: ConversationModelFallbackGroupSummary | null;
+  imageModelFallbackGroup: ConversationModelFallbackGroupSummary | null;
   promptPreset: ConversationPromptPresetSummary | null;
   createdAt: string;
   updatedAt: string;

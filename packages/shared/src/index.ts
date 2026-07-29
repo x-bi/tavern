@@ -108,6 +108,8 @@ export type {
   CompanionResponse
 } from './companion';
 export type {
+  ConversationImageGenerationConfigPayload,
+  ConversationImageStyleOption,
   ConversationCharacterSummary,
   ConversationClearResponse,
   ConversationListResponse,
@@ -119,6 +121,30 @@ export type {
   ConversationStatus,
   ConversationUpdatePayload
 } from './conversation';
+export {
+  DEFAULT_CONVERSATION_IMAGE_GENERATION_CONFIG,
+  IMAGE_ASPECT_RATIOS,
+  IMAGE_STYLE_PRESETS
+} from './image-generation';
+export type {
+  AdminImageDetailResponse,
+  AdminImageListItem,
+  AdminImageListResponse,
+  ConversationImageGenerationConfig,
+  ConversationMessageImagesResponse,
+  CreateImageGenerationPayload,
+  ImageAspectRatio,
+  ImageCount,
+  ImageDetailResponse,
+  ImageGenerationBatchResponse,
+  ImageGenerationBatchStatus,
+  ImageListItem,
+  ImageListResponse,
+  ImageStylePreset,
+  SceneImage,
+  SceneImageSnapshot,
+  ScenePromptModelOutput
+} from './image-generation';
 export type {
   CompiledPrompt,
   CompiledPromptSection,
@@ -134,6 +160,7 @@ export type {
 } from './context-engine';
 export type {
   ModelConnectionTestResponse,
+  ModelCapability,
   ModelFallbackCandidatePayload,
   ModelFallbackCandidateResponse,
   ModelFallbackGroupListResponse,

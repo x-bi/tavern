@@ -32,6 +32,7 @@ import type {
   ModelFallbackGroupResponse,
   ModelConnectionTestResponse,
   ModelGenerationParams,
+  ModelCapability,
   ModelGatewayConfig,
   ModelProviderResponse,
   ProviderModelResponse
@@ -332,6 +333,7 @@ export class ModelsService {
           providerId: dto.providerId,
           name: dto.name,
           model: dto.modelName,
+          capability: dto.capability,
           defaultParamsJson: this.stringifyParams(this.pickProviderModelParams(dto)),
           contextLength: dto.contextLength ?? null,
           supportsDeveloperRole: dto.supportsDeveloperRole ?? false,
@@ -364,6 +366,25 @@ export class ModelsService {
     const providerId = dto.providerId ?? existing.providerId;
     await this.findOwnedActiveProvider(currentUser, providerId);
     const params = this.mergeProviderModelParams(this.parseParams(existing.defaultParamsJson), dto);
+    if (dto.capability !== undefined && dto.capability !== existing.capability) {
+      const incompatibleLink = await this.prisma.modelFallbackCandidate.findFirst({
+        where: {
+          modelId: id,
+          group: {
+            deletedAt: null,
+            capability: { not: dto.capability }
+          }
+        },
+        select: { id: true }
+      });
+      if (incompatibleLink) {
+        throw new BadRequestException({
+          code: 'MODEL_CAPABILITY_IN_USE',
+          message:
+            'Model capability cannot be changed while it is used by another capability chain.'
+        });
+      }
+    }
 
     try {
       const model = await this.prisma.providerModel.update({
@@ -372,6 +393,7 @@ export class ModelsService {
           ...(dto.providerId === undefined ? {} : { providerId }),
           ...(dto.name === undefined ? {} : { name: dto.name }),
           ...(dto.modelName === undefined ? {} : { model: dto.modelName }),
+          ...(dto.capability === undefined ? {} : { capability: dto.capability }),
           ...(this.hasProviderModelParamUpdate(dto)
             ? { defaultParamsJson: this.stringifyParams(params) }
             : {}),
@@ -466,11 +488,11 @@ export class ModelsService {
     currentUser: CurrentUser,
     dto: CreateModelFallbackGroupDto
   ): Promise<ModelFallbackGroupResponse> {
-    await this.assertFallbackCandidatesOwned(currentUser, dto.candidates);
+    await this.assertFallbackCandidatesOwned(currentUser, dto.candidates, dto.capability);
 
     try {
       const group = await this.prisma.$transaction(async (tx) => {
-        if (dto.isDefault) {
+        if (dto.capability === 'chat' && dto.isDefault) {
           await tx.modelFallbackGroup.updateMany({
             where: {
               userId: currentUser.id,
@@ -487,7 +509,8 @@ export class ModelsService {
           data: {
             userId: currentUser.id,
             name: dto.name,
-            isDefault: dto.isDefault ?? false,
+            capability: dto.capability,
+            isDefault: dto.capability === 'chat' ? (dto.isDefault ?? false) : false,
             isEnabled: dto.isEnabled ?? true,
             candidates: {
               create: dto.candidates.map((candidate) => ({
@@ -513,14 +536,33 @@ export class ModelsService {
     id: string,
     dto: UpdateModelFallbackGroupDto
   ): Promise<ModelFallbackGroupResponse> {
-    await this.findOwnedActiveFallbackGroup(currentUser, id);
+    const existing = await this.findOwnedActiveFallbackGroup(currentUser, id);
+    const capability = dto.capability ?? existing?.capability ?? 'chat';
     if (dto.candidates) {
-      await this.assertFallbackCandidatesOwned(currentUser, dto.candidates);
+      await this.assertFallbackCandidatesOwned(
+        currentUser,
+        dto.candidates,
+        capability as ModelCapability
+      );
+    }
+    if (dto.capability !== undefined && existing && dto.capability !== existing.capability) {
+      const refs = await Promise.all([
+        this.prisma.conversation.count({ where: { modelFallbackGroupId: id } }),
+        this.prisma.conversation.count({ where: { imageModelFallbackGroupId: id } }),
+        this.prisma.companion.count({ where: { modelFallbackGroupId: id } }),
+        this.prisma.companionMemory.count({ where: { memoryModelFallbackGroupId: id } })
+      ]);
+      if (refs.some((count) => count > 0)) {
+        throw new BadRequestException({
+          code: 'MODEL_CHAIN_CAPABILITY_IN_USE',
+          message: 'Model chain capability cannot be changed while business records reference it.'
+        });
+      }
     }
 
     try {
       const group = await this.prisma.$transaction(async (tx) => {
-        if (dto.isDefault) {
+        if (capability === 'chat' && dto.isDefault) {
           await tx.modelFallbackGroup.updateMany({
             where: {
               userId: currentUser.id,
@@ -540,7 +582,12 @@ export class ModelsService {
           where: { id },
           data: {
             ...(dto.name === undefined ? {} : { name: dto.name }),
-            ...(dto.isDefault === undefined ? {} : { isDefault: dto.isDefault }),
+            ...(dto.capability === undefined ? {} : { capability: dto.capability }),
+            ...(capability === 'image'
+              ? { isDefault: false }
+              : dto.isDefault === undefined
+                ? {}
+                : { isDefault: dto.isDefault }),
             ...(dto.isEnabled === undefined ? {} : { isEnabled: dto.isEnabled }),
             ...(dto.candidates === undefined
               ? {}
@@ -600,6 +647,12 @@ export class ModelsService {
     id: string
   ): Promise<ModelConnectionTestResponse> {
     const model = await this.findOwnedActiveProviderModel(currentUser, id);
+    if (model.capability === 'image') {
+      throw new BadRequestException({
+        code: 'IMAGE_MODEL_TEST_NOT_SUPPORTED',
+        message: 'Image model connection testing is not supported in this version.'
+      });
+    }
 
     return this.modelGateway.testConnection({
       ...this.toGatewayConfigFromProviderModel(model, null),
@@ -616,16 +669,33 @@ export class ModelsService {
    */
   async getGatewayCandidates(params: {
     currentUser: CurrentUser;
+    capability: ModelCapability;
     modelFallbackGroupId?: string | null;
   }): Promise<ModelGatewayConfig[]> {
     const sharedModelOwner = await this.usersService.getSharedModelOwner();
     const group =
       params.modelFallbackGroupId === undefined
-        ? await this.findDefaultActiveFallbackGroup(sharedModelOwner)
+        ? await this.findDefaultActiveFallbackGroup(sharedModelOwner, params.capability)
         : await this.findOwnedActiveFallbackGroup(sharedModelOwner, params.modelFallbackGroupId);
 
     if (!group) {
       return [];
+    }
+    if (group.capability !== params.capability) {
+      throw new BadRequestException({
+        code: 'MODEL_CAPABILITY_MISMATCH',
+        message: `Model chain capability must be "${params.capability}".`
+      });
+    }
+    if (!group.isEnabled) return [];
+    const invalidCandidate = group.candidates.find(
+      (candidate) => candidate.model.capability !== params.capability
+    );
+    if (invalidCandidate) {
+      throw new BadRequestException({
+        code: 'MODEL_CAPABILITY_MISMATCH',
+        message: 'Model chain contains a model with a different capability.'
+      });
     }
 
     const candidates = group.candidates
@@ -634,6 +704,7 @@ export class ModelsService {
           candidate.isEnabled &&
           candidate.model.isEnabled &&
           !candidate.model.deletedAt &&
+          candidate.model.capability === params.capability &&
           candidate.model.provider.isEnabled &&
           !candidate.model.provider.deletedAt
       )
@@ -722,13 +793,15 @@ export class ModelsService {
   }
 
   private async findDefaultActiveFallbackGroup(
-    currentUser: CurrentUser
+    currentUser: CurrentUser,
+    capability: ModelCapability
   ): Promise<FallbackGroupWithCandidates | null> {
     return this.prisma.modelFallbackGroup.findFirst({
       where: {
         userId: currentUser.id,
         deletedAt: null,
-        isEnabled: true
+        isEnabled: true,
+        capability
       },
       include: this.fallbackGroupInclude(),
       orderBy: [{ isDefault: 'desc' }, { updatedAt: 'desc' }, { createdAt: 'desc' }]
@@ -737,7 +810,8 @@ export class ModelsService {
 
   private async assertFallbackCandidatesOwned(
     currentUser: CurrentUser,
-    candidates: { modelId: string; priority: number }[]
+    candidates: { modelId: string; priority: number }[],
+    capability: ModelCapability
   ): Promise<void> {
     const modelIds = candidates.map((candidate) => candidate.modelId);
     const priorities = candidates.map((candidate) => candidate.priority);
@@ -762,6 +836,7 @@ export class ModelsService {
           in: modelIds
         },
         deletedAt: null,
+        capability,
         provider: {
           userId: currentUser.id,
           deletedAt: null
@@ -822,6 +897,7 @@ export class ModelsService {
       providerDisplayName: model.provider.name,
       name: model.name,
       modelName: model.model,
+      capability: model.capability as ModelCapability,
       temperature: params.temperature ?? null,
       topP: params.topP ?? null,
       maxTokens: params.maxTokens ?? null,
@@ -848,6 +924,7 @@ export class ModelsService {
       id: group.id,
       userId: group.userId,
       name: group.name,
+      capability: group.capability as ModelCapability,
       isDefault: group.isDefault,
       isEnabled: group.isEnabled,
       candidates: group.candidates.map((candidate) => this.toFallbackCandidateResponse(candidate)),
@@ -885,6 +962,7 @@ export class ModelsService {
       providerName: model.provider.provider,
       baseUrl: model.provider.baseUrl,
       modelName: model.model,
+      capability: model.capability as ModelCapability,
       apiKey: this.decryptApiKey(model.provider.apiKeyCiphertext),
       contextLength: model.contextLength,
       capabilities: {

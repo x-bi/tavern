@@ -16,6 +16,8 @@ import { CompanionChatModule } from './modules/companion-chat/companion-chat.mod
 import { ContentPacksModule } from './modules/content-packs/content-packs.module';
 import { ConversationsModule } from './modules/conversations/conversations.module';
 import { HealthModule } from './modules/health/health.module';
+import { ImageGenerationsModule } from './modules/image-generations/image-generations.module';
+import { ImagesModule } from './modules/images/images.module';
 import { MessagesModule } from './modules/messages/messages.module';
 import { ModelsModule } from './modules/models/models.module';
 import { PersonasModule } from './modules/personas/personas.module';
@@ -66,7 +68,9 @@ import { TargetEventsModule } from './services/target-events/target-events.modul
     SettingsModule,
     SharesModule,
     WorldBooksModule,
-    HealthModule
+    HealthModule,
+    ImageGenerationsModule,
+    ImagesModule
   ]
 })
 export class AppModule {}

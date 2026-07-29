@@ -113,20 +113,39 @@ export class MessagesService {
 
     // 部分更新：仅写入 DTO 中实际传入的字段（undefined 的跳过保持原值）
     // status：未传时若 content 变了自动标 edited，否则不动；传了用传入值
-    const message = await this.prisma.message.update({
-      where: { id },
-      data: {
-        ...(dto.content === undefined ? {} : { content: dto.content }),
-        ...(dto.status === undefined
-          ? contentChanged
-            ? { status: 'edited' }
-            : {}
-          : { status: dto.status }),
-        ...(dto.metadata === undefined
-          ? {}
-          : { metadataJson: this.stringifyNullable(dto.metadata) }),
-        ...(dto.tokenCount === undefined ? {} : { tokenCount: dto.tokenCount })
+    const activeAssistant =
+      contentChanged && existing.turnId
+        ? await this.prisma.conversationTurn.findUnique({
+            where: { id: existing.turnId },
+            select: { activeAssistantMessageId: true }
+          })
+        : null;
+    const message = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.message.update({
+        where: { id },
+        data: {
+          ...(dto.content === undefined ? {} : { content: dto.content }),
+          ...(dto.status === undefined
+            ? contentChanged
+              ? { status: 'edited' }
+              : {}
+            : { status: dto.status }),
+          ...(dto.metadata === undefined
+            ? {}
+            : { metadataJson: this.stringifyNullable(dto.metadata) }),
+          ...(dto.tokenCount === undefined ? {} : { tokenCount: dto.tokenCount })
+        }
+      });
+      if (contentChanged && activeAssistant?.activeAssistantMessageId) {
+        await tx.messageImageLink.updateMany({
+          where: {
+            messageId: activeAssistant.activeAssistantMessageId,
+            status: 'active'
+          },
+          data: { status: 'hidden', reason: 'request_user_edited' }
+        });
       }
+      return updated;
     });
     this.targetEvents.emit('conversation', message.conversationId, 'message_updated', {
       messageId: message.id
@@ -146,11 +165,31 @@ export class MessagesService {
   async remove(currentUser: CurrentUser, id: string): Promise<{ deleted: true; id: string }> {
     const existing = await this.findOwnedActiveMessage(currentUser, id);
 
-    await this.prisma.message.update({
-      where: { id },
-      data: {
-        status: 'deleted',
-        deletedAt: new Date()
+    const activeAssistant =
+      existing.role === 'user' && existing.turnId
+        ? await this.prisma.conversationTurn.findUnique({
+            where: { id: existing.turnId },
+            select: { activeAssistantMessageId: true }
+          })
+        : null;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.message.update({
+        where: { id },
+        data: {
+          status: 'deleted',
+          deletedAt: new Date()
+        }
+      });
+      const linkedMessageId =
+        existing.role === 'assistant' ? existing.id : activeAssistant?.activeAssistantMessageId;
+      if (linkedMessageId) {
+        await tx.messageImageLink.updateMany({
+          where: { messageId: linkedMessageId, status: 'active' },
+          data: {
+            status: 'detached',
+            reason: existing.role === 'assistant' ? 'message_deleted' : 'request_user_deleted'
+          }
+        });
       }
     });
     await this.replayService.replay(existing.conversationId);

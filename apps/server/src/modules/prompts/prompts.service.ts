@@ -81,6 +81,7 @@ export class PromptsService {
     const conversation = await this.findOwnedActiveConversation(currentUser, dto.conversationId);
     const modelCandidates = await this.modelsService.getGatewayCandidates({
       currentUser,
+      capability: 'chat',
       modelFallbackGroupId: conversation.modelFallbackGroupId
     });
     const gatewayConfig = modelCandidates[0] ?? null;

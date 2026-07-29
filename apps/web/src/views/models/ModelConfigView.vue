@@ -107,6 +107,9 @@
             <template #header>
               <div class="model-chain-card__title">
                 <strong>{{ model.name }}</strong>
+                <n-tag size="small" :type="model.capability === 'image' ? 'success' : 'default'">
+                  {{ model.capability === 'image' ? '生图' : '对话' }}
+                </n-tag>
                 <n-tag size="small" :type="model.isEnabled ? 'info' : 'warning'">
                   {{ model.isEnabled ? '启用' : '停用' }}
                 </n-tag>
@@ -131,6 +134,7 @@
             <template #action>
               <n-space justify="end">
                 <n-button
+                  v-if="model.capability === 'chat'"
                   size="small"
                   secondary
                   :loading="testingId === model.id"
@@ -138,6 +142,7 @@
                 >
                   测试
                 </n-button>
+                <n-tag v-else size="small" :bordered="false">暂不支持生图模型测试</n-tag>
                 <n-button size="small" secondary @click="openEditModel(model)">编辑</n-button>
                 <n-button size="small" secondary type="error" @click="deleteModel(model)">
                   删除
@@ -170,6 +175,9 @@
             <template #header>
               <div class="model-chain-card__title">
                 <strong>{{ group.name }}</strong>
+                <n-tag size="small" :type="group.capability === 'image' ? 'success' : 'default'">
+                  {{ group.capability === 'image' ? '生图链' : '对话链' }}
+                </n-tag>
                 <n-space size="small">
                   <n-tag v-if="group.isDefault" size="small" type="success" :bordered="false">
                     默认
@@ -251,6 +259,9 @@
             </n-form-item>
             <n-form-item label="modelName" required>
               <n-input v-model:value="modelForm.modelName" maxlength="160" />
+            </n-form-item>
+            <n-form-item label="能力类型" required>
+              <NSelect v-model:value="modelForm.capability" :options="capabilityOptions" />
             </n-form-item>
             <div class="model-chain-form__grid">
               <n-form-item label="Temperature">
@@ -334,6 +345,9 @@
             <n-form-item label="模型链名称" required>
               <n-input v-model:value="groupForm.name" maxlength="120" />
             </n-form-item>
+            <n-form-item label="能力类型" required>
+              <NSelect v-model:value="groupForm.capability" :options="capabilityOptions" />
+            </n-form-item>
             <n-form-item label="候选模型" required>
               <NSelect
                 v-model:value="groupForm.modelIds"
@@ -357,7 +371,12 @@
               </div>
             </div>
             <n-space>
-              <n-checkbox v-model:checked="groupForm.isDefault">默认模型链</n-checkbox>
+              <n-checkbox
+                v-if="groupForm.capability === 'chat'"
+                v-model:checked="groupForm.isDefault"
+              >
+                默认模型链
+              </n-checkbox>
               <n-checkbox v-model:checked="groupForm.isEnabled">启用</n-checkbox>
             </n-space>
           </template>
@@ -431,6 +450,7 @@ const modelForm = reactive({
   providerId: '',
   name: '',
   modelName: '',
+  capability: 'chat' as 'chat' | 'image',
   temperature: null as number | null,
   topP: null as number | null,
   maxTokens: null as number | null,
@@ -449,6 +469,7 @@ const modelForm = reactive({
 
 const groupForm = reactive({
   name: '',
+  capability: 'chat' as 'chat' | 'image',
   modelIds: [] as string[],
   candidateEnabled: {} as Record<string, boolean>,
   isDefault: false,
@@ -461,6 +482,10 @@ const systemPlacementOptions = [
 const tokenizerOptions = [
   { label: '字符估算 v1', value: 'estimated_chars_v1' },
   { label: 'OpenAI 兼容估算', value: 'openai_compatible' }
+];
+const capabilityOptions = [
+  { label: '对话模型', value: 'chat' },
+  { label: '生图模型', value: 'image' }
 ];
 
 const providerOptions = computed<SelectOption[]>(() =>
@@ -479,11 +504,13 @@ const supportedProviderOptions = computed<SelectOption[]>(() =>
 );
 
 const modelOptions = computed<SelectOption[]>(() =>
-  modelStore.providerModels.map((model) => ({
-    label: `${model.providerDisplayName} / ${model.name}`,
-    value: model.id,
-    disabled: !model.isEnabled
-  }))
+  modelStore.providerModels
+    .filter((model) => model.capability === groupForm.capability)
+    .map((model) => ({
+      label: `${model.providerDisplayName} / ${model.name}`,
+      value: model.id,
+      disabled: !model.isEnabled
+    }))
 );
 
 onMounted(async () => {
@@ -534,6 +561,7 @@ function openCreateModel() {
     providerId: modelStore.providers.find((provider) => provider.isDefault)?.id ?? '',
     name: '',
     modelName: '',
+    capability: 'chat',
     temperature: null,
     topP: null,
     maxTokens: null,
@@ -558,6 +586,7 @@ function openEditModel(model: ProviderModel) {
     providerId: model.providerId,
     name: model.name,
     modelName: model.modelName,
+    capability: model.capability,
     temperature: model.temperature,
     topP: model.topP,
     maxTokens: model.maxTokens,
@@ -580,6 +609,7 @@ function openCreateGroup() {
   editingGroup.value = null;
   Object.assign(groupForm, {
     name: '',
+    capability: 'chat',
     modelIds: [],
     candidateEnabled: {},
     isDefault: false,
@@ -593,6 +623,7 @@ function openEditGroup(group: ModelFallbackGroup) {
   const candidates = group.candidates.slice().sort((left, right) => left.priority - right.priority);
   Object.assign(groupForm, {
     name: group.name,
+    capability: group.capability,
     modelIds: candidates.map((candidate) => candidate.modelId),
     candidateEnabled: Object.fromEntries(
       candidates.map((candidate) => [candidate.modelId, candidate.isEnabled])
@@ -662,6 +693,7 @@ async function submitModel() {
     providerId: modelForm.providerId,
     name: modelForm.name.trim(),
     modelName: modelForm.modelName.trim(),
+    capability: modelForm.capability,
     temperature: modelForm.temperature,
     topP: modelForm.topP,
     maxTokens: modelForm.maxTokens,
@@ -695,7 +727,8 @@ async function submitGroup() {
 
   const payload = {
     name: groupForm.name.trim(),
-    isDefault: groupForm.isDefault,
+    capability: groupForm.capability,
+    isDefault: groupForm.capability === 'chat' ? groupForm.isDefault : false,
     isEnabled: groupForm.isEnabled,
     candidates: groupForm.modelIds.map((modelId, index) => ({
       modelId,

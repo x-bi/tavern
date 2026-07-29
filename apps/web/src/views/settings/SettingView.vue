@@ -118,6 +118,7 @@
           <div>
             <h3>备份与恢复</h3>
             <p>导出当前逻辑备份，或进入备份页执行覆盖导入。</p>
+            <p>应用级 JSON 备份不包含聊天场景图片、生成批次、Prompt 或消息图片关联。</p>
           </div>
           <n-tag size="small" type="warning" :bordered="false">不导出 API Key 明文</n-tag>
         </div>

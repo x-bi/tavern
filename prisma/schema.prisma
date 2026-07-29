@@ -18,17 +18,19 @@ model User {
   updatedAt    DateTime  @updatedAt
   deletedAt    DateTime?
 
-  appSettings         AppSetting[]
-  assets              Asset[]
-  characters          Character[]
-  companions          Companion[]
-  conversations       Conversation[]
-  modelFallbackGroups ModelFallbackGroup[]
-  modelProviders      ModelProvider[]
-  personas            UserPersona[]
-  promptPresets       PromptPreset[]
-  shareLinks          ShareLink[]
-  worldBooks          WorldBook[]
+  appSettings            AppSetting[]
+  assets                 Asset[]
+  characters             Character[]
+  companions             Companion[]
+  conversations          Conversation[]
+  modelFallbackGroups    ModelFallbackGroup[]
+  modelProviders         ModelProvider[]
+  personas               UserPersona[]
+  promptPresets          PromptPreset[]
+  shareLinks             ShareLink[]
+  worldBooks             WorldBook[]
+  imageGenerationBatches ImageGenerationBatch[]
+  imageAssets            ImageAsset[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -98,6 +100,7 @@ model ProviderModel {
   providerId                     String
   name                           String
   model                          String
+  capability                     String    @default("chat")
   defaultParamsJson              String?
   contextLength                  Int?
   supportsDeveloperRole          Boolean   @default(false)
@@ -118,27 +121,32 @@ model ProviderModel {
   @@unique([providerId, name])
   @@unique([providerId, model])
   @@index([providerId, isEnabled])
+  @@index([providerId, capability])
   @@index([deletedAt])
 }
 
 model ModelFallbackGroup {
-  id        String    @id @default(cuid())
-  userId    String
-  name      String
-  isDefault Boolean   @default(false)
-  isEnabled Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id         String    @id @default(cuid())
+  userId     String
+  name       String
+  capability String    @default("chat")
+  isDefault  Boolean   @default(false)
+  isEnabled  Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  deletedAt  DateTime?
 
-  candidates      ModelFallbackCandidate[]
-  conversations   Conversation[]
-  companions      Companion[]              @relation("CompanionModelFallbackGroup")
-  memoryFallbacks CompanionMemory[]        @relation("CompanionMemoryFallbackGroup")
-  user            User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidates             ModelFallbackCandidate[]
+  conversations          Conversation[]
+  imageConversations     Conversation[]           @relation("ConversationImageModelFallbackGroup")
+  imageGenerationBatches ImageGenerationBatch[]
+  companions             Companion[]              @relation("CompanionModelFallbackGroup")
+  memoryFallbacks        CompanionMemory[]        @relation("CompanionMemoryFallbackGroup")
+  user                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
   @@index([userId, isEnabled])
+  @@index([userId, capability])
   @@index([deletedAt])
 }
 
@@ -160,21 +168,21 @@ model ModelFallbackCandidate {
 }
 
 model PromptPreset {
-  id                     String    @id @default(cuid())
-  userId                 String
-  name                   String
-  description            String    @default("")
-  instructionsJson              String    @default("[]")
-  outputRuleOperationsJson      String    @default("[]")
-  generationPurposesJson        String    @default("[\"chat_reply\",\"regenerate\",\"continue\"]")
-  parametersJson         String?
-  metadataJson           String?
-  isSensitive            Boolean   @default(false)
-  isShared               Boolean   @default(false)
-  isDefault              Boolean   @default(false)
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  deletedAt              DateTime?
+  id                       String    @id @default(cuid())
+  userId                   String
+  name                     String
+  description              String    @default("")
+  instructionsJson         String    @default("[]")
+  outputRuleOperationsJson String    @default("[]")
+  generationPurposesJson   String    @default("[\"chat_reply\",\"regenerate\",\"continue\"]")
+  parametersJson           String?
+  metadataJson             String?
+  isSensitive              Boolean   @default(false)
+  isShared                 Boolean   @default(false)
+  isDefault                Boolean   @default(false)
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  deletedAt                DateTime?
 
   conversations Conversation[]
   companions    Companion[]
@@ -215,22 +223,24 @@ model UserPersona {
 }
 
 model Conversation {
-  id                      String    @id @default(cuid())
-  userId                  String
-  characterId             String
-  modelFallbackGroupId    String?
-  promptPresetId          String?
-  personaId               String?
-  title                   String
-  status                  String    @default("active")
-  version                 Int       @default(0)
-  activeGenerationLeaseId String?
-  metadataJson            String?
-  usesSensitiveResource   Boolean   @default(false)
-  lastMessageAt           DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
-  deletedAt               DateTime?
+  id                        String    @id @default(cuid())
+  userId                    String
+  characterId               String
+  modelFallbackGroupId      String?
+  imageModelFallbackGroupId String?
+  imageGenerationConfigJson String?
+  promptPresetId            String?
+  personaId                 String?
+  title                     String
+  status                    String    @default("active")
+  version                   Int       @default(0)
+  activeGenerationLeaseId   String?
+  metadataJson              String?
+  usesSensitiveResource     Boolean   @default(false)
+  lastMessageAt             DateTime?
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+  deletedAt                 DateTime?
 
   character                 Character                              @relation(fields: [characterId], references: [id], onDelete: Cascade)
   messages                  Message[]
@@ -239,16 +249,19 @@ model Conversation {
   worldBookActivationStates ConversationWorldBookActivationState[]
   worldBookActivationEvents ConversationWorldBookActivationEvent[]
   modelFallbackGroup        ModelFallbackGroup?                    @relation(fields: [modelFallbackGroupId], references: [id], onDelete: SetNull)
+  imageModelFallbackGroup   ModelFallbackGroup?                    @relation("ConversationImageModelFallbackGroup", fields: [imageModelFallbackGroupId], references: [id], onDelete: SetNull)
   persona                   UserPersona?                           @relation(fields: [personaId], references: [id], onDelete: SetNull)
   promptPreset              PromptPreset?                          @relation(fields: [promptPresetId], references: [id], onDelete: SetNull)
   shareLinks                ShareLink[]
   worldBookLinks            WorldBookConversation[]
   user                      User                                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  imageGenerationBatches    ImageGenerationBatch[]
 
   @@index([userId, updatedAt])
   @@index([userId, usesSensitiveResource])
   @@index([characterId, updatedAt])
   @@index([modelFallbackGroupId])
+  @@index([imageModelFallbackGroupId])
   @@index([status])
   @@index([deletedAt])
 }
@@ -278,6 +291,8 @@ model Message {
   worldBookStateRoots       ConversationWorldBookActivationState[] @relation("ConversationWorldBookStateRootUser")
   worldBookEventSources     ConversationWorldBookActivationEvent[] @relation("ConversationWorldBookEventSource")
   worldBookEventRoots       ConversationWorldBookActivationEvent[] @relation("ConversationWorldBookEventRootUser")
+  imageGenerationBatches    ImageGenerationBatch[]
+  imageLinks                MessageImageLink[]
 
   @@index([conversationId, createdAt])
   @@index([turnId])
@@ -684,11 +699,117 @@ model Asset {
 
   characterAvatars Character[] @relation("CharacterAvatar")
   companionAvatars Companion[] @relation("CompanionAvatar")
+  imageAsset       ImageAsset?
   user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, kind])
   @@index([createdAt])
   @@index([deletedAt])
+}
+
+model ImageGenerationBatch {
+  id                       String    @id @default(cuid())
+  userId                   String
+  conversationId           String?
+  sourceMessageId          String?
+  requestId                String
+  requestHash              String
+  modelFallbackGroupId     String
+  providerModelId          String?
+  scenePromptModelId       String?
+  status                   String    @default("pending")
+  stylePreset              String
+  requestedImageCount      Int
+  aspectRatio              String
+  prompt                   String?
+  promptHash               String?
+  positivePromptBody       String?
+  negativePrompt           String?
+  sceneSnapshotJson        String?
+  sceneSnapshotHash        String?
+  parametersJson           String?
+  providerMetadataJson     String?
+  sourceMessageContentHash String
+  adminSafeSourceSummary   String?
+  scenePromptVersion       String
+  scenePromptInputHash     String?
+  scenePromptOutputHash    String?
+  promptCompilerVersion    String
+  errorCode                String?
+  errorMessage             String?
+  cancelRequestedAt        DateTime?
+  parentBatchId            String?
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+
+  user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversation       Conversation?          @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  sourceMessage      Message?               @relation(fields: [sourceMessageId], references: [id], onDelete: SetNull)
+  modelFallbackGroup ModelFallbackGroup     @relation(fields: [modelFallbackGroupId], references: [id], onDelete: Restrict)
+  parentBatch        ImageGenerationBatch?  @relation("ImageGenerationBatchParent", fields: [parentBatchId], references: [id], onDelete: SetNull)
+  childBatches       ImageGenerationBatch[] @relation("ImageGenerationBatchParent")
+  lease              ImageGenerationLease?
+  images             ImageAsset[]
+
+  @@unique([userId, requestId])
+  @@index([userId, createdAt])
+  @@index([conversationId, sourceMessageId])
+  @@index([status, createdAt])
+  @@index([providerModelId])
+  @@index([scenePromptModelId])
+}
+
+model ImageGenerationLease {
+  sourceMessageId String   @id
+  batchId         String   @unique
+  leaseId         String   @unique
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  batch ImageGenerationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+}
+
+model ImageAsset {
+  id         String   @id @default(cuid())
+  userId     String
+  batchId    String
+  assetId    String   @unique
+  status     String   @default("active")
+  sourceType String   @default("chat_scene_generation")
+  width      Int?
+  height     Int?
+  orderIndex Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  batch ImageGenerationBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  asset Asset                @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  links MessageImageLink[]
+
+  @@index([userId, createdAt])
+  @@index([batchId, orderIndex])
+  @@index([status, createdAt])
+}
+
+model MessageImageLink {
+  id           String   @id @default(cuid())
+  messageId    String
+  imageAssetId String
+  status       String   @default("active")
+  reason       String   @default("generated")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  message    Message    @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  imageAsset ImageAsset @relation(fields: [imageAssetId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, imageAssetId])
+  @@index([messageId, status])
+  @@index([imageAssetId, status])
 }
 
 model AppSetting {

@@ -9,6 +9,7 @@ import type {
   ConversationListResponse,
   ConversationPayload,
   ConversationResponse,
+  ConversationImageGenerationConfigPayload,
   ConversationUpdatePayload
 } from '@tavern/shared';
 
@@ -129,6 +130,20 @@ export async function updateConversation(
     throw new ApiClientError(response.error.message, response.error.code, response.error.details);
   }
 
+  return response.data;
+}
+
+export async function updateConversationImageGenerationConfig(
+  id: string,
+  payload: ConversationImageGenerationConfigPayload
+): Promise<ConversationResponse> {
+  const response = await requestJson<ConversationResponse>(
+    `/conversations/${id}/image-generation-config`,
+    { method: 'PUT', body: payload }
+  );
+  if (!response.success) {
+    throw new ApiClientError(response.error.message, response.error.code, response.error.details);
+  }
   return response.data;
 }
 

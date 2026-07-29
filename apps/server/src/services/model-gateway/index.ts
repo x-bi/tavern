@@ -20,6 +20,10 @@ export type {
   ModelGatewayStreamEvent,
   ModelGatewayStreamPingEvent,
   ModelGatewayTokenUsage,
+  GeneratedImageOutput,
+  ImageGenerationOptions,
+  ImageGenerationRequest,
+  ImageGenerationResult,
   ModelProviderAdapter,
   ModelProviderRegistry
 } from './types';

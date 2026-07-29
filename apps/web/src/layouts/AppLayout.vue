@@ -65,14 +65,26 @@ const isChatRoute = computed(
 );
 
 const menuOptions = computed<MenuOption[]>(() =>
-  [...navigationItems, ...(currentUser.value?.role === 'admin' ? [{ path: '/admin/users', label: '成员管理' }] : [])].map((item) => ({
+  [
+    ...navigationItems,
+    ...(currentUser.value?.role === 'admin'
+      ? [
+          { path: '/admin/users', label: '成员管理' },
+          { path: '/admin/images', label: '图片管理' }
+        ]
+      : [])
+  ].map((item) => ({
     key: item.path,
     label: item.label
   }))
 );
 
 onMounted(async () => {
-  try { currentUser.value = await fetchCurrentUser(); } catch { currentUser.value = null; }
+  try {
+    currentUser.value = await fetchCurrentUser();
+  } catch {
+    currentUser.value = null;
+  }
 });
 
 const activeMenuKey = computed(() => {

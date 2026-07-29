@@ -12,7 +12,9 @@ import type {
   ModelGatewayMessage,
   ModelGatewayRequestOptions,
   ModelGatewayStreamEvent,
-  ModelProviderAdapter
+  ModelProviderAdapter,
+  ImageGenerationRequest,
+  ImageGenerationResult
 } from '../../types';
 import {
   OPENAI_COMPATIBLE_DEFAULT_TIMEOUT_MS,
@@ -60,6 +62,102 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
   /** 模块初始化时把自己注册到注册表。 */
   onModuleInit(): void {
     this.registry.register(this);
+  }
+
+  /**
+   * OpenAI-compatible Images 适配：支持 `b64_json` 与临时 URL 两种标准响应。
+   * 供应商差异仅停留在 Adapter，业务层始终接收统一图片结果。
+   */
+  async generateImage(input: ImageGenerationRequest): Promise<ImageGenerationResult> {
+    const timeoutMs = this.resolveTimeoutMs(input.timeout);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const abortFromUpstream = (): void => controller.abort();
+    input.signal?.addEventListener('abort', abortFromUpstream, { once: true });
+    const baseUrl = input.baseUrl.replace(/\/+$/g, '');
+    const url = baseUrl.endsWith('/images/generations') ? baseUrl : `${baseUrl}/images/generations`;
+    const size = this.toImageSize(input.options?.aspectRatio);
+    const providerOptions = input.options?.providerOptions ?? {};
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {})
+        },
+        body: JSON.stringify({
+          model: input.modelName,
+          prompt: input.prompt,
+          n: input.options?.imageCount ?? 1,
+          size,
+          response_format: 'b64_json',
+          ...(input.options?.quality ? { quality: input.options.quality } : {}),
+          ...(input.options?.style ? { style: input.options.style } : {}),
+          ...(input.options?.seed === undefined ? {} : { seed: input.options.seed }),
+          ...(input.options?.negativePrompt
+            ? { negative_prompt: input.options.negativePrompt }
+            : {}),
+          ...providerOptions
+        }),
+        signal: controller.signal
+      });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new ModelGatewayError(
+          'IMAGE_PROVIDER_REJECTED',
+          `Image provider request failed with HTTP ${response.status}.`
+        );
+      }
+      let parsed: {
+        data?: Array<{
+          b64_json?: string;
+          url?: string;
+          revised_prompt?: string;
+        }>;
+        usage?: Record<string, unknown>;
+      };
+      try {
+        parsed = JSON.parse(text) as typeof parsed;
+      } catch {
+        throw new ModelGatewayError(
+          ERROR_CODES.MODEL_GATEWAY_INVALID_RESPONSE,
+          'Image provider returned invalid JSON.'
+        );
+      }
+      const images = (parsed.data ?? [])
+        .map((item) => ({
+          ...(item.b64_json
+            ? { data: Buffer.from(item.b64_json, 'base64'), mimeType: 'image/png' }
+            : {}),
+          ...(item.url ? { remoteUrl: item.url } : {}),
+          ...(item.revised_prompt ? { revisedPrompt: item.revised_prompt } : {})
+        }))
+        .filter((item) => item.data || item.remoteUrl);
+      if (images.length === 0) {
+        throw new ModelGatewayError(
+          'IMAGE_PROVIDER_EMPTY_RESULT',
+          'Image provider returned no usable images.'
+        );
+      }
+      return { images, usage: parsed.usage };
+    } catch (error) {
+      throw this.normalizeRequestError(error, timeoutMs);
+    } finally {
+      clearTimeout(timeout);
+      input.signal?.removeEventListener('abort', abortFromUpstream);
+    }
+  }
+
+  private toImageSize(aspectRatio?: string): string {
+    const sizes: Record<string, string> = {
+      '1:1': '1024x1024',
+      '3:4': '1024x1365',
+      '4:3': '1365x1024',
+      '9:16': '1024x1792',
+      '16:9': '1792x1024'
+    };
+    return sizes[aspectRatio ?? '1:1'] ?? sizes['1:1']!;
   }
 
   /**
@@ -858,7 +956,10 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
    * @param apiKey 用于脱敏。
    * @returns 摘要，或 null。
    */
-  private extractProviderSummary(responseText: string, apiKey: string | null | undefined): string | null {
+  private extractProviderSummary(
+    responseText: string,
+    apiKey: string | null | undefined
+  ): string | null {
     const rawSummary = this.tryExtractProviderMessage(responseText) ?? responseText;
     const sanitizedSummary = this.sanitizeProviderText(rawSummary, apiKey);
 

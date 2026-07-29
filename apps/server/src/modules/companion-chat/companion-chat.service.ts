@@ -105,6 +105,7 @@ export class CompanionChatService {
     });
     const candidates = await this.models.getGatewayCandidates({
       currentUser: user,
+      capability: 'chat',
       modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
     });
     const promptInput = this.toPromptInput(
@@ -244,6 +245,7 @@ export class CompanionChatService {
       });
       const candidates = await this.models.getGatewayCandidates({
         currentUser: user,
+        capability: 'chat',
         modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
       });
       if (!candidates.length)

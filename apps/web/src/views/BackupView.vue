@@ -14,6 +14,7 @@
           <div class="backup-export__tags">
             <n-tag :bordered="false" type="info">格式版本 tavern-lite.backup.v2</n-tag>
             <n-tag :bordered="false" type="warning">不包含 uploads 文件二进制</n-tag>
+            <n-tag :bordered="false" type="warning">不包含聊天场景生图数据</n-tag>
           </div>
         </div>
         <n-button type="primary" :loading="exporting" @click="handleExport">
@@ -23,7 +24,8 @@
 
       <n-alert class="backup-note" type="default" :bordered="false">
         导出的 JSON 是逻辑备份，不是 SQLite 文件快照。头像等上传资源会记录清单和相对路径，
-        需要完整恢复时应另行备份 uploads 目录。
+        需要完整恢复时应另行备份 uploads 目录。聊天场景的生成批次、图片、Prompt、SceneSnapshot
+        和消息展示关联均不进入应用级 JSON 备份。
       </n-alert>
 
       <section class="backup-import">
@@ -32,6 +34,7 @@
           <p>恢复会全量覆盖当前用户现有数据，不做逐条冲突合并。导入前建议先导出一份当前备份。</p>
           <n-alert type="warning" :bordered="false">
             模型供应商、模型和模型链不会从备份恢复；导入后需要重新配置模型链。
+            历史聊天场景图片及其生成记录也不会恢复。
           </n-alert>
           <label class="backup-file">
             <span>备份 JSON 文件</span>

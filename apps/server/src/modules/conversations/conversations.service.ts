@@ -22,6 +22,11 @@ import type {
 import type { CreateConversationDto } from './dto/create-conversation.dto';
 import type { QueryConversationsDto } from './dto/query-conversations.dto';
 import type { UpdateConversationDto } from './dto/update-conversation.dto';
+import type { UpdateConversationImageGenerationDto } from './dto/update-conversation-image-generation.dto';
+import {
+  parseConversationImageGenerationConfig,
+  validateConversationImageGenerationConfig
+} from './image-generation-config';
 
 /** 会话记录 + 各关联实体（include 后的形态）。 */
 type ConversationWithRelations = Conversation & {
@@ -29,6 +34,11 @@ type ConversationWithRelations = Conversation & {
     avatarAsset: Asset | null;
   };
   modelFallbackGroup:
+    | (ModelFallbackGroup & {
+        candidates: ModelFallbackCandidate[];
+      })
+    | null;
+  imageModelFallbackGroup:
     | (ModelFallbackGroup & {
         candidates: ModelFallbackCandidate[];
       })
@@ -170,6 +180,29 @@ export class ConversationsService {
     return this.toResponse(await this.findOwnedActiveConversation(currentUser, id));
   }
 
+  async updateImageGenerationConfig(
+    currentUser: CurrentUser,
+    id: string,
+    dto: UpdateConversationImageGenerationDto
+  ): Promise<ConversationResponse> {
+    await this.findOwnedActiveConversation(currentUser, id);
+    const imageModelFallbackGroupId = await this.resolveModelFallbackGroupId(
+      currentUser,
+      dto.imageModelFallbackGroupId,
+      'image'
+    );
+    const config = validateConversationImageGenerationConfig(dto.config);
+    const conversation = await this.prisma.conversation.update({
+      where: { id },
+      data: {
+        imageModelFallbackGroupId,
+        imageGenerationConfigJson: JSON.stringify(config)
+      },
+      include: this.relationInclude()
+    });
+    return this.toResponse(conversation);
+  }
+
   /**
    * 更新会话（部分更新）：关联 ID 传入时校验归属。
    * @param currentUser 当前登录用户。
@@ -276,6 +309,10 @@ export class ConversationsService {
         data: {
           deletedAt: now
         }
+      }),
+      this.prisma.messageImageLink.updateMany({
+        where: { message: { conversationId: id }, status: 'active' },
+        data: { status: 'detached', reason: 'message_deleted' }
       })
     ]);
 
@@ -313,6 +350,10 @@ export class ConversationsService {
         data: {
           deletedAt: now
         }
+      }),
+      this.prisma.messageImageLink.updateMany({
+        where: { message: { conversationId: id }, status: 'active' },
+        data: { status: 'detached', reason: 'message_deleted' }
       })
     ]);
 
@@ -394,7 +435,8 @@ export class ConversationsService {
    */
   private async resolveModelFallbackGroupId(
     _currentUser: CurrentUser,
-    id: string | null | undefined
+    id: string | null | undefined,
+    capability: 'chat' | 'image' = 'chat'
   ): Promise<string | null> {
     if (!id) {
       return null;
@@ -403,7 +445,9 @@ export class ConversationsService {
     const group = await this.prisma.modelFallbackGroup.findFirst({
       where: {
         id,
-        deletedAt: null
+        deletedAt: null,
+        isEnabled: true,
+        capability
       },
       select: {
         id: true
@@ -514,6 +558,11 @@ export class ConversationsService {
           candidates: true
         }
       },
+      imageModelFallbackGroup: {
+        include: {
+          candidates: true
+        }
+      },
       promptPreset: true,
       persona: true
     } satisfies Prisma.ConversationInclude;
@@ -530,6 +579,10 @@ export class ConversationsService {
       userId: conversation.userId,
       characterId: conversation.characterId,
       modelFallbackGroupId: conversation.modelFallbackGroupId,
+      imageModelFallbackGroupId: conversation.imageModelFallbackGroupId,
+      imageGenerationConfig: parseConversationImageGenerationConfig(
+        conversation.imageGenerationConfigJson
+      ),
       promptPresetId: conversation.promptPresetId,
       personaId: conversation.personaId,
       title: conversation.title,
@@ -554,7 +607,17 @@ export class ConversationsService {
             id: conversation.modelFallbackGroup.id,
             name: conversation.modelFallbackGroup.name,
             isEnabled: conversation.modelFallbackGroup.isEnabled,
-            candidateCount: conversation.modelFallbackGroup.candidates.length
+            candidateCount: conversation.modelFallbackGroup.candidates.length,
+            capability: conversation.modelFallbackGroup.capability as 'chat' | 'image'
+          }
+        : null,
+      imageModelFallbackGroup: conversation.imageModelFallbackGroup
+        ? {
+            id: conversation.imageModelFallbackGroup.id,
+            name: conversation.imageModelFallbackGroup.name,
+            isEnabled: conversation.imageModelFallbackGroup.isEnabled,
+            candidateCount: conversation.imageModelFallbackGroup.candidates.length,
+            capability: conversation.imageModelFallbackGroup.capability as 'chat' | 'image'
           }
         : null,
       promptPreset: conversation.promptPreset

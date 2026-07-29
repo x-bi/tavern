@@ -43,6 +43,10 @@
         :suggestions="chatStore.suggestions"
         :suggestions-loading="chatStore.suggestionsLoading"
         :suggestions-error="chatStore.suggestionsError"
+        :message-images="chatStore.messageImages"
+        :image-generating-message-ids="chatStore.imageGeneratingMessageIds"
+        :image-generation-errors="chatStore.imageGenerationErrors"
+        :image-generation-enabled="imageGenerationEnabled"
         @update:draft="chatStore.setDraft"
         @reload="reloadMessages"
         @send="handleSend"
@@ -52,6 +56,8 @@
         @delete="confirmDelete"
         @regenerate="handleRegenerate"
         @regenerate-latest="handleLatestRegenerate"
+        @generate-image="handleGenerateImage"
+        @regenerate-image="handleRegenerateImage"
         @preview-prompt="goPromptPreview"
         @request-suggestions="handleSuggestions"
         @apply-suggestion="chatStore.applySuggestion"
@@ -114,6 +120,26 @@
               placeholder="未选择"
             />
           </n-form-item>
+          <n-divider>聊天场景生图</n-divider>
+          <n-form-item label="生图模型链">
+            <NSelect
+              v-model:value="settingsForm.imageModelFallbackGroupId"
+              clearable
+              :options="imageModelOptions"
+              placeholder="未选择时禁用场景生图"
+            />
+          </n-form-item>
+          <n-form-item label="视觉风格">
+            <NSelect v-model:value="settingsForm.stylePreset" :options="imageStyleOptions" />
+          </n-form-item>
+          <div class="chat-view__image-config">
+            <n-form-item label="生成张数">
+              <n-input-number v-model:value="settingsForm.imageCount" :min="1" :max="4" />
+            </n-form-item>
+            <n-form-item label="画面比例">
+              <NSelect v-model:value="settingsForm.aspectRatio" :options="aspectRatioOptions" />
+            </n-form-item>
+          </div>
           <n-form-item label="Prompt 预设">
             <NSelect
               v-model:value="settingsForm.promptPresetId"
@@ -154,7 +180,12 @@
 </template>
 
 <script setup lang="ts">
-import { createGenerationRequestId, type ChatStreamPayload } from '@tavern/shared';
+import {
+  createGenerationRequestId,
+  type ChatStreamPayload,
+  type ImageAspectRatio,
+  type ImageStylePreset
+} from '@tavern/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { NSelect, type SelectOption, useDialog, useMessage } from 'naive-ui';
 import { useRoute, useRouter } from 'vue-router';
@@ -190,6 +221,10 @@ const settingsForm = reactive({
   title: '',
   characterId: '',
   modelFallbackGroupId: null as string | null,
+  imageModelFallbackGroupId: null as string | null,
+  stylePreset: 'auto' as ImageStylePreset,
+  imageCount: 1 as 1 | 2 | 3 | 4,
+  aspectRatio: '1:1' as ImageAspectRatio,
   promptPresetId: null as string | null,
   personaId: null as string | null,
   status: 'active' as 'active' | 'archived'
@@ -234,9 +269,31 @@ const characterOptions = computed<SelectOption[]>(() =>
 );
 const modelOptions = computed<SelectOption[]>(() =>
   modelStore.fallbackGroups
-    .filter((item) => item.isEnabled)
+    .filter((item) => item.isEnabled && item.capability === 'chat')
     .map((item) => ({ label: item.name, value: item.id }))
 );
+const imageModelOptions = computed<SelectOption[]>(() =>
+  modelStore.fallbackGroups
+    .filter((item) => item.isEnabled && item.capability === 'image')
+    .map((item) => ({ label: item.name, value: item.id }))
+);
+const imageGenerationEnabled = computed(
+  () =>
+    Boolean(currentConversation.value?.modelFallbackGroupId) &&
+    Boolean(currentConversation.value?.imageModelFallbackGroupId)
+);
+const imageStyleOptions: SelectOption[] = [
+  { label: '自动', value: 'auto' },
+  { label: '动漫插画', value: 'anime' },
+  { label: '写实摄影', value: 'realistic' },
+  { label: '电影感', value: 'cinematic' },
+  { label: '叙事插画', value: 'illustration' },
+  { label: '奇幻概念', value: 'fantasy' }
+];
+const aspectRatioOptions: SelectOption[] = ['1:1', '3:4', '4:3', '9:16', '16:9'].map((value) => ({
+  label: value,
+  value
+}));
 const presetOptions = computed<SelectOption[]>(() =>
   presetStore.items.map((item) => ({ label: item.name, value: item.id }))
 );
@@ -271,7 +328,9 @@ async function loadCurrentRoom() {
 
   await Promise.allSettled([
     conversationStore.loadConversation(conversationId.value),
-    chatStore.loadMessages(conversationId.value, { page: 1, pageSize: 100, order: 'asc' })
+    chatStore.loadMessages(conversationId.value, { page: 1, pageSize: 100, order: 'asc' }),
+    chatStore.loadMessageImages(conversationId.value),
+    chatStore.recoverImageGenerations(conversationId.value)
   ]);
 }
 
@@ -299,6 +358,10 @@ async function openConversationSettings() {
     title: conversation.title,
     characterId: conversation.characterId,
     modelFallbackGroupId: conversation.modelFallbackGroupId,
+    imageModelFallbackGroupId: conversation.imageModelFallbackGroupId,
+    stylePreset: conversation.imageGenerationConfig.stylePreset,
+    imageCount: conversation.imageGenerationConfig.imageCount,
+    aspectRatio: conversation.imageGenerationConfig.aspectRatio,
     promptPresetId: conversation.promptPresetId,
     personaId: conversation.personaId,
     status: conversation.status === 'archived' ? 'archived' : 'active'
@@ -327,6 +390,15 @@ async function saveConversationSettings() {
   });
 
   if (!updated) return;
+  const imageUpdated = await conversationStore.updateImageGenerationConfig(activeId, {
+    imageModelFallbackGroupId: settingsForm.imageModelFallbackGroupId,
+    config: {
+      stylePreset: settingsForm.stylePreset,
+      imageCount: settingsForm.imageCount,
+      aspectRatio: settingsForm.aspectRatio
+    }
+  });
+  if (!imageUpdated) return;
   settingsVisible.value = false;
   message.success('会话设置已保存');
 
@@ -453,6 +525,7 @@ async function handleEdit(payload: {
 
   try {
     await chatStore.editMessage(payload.message.id, payload.content);
+    if (conversationId.value) await chatStore.loadMessageImages(conversationId.value);
     payload.resolve();
     message.success('消息已保存');
   } catch (error) {
@@ -476,12 +549,29 @@ function confirmDelete(target: Message) {
     onPositiveClick: async () => {
       try {
         await chatStore.removeMessage(target.id);
+        if (conversationId.value) await chatStore.loadMessageImages(conversationId.value);
         message.success('消息已删除');
       } catch (error) {
         message.error(error instanceof Error ? error.message : '消息删除失败。');
       }
     }
   });
+}
+
+async function handleGenerateImage(target: Message) {
+  try {
+    await chatStore.generateSceneImage(target.id);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '场景图片生成失败。');
+  }
+}
+
+async function handleRegenerateImage(target: Message) {
+  try {
+    await chatStore.regenerateSceneImage(target.id);
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '图片重新生成失败。');
+  }
 }
 
 async function runChatStream(activeConversationId: string, payload: ChatStreamPayload) {
@@ -659,6 +749,12 @@ function waitForAbortCleanup() {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.chat-view__image-config {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
 }
 
 @media (max-width: 1020px) {

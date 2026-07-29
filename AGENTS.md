@@ -24,7 +24,7 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话 Web MVP，面向个人�
 7. 保存用户消息与 assistant 回复。
 8. 支持基础管理、导入导出、备份恢复和单机部署。
 
-项目不是大规模 SaaS，不追求支付、市场、机器人、多端包装、TTS、图片生成、向量数据库或高并发架构。
+项目不是大规模 SaaS，不追求支付、市场、机器人、多端包装、TTS、向量数据库或高并发架构。聊天场景生图已作为明确功能纳入开发，其架构约束见 [§22 聊天场景生图](#22-聊天场景生图)；除此之外不引入独立的图像编辑、图生图、视频生成等能力。
 
 ## 2. 技术栈边界
 
@@ -41,9 +41,11 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话 Web MVP，面向个人�
 
 - Redis、队列系统、向量数据库、全文检索引擎、embedding、RAG。
 - 支付、公开市场、创作者收益、多租户 SaaS。
-- 机器人平台、TTS、图片生成。
+- 机器人平台、TTS。
 - 桌面端、小程序、移动 App、浏览器插件。
 - 大型状态机、微服务、插件市场、复杂后台权限系统。
+
+聊天场景生图已作为明确功能纳入开发，其架构约束见 [§22 聊天场景生图](#22-聊天场景生图)；除手动场景生图外，不引入自动生图、图生图、图像编辑、视频生成等能力。
 
 关于长期记忆：酒馆 Prompt 构建路径永远不含 `companion_memory` / `companion_style` / `companion_runtime_state` 等 Companion 专属 section。长期记忆仅属于独立 AI 角色形态，按 `Companion.id` 隔离、默认关闭、显式开启；它不能写回酒馆角色卡、Persona、世界书或酒馆会话（见 [§17](#17-ai-角色形态分支)）。
 
@@ -417,7 +419,7 @@ data: {"code":"...","message":"..."}
 - 同一会话同一时间只允许一个生成任务：进程内会话生成锁（`ChatService.conversationTasks`）+ 数据库租约（`activeGenerationLeaseId` + `version` 乐观锁）；Companion 同理。
 - 写入保持短事务。
 
-消息状态机（`Message.status`，应用层约束，schema 层为字符串默认 `complete`）：`generating`、`complete`、`failed`、`stopped`、`deleted`、`edited`。编辑仅允许 `role === 'user'`；删除为软删除（`status: deleted` + `deletedAt`）；重新生成在事务内软删原 assistant、新建占位并在 metadata 双向记录 `regenerateOfMessageId` / `regeneratedByMessageId`。
+消息状态机（`Message.status`，应用层约束，schema 层为字符串默认 `complete`）：`generating`、`complete`、`failed`、`stopped`、`deleted`、`edited`、`replaced`。编辑仅允许 `role === 'user'`；删除为软删除（`status: deleted` + `deletedAt`）；重新生成在事务内把原 assistant 置 `status: replaced`（不物理删除）、新建 assistant 行并切换 `ConversationTurn.activeAssistantMessageId` 指向新行，metadata 双向记录 `regenerateOfMessageId` / `regeneratedByMessageId`；列表查询默认过滤 `replaced`。
 
 ## 15. 文件上传规范
 
@@ -498,7 +500,7 @@ AI 角色是酒馆之外的独立 AI 女友 / 长期陪伴产品区。一个 `Co
 - 未有 Builder 就在组件或 service 中拼 Prompt。
 - 未有统一响应就批量写前端 API 封装。
 - 未有 schema 就实现复杂页面状态。
-- 未有核心聊天闭环就实现支付、市场、机器人、TTS、图片生成、向量库。
+- 未有核心聊天闭环就实现支付、市场、机器人、TTS、向量库。
 
 ## 19. 禁止提交内容
 
@@ -544,3 +546,49 @@ AI 角色是酒馆之外的独立 AI 女友 / 长期陪伴产品区。一个 `Co
 6. 风险和 TODO。
 
 如果运行了命令，需要说明命令和结果。若未运行测试，也要明确说明未运行的原因。
+
+## 22. 聊天场景生图
+
+聊天场景生图已作为明确功能纳入开发，基线方案见 [docs/tavern-chat-scene-image-generation-codex-prompt.md](docs/tavern-chat-scene-image-generation-codex-prompt.md)。本节为该功能的常驻架构约束，方案文档与本节冲突时以本节为准。
+
+### 22.1 范围
+
+- 第一版只做手动生图：用户在已完成的 assistant 消息下点击"生成当前场景"，基于该消息真实生成上下文构建场景提示词，调用 image 模型链生成图片。
+- 图片是独立资产，不作为新的 `Message` 写入消息列表，仅经 `MessageImageLink` 与消息建立展示关联。
+- 不做自动生图、AI 判断场景、聊天正文输出生图标记、图生图、视频生成。
+
+### 22.2 模型能力与模型链
+
+- `ProviderModel` 与 `ModelFallbackGroup` 增加 `capability: 'chat' | 'image'`，链与成员能力必须匹配。
+- 聊天模型链只允许 chat 模型，生图模型链只允许 image 模型，不得混用；服务层与 Gateway 双向校验，运行时不得静默跳过不匹配模型。
+- 会话级生图配置（image 模型链、风格预设、张数、画面比例）保存到 `Conversation`；全局只负责是否允许生图与默认链。
+- `ModelFallbackGroup` 仍为全站共享配置；同一 Provider 可同时挂 chat 与 image 模型，但模型与链按能力区分。
+
+### 22.3 Model Gateway 生图能力
+
+- `ModelProviderAdapter` 新增 `generateImage(input): Promise<ImageGenerationResult>`，输入输出类型独立定义，不复用聊天参数 `temperature/topP/maxTokens`，也不复用聊天回退策略 `shouldTryNextModelCandidate`。
+- image 模型链回退独立实现，失败判定基于"该候选是否返回 0 张有效图片"，不基于聊天 delta 语义。
+- 业务模块只注入 `ModelGatewayService`，不得直连供应商图片接口。
+- 仓库当前无真实 image provider 时，先实现 Adapter 接口与 Mock/Fake Adapter，禁止在业务层写死供应商；验收需明确真实生图链路是否端到端验证。
+
+### 22.4 提示词构建
+
+- 新增独立的 `SceneImageContextBuilder` 与 `SceneImagePromptCompiler`，参照 `buildTavernPromptSections` / `compilePromptSections` 的 section→compile 模式，但不复用其输出，不把完整聊天 Prompt（平台规则、说话方式、输出格式等）发给生图模型。
+- 复用该 assistant 消息生成时持久化的 `ConversationMessageGenerationTrace`（含 `requestUserMessageId`、`promptSnapshotJson`）与 `ConversationIncludedWorldBookTrace`（pin `entryRevisionId`，历史版本 `onDelete: Restrict` 不丢），不重新扫描当前世界书。
+- 第一版不额外调用聊天模型整理 Prompt。
+
+### 22.5 图片资产与访问
+
+- 生图图片经现有 `Asset` 表落盘，并新增 `ImageAsset`（经 `assetId` 关联）、`ImageGenerationBatch`、`MessageImageLink`。
+- **生图资产不走公开静态 `/uploads/` 通道**，必须经 `images` 模块的鉴权接口（如 `GET /api/images/:id/file`）读取，后端校验归属或管理员身份；不得为生图资产生成公开可猜的 `publicPath`。
+- 文件校验需读取真实图片格式与尺寸（可引入 `sharp`），不信任生成的 `mimetype`；`Asset` 无 `width/height` 列，尺寸存 `ImageAsset` 或 `Asset.metadataJson`，只存一处。
+- 图片资产软删后由独立资产清理流程回收物理文件（现有无 GC，需新建）；禁止级联删除消息时删除图片实体或物理文件。
+
+### 22.6 消息变化联动
+
+按真实消息生命周期处理展示关联，图片资产生命周期与消息展示解耦：
+
+- **编辑消息**：`MessagesService.update` 原地更新同一 `messageId`（状态置 `edited`），需在事务内把该消息的 active `MessageImageLink` 置 `hidden`（reason=`message_edited`）；图片资产保留。
+- **重新生成 assistant**：走新建 `Message` 行 + 旧行 `status='replaced'` + `ConversationTurn.activeAssistantMessageId` 切换；旧行被列表查询过滤，旧 link 自然失效，**无需主动改 link 状态**；新消息默认无图片，需用户重新点击生成。不复制旧图到新消息。
+- **删除消息**：软删（`status='deleted'` + `deletedAt`），link 置 `detached`；图片资产保留。
+- 重新生成图片基于当前 active 消息新开 batch，不复活旧消息旧 batch；旧图永久保留，旧 active link 置 `hidden`。

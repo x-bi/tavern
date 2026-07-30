@@ -659,7 +659,7 @@ bash scripts/reset-keep-accounts-models.sh --yes
 
 脚本会校验数据库实际表集合；如果当前数据库比脚本支持的 schema 多表或少表，会在停服和修改数据前终止，避免新增业务表被遗漏。
 
-需要单独清理酒馆会话、角色、AI 角色聊天、AI 角色、世界书、Persona、PromptPreset、分享、素材、设置或模型配置时，使用 `scripts/reset-module-data.sh`。完整模块名、级联边界、执行命令和恢复方式见 [服务器数据清理脚本使用手册](server-data-cleanup.md)。
+需要单独清理酒馆会话、角色、聊天场景生图、AI 角色聊天、AI 角色、世界书、Persona、PromptPreset、分享、素材、设置或模型配置时，使用 `scripts/reset-module-data.sh`。完整模块名、级联边界、执行命令和恢复方式见 [服务器数据清理脚本使用手册](server-data-cleanup.md)。
 
 ## 5. 清空全部业务数据，只保留管理员账号
 

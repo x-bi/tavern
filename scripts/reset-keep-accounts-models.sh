@@ -148,7 +148,11 @@ const expectedTables = [
   "ConversationTurn",
   "ConversationWorldBookActivationEvent",
   "ConversationWorldBookActivationState",
+  "ImageAsset",
+  "ImageGenerationBatch",
+  "ImageGenerationLease",
   "Message",
+  "MessageImageLink",
   "ModelFallbackCandidate",
   "ModelFallbackGroup",
   "ModelProvider",
@@ -242,7 +246,7 @@ if [[ "$assume_yes" -ne 1 ]]; then
   echo '即将执行硬删除：'
   echo '  - 保留全部账号信息'
   echo '  - 保留全部模型供应商、模型、模型链和候选项'
-  echo '  - 删除角色、会话、消息、AI 角色、长期记忆、世界书、预设、Persona、分享、素材记录和应用设置'
+  echo '  - 删除角色、会话、消息、聊天场景生图、AI 角色、长期记忆、世界书、预设、Persona、分享、素材记录和应用设置'
   echo '  - 备份后清空 uploads 目录'
   echo '  - 保留 _prisma_migrations'
   echo
@@ -313,6 +317,10 @@ DELETE FROM "ConversationMessagePromptSectionTrace";
 DELETE FROM "ConversationTurn";
 DELETE FROM "ConversationWorldBookActivationEvent";
 DELETE FROM "ConversationWorldBookActivationState";
+DELETE FROM "MessageImageLink";
+DELETE FROM "ImageGenerationLease";
+DELETE FROM "ImageAsset";
+DELETE FROM "ImageGenerationBatch";
 DELETE FROM "Message";
 DELETE FROM "PromptPreset";
 DELETE FROM "ShareLink";
@@ -382,7 +390,11 @@ const prisma = new PrismaClient();
     ConversationTurn: prisma.conversationTurn,
     ConversationWorldBookActivationEvent: prisma.conversationWorldBookActivationEvent,
     ConversationWorldBookActivationState: prisma.conversationWorldBookActivationState,
+    ImageAsset: prisma.imageAsset,
+    ImageGenerationBatch: prisma.imageGenerationBatch,
+    ImageGenerationLease: prisma.imageGenerationLease,
     Message: prisma.message,
+    MessageImageLink: prisma.messageImageLink,
     PromptPreset: prisma.promptPreset,
     ShareLink: prisma.shareLink,
     UserPersona: prisma.userPersona,

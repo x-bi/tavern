@@ -13,6 +13,7 @@ usage() {
 模块名：
   tavern-conversations  酒馆会话、消息及其生成/世界书运行记录
   characters            酒馆角色，以及依赖这些角色的全部酒馆会话
+  scene-images          聊天场景生图批次、租约、图片关联、素材和生成文件
   companion-history     AI 角色聊天、生成记录、长期记忆内容和运行状态；保留 AI 角色
   companions            AI 角色及其聊天、长期记忆、运行状态和分享
   world-books           世界书、条目、版本、绑定及运行命中记录
@@ -72,7 +73,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$module_name" in
-  tavern-conversations|characters|companion-history|companions|world-books|personas|prompt-presets|shares|assets|settings|models)
+  tavern-conversations|characters|scene-images|companion-history|companions|world-books|personas|prompt-presets|shares|assets|settings|models)
     ;;
   '')
     echo '错误：必须通过 --module 指定要清理的模块。' >&2
@@ -179,7 +180,11 @@ const expectedTables = [
   "ConversationTurn",
   "ConversationWorldBookActivationEvent",
   "ConversationWorldBookActivationState",
+  "ImageAsset",
+  "ImageGenerationBatch",
+  "ImageGenerationLease",
   "Message",
+  "MessageImageLink",
   "ModelFallbackCandidate",
   "ModelFallbackGroup",
   "ModelProvider",
@@ -234,6 +239,10 @@ const expectedTables = [
       Character: await prisma.character.count(),
       dependentConversation: await prisma.conversation.count()
     }),
+    "scene-images": async () => ({
+      ImageGenerationBatch: await prisma.imageGenerationBatch.count(),
+      ImageAsset: await prisma.imageAsset.count()
+    }),
     "companion-history": async () => ({
       CompanionMessage: await prisma.companionMessage.count(),
       CompanionMemoryRevision: await prisma.companionMemoryRevision.count()
@@ -276,12 +285,14 @@ if [[ "$assume_yes" -ne 1 ]]; then
   echo '执行前会停止服务并备份 data/ 与 uploads/。'
   if [[ "$module_name" == 'characters' ]]; then
     echo '注意：角色是酒馆会话的必需父级，因此其全部酒馆会话也会删除。'
+  elif [[ "$module_name" == 'scene-images' ]]; then
+    echo '注意：保留酒馆会话和消息，但删除全部场景生图记录、素材和生成文件。'
   elif [[ "$module_name" == 'companion-history' ]]; then
     echo '注意：保留 AI 角色和长期记忆设置，但删除消息、总结版本、运行状态与世界书运行记录。'
   elif [[ "$module_name" == 'assets' ]]; then
     echo '注意：将解除全部角色头像绑定，并清空 uploads。'
   elif [[ "$module_name" == 'models' ]]; then
-    echo '注意：将解除会话、AI 角色和长期记忆的模型链绑定。'
+    echo '注意：将解除会话、AI 角色和长期记忆的模型链绑定，并删除依赖模型链的场景生图。'
   fi
   echo
   read -r -p "请输入 RESET MODULE $module_name 继续：" confirmation
@@ -334,6 +345,16 @@ DELETE FROM "Conversation";
 SQL
 }
 
+append_scene_image_cleanup() {
+  cat >>"$sql_file" <<'SQL'
+DELETE FROM "MessageImageLink";
+DELETE FROM "ImageGenerationLease";
+DELETE FROM "ImageAsset";
+DELETE FROM "ImageGenerationBatch";
+DELETE FROM "Asset" WHERE "kind" = 'generated_image';
+SQL
+}
+
 append_companion_history_cleanup() {
   cat >>"$sql_file" <<'SQL'
 DELETE FROM "CompanionMessagePromptSectionTrace";
@@ -362,14 +383,19 @@ SQL
 
 case "$module_name" in
   tavern-conversations)
+    append_scene_image_cleanup
     append_tavern_conversation_cleanup
     ;;
   characters)
+    append_scene_image_cleanup
     append_tavern_conversation_cleanup
     cat >>"$sql_file" <<'SQL'
 DELETE FROM "WorldBookCharacter";
 DELETE FROM "Character";
 SQL
+    ;;
+  scene-images)
+    append_scene_image_cleanup
     ;;
   companion-history)
     append_companion_history_cleanup
@@ -421,6 +447,7 @@ DELETE FROM "ShareLink";
 SQL
     ;;
   assets)
+    append_scene_image_cleanup
     cat >>"$sql_file" <<'SQL'
 UPDATE "Character" SET "avatarAssetId" = NULL;
 UPDATE "Companion" SET "avatarAssetId" = NULL;
@@ -433,8 +460,10 @@ DELETE FROM "AppSetting";
 SQL
     ;;
   models)
+    append_scene_image_cleanup
     cat >>"$sql_file" <<'SQL'
 UPDATE "Conversation" SET "modelFallbackGroupId" = NULL;
+UPDATE "Conversation" SET "imageModelFallbackGroupId" = NULL;
 UPDATE "Companion" SET "modelFallbackGroupId" = NULL;
 UPDATE "CompanionMemory" SET "memoryModelFallbackGroupId" = NULL;
 DELETE FROM "ModelFallbackCandidate";
@@ -488,6 +517,12 @@ const moduleName = process.argv[1];
       prisma.worldBookConversation
     ],
     characters: [prisma.character, prisma.worldBookCharacter],
+    "scene-images": [
+      prisma.messageImageLink,
+      prisma.imageGenerationLease,
+      prisma.imageAsset,
+      prisma.imageGenerationBatch
+    ],
     "companion-history": [
       prisma.companionMessage,
       prisma.companionTurn,
@@ -534,6 +569,9 @@ const moduleName = process.argv[1];
   if (moduleName === "characters") {
     models.push(...zeroModels["tavern-conversations"]);
   }
+  if (["tavern-conversations", "characters", "assets", "models"].includes(moduleName)) {
+    models.push(...zeroModels["scene-images"]);
+  }
   if (moduleName === "companions") {
     models.push(...zeroModels["companion-history"]);
   }
@@ -578,8 +616,17 @@ const moduleName = process.argv[1];
       + (await prisma.companion.count({ where: { avatarAssetId: { not: null } } }));
     if (bound !== 0) throw new Error("仍有头像素材绑定未解除。");
   }
+  if (
+    ["scene-images", "tavern-conversations", "characters", "assets", "models"].includes(moduleName)
+  ) {
+    const generatedAssets = await prisma.asset.count({ where: { kind: "generated_image" } });
+    if (generatedAssets !== 0) throw new Error("仍有聊天场景生图素材记录未清空。");
+  }
   if (moduleName === "models") {
     const bound = (await prisma.conversation.count({ where: { modelFallbackGroupId: { not: null } } }))
+      + (await prisma.conversation.count({
+        where: { imageModelFallbackGroupId: { not: null } }
+      }))
       + (await prisma.companion.count({ where: { modelFallbackGroupId: { not: null } } }))
       + (await prisma.companionMemory.count({
         where: { memoryModelFallbackGroupId: { not: null } }
@@ -610,6 +657,17 @@ if [[ "$module_name" == 'assets' ]]; then
   echo "正在清空 uploads：$resolved_uploads"
   rm -rf -- "$resolved_uploads"
   mkdir -p -- "$resolved_uploads"
+elif [[ "$module_name" == 'scene-images' || "$module_name" == 'tavern-conversations' || "$module_name" == 'characters' || "$module_name" == 'models' ]]; then
+  generated_images_dir="$uploads_dir/generated-images"
+  resolved_generated_images="$(realpath -m -- "$generated_images_dir")"
+  expected_generated_images="$(realpath -m -- "$uploads_dir/generated-images")"
+  if [[ "$resolved_generated_images" != "$expected_generated_images" || "$resolved_generated_images" == '/' ]]; then
+    echo "错误：generated-images 路径校验失败：$resolved_generated_images" >&2
+    exit 1
+  fi
+  echo "正在清空聊天场景生图文件：$resolved_generated_images"
+  rm -rf -- "$resolved_generated_images"
+  mkdir -p -- "$resolved_generated_images"
 fi
 
 echo '正在启动 Tavern Lite 服务……'

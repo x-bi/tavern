@@ -36,7 +36,7 @@ scripts/reset-keep-accounts-models.sh
 - `ModelFallbackCandidate`
 - `_prisma_migrations`
 
-角色、酒馆会话、消息、AI 角色、长期记忆、世界书、Persona、PromptPreset、分享、素材、设置和 `uploads/` 会被清空。
+角色、酒馆会话、消息、聊天场景生图、AI 角色、长期记忆、世界书、Persona、PromptPreset、分享、素材、设置和 `uploads/` 会被清空。
 
 先检查：
 
@@ -71,7 +71,7 @@ bash scripts/reset-keep-accounts-models.sh --yes
 scripts/reset-keep-admin.sh
 ```
 
-此脚本只保留一个指定管理员，会删除其他账号和包括模型配置在内的全部业务数据。执行前必须把服务器 `.env` 的 `AUTH_PRESET_USERS_JSON` 改为只包含同一个管理员，否则登录同步可能重新创建账号。
+此脚本只保留一个指定管理员，会删除其他账号以及模型配置、聊天场景生图在内的全部业务数据。执行前必须把服务器 `.env` 的 `AUTH_PRESET_USERS_JSON` 改为只包含同一个管理员，否则登录同步可能重新创建账号。
 
 ```bash
 cd /opt/tavern
@@ -119,17 +119,18 @@ bash scripts/reset-module-data.sh --module <模块名> --yes
 
 | 模块名 | 删除内容 | 保留及联动边界 |
 | --- | --- | --- |
-| `tavern-conversations` | 全部酒馆会话、消息、turn、生成请求/追踪、会话世界书运行记录、会话分享 | 保留角色、世界书、Persona、PromptPreset、模型 |
-| `characters` | 全部酒馆角色及其全部酒馆会话和运行记录 | 角色是会话必需父级，因此酒馆会话同时删除；素材记录和文件保留 |
+| `tavern-conversations` | 全部酒馆会话、消息、turn、生成请求/追踪、会话世界书运行记录、会话分享和聊天场景生图 | 保留角色、世界书、Persona、PromptPreset、模型；清空 `uploads/generated-images/` |
+| `characters` | 全部酒馆角色及其全部酒馆会话、运行记录和聊天场景生图 | 角色是会话必需父级，因此酒馆会话同时删除；头像素材保留，生成图片清空 |
+| `scene-images` | 生图批次、租约、图片关联、`generated_image` 素材及生成文件 | 保留酒馆会话、消息、角色和模型配置；清空 `uploads/generated-images/` |
 | `companion-history` | AI 角色消息、turn、生成请求/追踪、长期记忆版本、运行状态、世界书运行记录 | 保留 AI 角色；保留长期记忆开关、总结模型链和更新频率，运行游标复位 |
 | `companions` | 全部 AI 角色、聊天、长期记忆、运行状态、AI 角色分享和世界书绑定 | 素材记录和文件保留 |
 | `world-books` | 世界书、条目、条目版本、所有绑定及酒馆/AI 角色世界书运行记录 | 保留角色、AI 角色和聊天主体；历史生成追踪中的世界书明细会删除 |
 | `personas` | 全部 Persona 和世界书 Persona 绑定 | 会话与 AI 角色的 `personaId` 置空 |
 | `prompt-presets` | 全部 PromptPreset | 会话与 AI 角色的 `promptPresetId` 置空 |
 | `shares` | 全部酒馆和 AI 角色分享链接 | 分享目标主体保留 |
-| `assets` | 全部素材数据库记录和 `uploads/` | 角色与 AI 角色的 `avatarAssetId` 置空 |
+| `assets` | 全部素材、聊天场景生图记录和 `uploads/` | 角色与 AI 角色的 `avatarAssetId` 置空 |
 | `settings` | 全部 `AppSetting` | `.env` 不修改 |
-| `models` | 模型供应商、模型、模型链和候选项 | 会话、AI 角色和长期记忆的模型链绑定置空；历史追踪中的模型 ID 文本保留 |
+| `models` | 模型供应商、模型、模型链、候选项及依赖模型链的聊天场景生图 | 会话聊天链、生图链、AI 角色和长期记忆的模型链绑定置空；历史追踪中的模型 ID 文本保留 |
 
 账号不提供独立模块清理。`User` 是几乎全部业务数据的父级，而且登录会根据 `AUTH_PRESET_USERS_JSON` 同步账号；需要收缩账号时使用第 2 节的 `reset-keep-admin.sh`。
 
@@ -147,6 +148,13 @@ bash scripts/reset-module-data.sh --module tavern-conversations
 ```bash
 bash scripts/reset-module-data.sh --module characters --check
 bash scripts/reset-module-data.sh --module characters
+```
+
+只清理聊天场景生图：
+
+```bash
+bash scripts/reset-module-data.sh --module scene-images --check
+bash scripts/reset-module-data.sh --module scene-images
 ```
 
 只清理 AI 角色聊天历史和长期记忆内容：
@@ -249,3 +257,21 @@ docker compose logs --tail=100 server
 ```
 
 登录主站后检查目标模块为空，并确认本次未清理的账号、模型和其他模块仍可正常访问。
+
+## 6. Schema 新增模块后的同步检查
+
+清理脚本会在服务器修改数据前比较实际数据库表和当前支持的 Prisma model。新增持久化表尚未定义清理边界时，`--check` 会列出“未识别”表并安全中止；这不是数据库故障，而是提醒必须先更新清理语义。
+
+开发或发布前执行：
+
+```bash
+pnpm verify:data-cleanup
+```
+
+该命令检查：
+
+- 三个清理脚本的 schema 表守卫是否覆盖全部 Prisma model。
+- “保留账号和模型”脚本是否删除其余全部表。
+- “只保留管理员”脚本是否删除除 `User` 外全部表。
+- 模块脚本支持项是否都写入本使用文档。
+- 聊天场景生图的表、模型链绑定和生成文件清理边界是否完整。

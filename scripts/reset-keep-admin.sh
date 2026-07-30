@@ -159,7 +159,65 @@ docker compose run --rm -T --no-deps --entrypoint node server -e '
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const expected = process.argv[1];
+const expectedTables = [
+  "AppSetting",
+  "Asset",
+  "Character",
+  "Companion",
+  "CompanionGenerationAttempt",
+  "CompanionGenerationRequest",
+  "CompanionIncludedWorldBookTrace",
+  "CompanionMemory",
+  "CompanionMemoryRevision",
+  "CompanionMessage",
+  "CompanionMessageGenerationTrace",
+  "CompanionMessagePromptSectionTrace",
+  "CompanionRuntimeState",
+  "CompanionTurn",
+  "CompanionWorldBookActivationEvent",
+  "CompanionWorldBookActivationState",
+  "Conversation",
+  "ConversationGenerationAttempt",
+  "ConversationGenerationRequest",
+  "ConversationIncludedWorldBookTrace",
+  "ConversationMessageGenerationTrace",
+  "ConversationMessagePromptSectionTrace",
+  "ConversationTurn",
+  "ConversationWorldBookActivationEvent",
+  "ConversationWorldBookActivationState",
+  "ImageAsset",
+  "ImageGenerationBatch",
+  "ImageGenerationLease",
+  "Message",
+  "MessageImageLink",
+  "ModelFallbackCandidate",
+  "ModelFallbackGroup",
+  "ModelProvider",
+  "PromptPreset",
+  "ProviderModel",
+  "ShareLink",
+  "User",
+  "UserPersona",
+  "WorldBook",
+  "WorldBookCharacter",
+  "WorldBookCompanion",
+  "WorldBookConversation",
+  "WorldBookEntry",
+  "WorldBookEntryRevision",
+  "WorldBookPersona"
+].sort();
 (async () => {
+  const rows = await prisma.$queryRawUnsafe(
+    "SELECT name FROM sqlite_master WHERE type = '\''table'\'' AND name NOT LIKE '\''sqlite_%'\'' AND name <> '\''_prisma_migrations'\'' ORDER BY name"
+  );
+  const actualTables = rows.map((row) => row.name).sort();
+  const missing = expectedTables.filter((name) => !actualTables.includes(name));
+  const unexpected = actualTables.filter((name) => !expectedTables.includes(name));
+  if (missing.length > 0 || unexpected.length > 0) {
+    throw new Error(
+      `数据库表与脚本支持的 schema 不一致。缺少：${JSON.stringify(missing)}；未识别：${JSON.stringify(unexpected)}`
+    );
+  }
   const user = await prisma.user.findUnique({
     where: { username: expected },
     select: { username: true, role: true }
@@ -186,7 +244,7 @@ if [[ "$assume_yes" -ne 1 ]]; then
   echo '即将执行硬删除：'
   echo "  - 仅保留管理员账号：$admin_username"
   echo '  - 删除其他全部账号和全部业务数据'
-  echo '  - 删除全部模型配置、角色、会话、消息、AI 记忆、世界书、预设、Persona、分享和设置'
+  echo '  - 删除全部模型配置、角色、会话、消息、聊天场景生图、AI 记忆、世界书、预设、Persona、分享和设置'
   echo '  - 清空 uploads 目录'
   echo '  - 保留 _prisma_migrations'
   echo
@@ -216,7 +274,7 @@ fi
 sql_file="$(mktemp)"
 
 cat >"$sql_file" <<SQL
-PRAGMA foreign_keys = ON;
+PRAGMA foreign_keys = OFF;
 
 BEGIN IMMEDIATE;
 
@@ -240,11 +298,36 @@ SELECT COUNT(*)
 FROM "__ResetAdminGuard";
 
 DELETE FROM "ShareLink";
+DELETE FROM "MessageImageLink";
+DELETE FROM "ImageGenerationLease";
+DELETE FROM "ImageAsset";
+DELETE FROM "ImageGenerationBatch";
 DELETE FROM "CompanionMemoryRevision";
 DELETE FROM "CompanionMemory";
+DELETE FROM "CompanionMessagePromptSectionTrace";
+DELETE FROM "CompanionIncludedWorldBookTrace";
+DELETE FROM "CompanionMessageGenerationTrace";
+DELETE FROM "CompanionGenerationAttempt";
+DELETE FROM "CompanionGenerationRequest";
+DELETE FROM "CompanionWorldBookActivationState";
+DELETE FROM "CompanionWorldBookActivationEvent";
 DELETE FROM "CompanionMessage";
+DELETE FROM "CompanionTurn";
+DELETE FROM "CompanionRuntimeState";
+DELETE FROM "ConversationMessagePromptSectionTrace";
+DELETE FROM "ConversationIncludedWorldBookTrace";
+DELETE FROM "ConversationMessageGenerationTrace";
+DELETE FROM "ConversationGenerationAttempt";
+DELETE FROM "ConversationGenerationRequest";
+DELETE FROM "ConversationWorldBookActivationState";
+DELETE FROM "ConversationWorldBookActivationEvent";
 DELETE FROM "Message";
+DELETE FROM "ConversationTurn";
 DELETE FROM "WorldBookCharacter";
+DELETE FROM "WorldBookPersona";
+DELETE FROM "WorldBookConversation";
+DELETE FROM "WorldBookCompanion";
+DELETE FROM "WorldBookEntryRevision";
 DELETE FROM "WorldBookEntry";
 DELETE FROM "ModelFallbackCandidate";
 
@@ -273,6 +356,7 @@ WHERE "id" = (SELECT "id" FROM "__ResetAdminGuard");
 
 COMMIT;
 
+PRAGMA foreign_keys = ON;
 PRAGMA foreign_key_check;
 SQL
 
@@ -292,32 +376,16 @@ const expected = process.argv[1];
   const users = await prisma.user.findMany({
     select: { username: true, role: true, isActive: true, deletedAt: true }
   });
-  const emptyModels = {
-    ShareLink: prisma.shareLink,
-    CompanionMemoryRevision: prisma.companionMemoryRevision,
-    CompanionMemory: prisma.companionMemory,
-    CompanionMessage: prisma.companionMessage,
-    Companion: prisma.companion,
-    Message: prisma.message,
-    Conversation: prisma.conversation,
-    WorldBookCharacter: prisma.worldBookCharacter,
-    WorldBookEntry: prisma.worldBookEntry,
-    WorldBook: prisma.worldBook,
-    Character: prisma.character,
-    ModelFallbackCandidate: prisma.modelFallbackCandidate,
-    ModelFallbackGroup: prisma.modelFallbackGroup,
-    ProviderModel: prisma.providerModel,
-    ModelProvider: prisma.modelProvider,
-    PromptPreset: prisma.promptPreset,
-    UserPersona: prisma.userPersona,
-    Asset: prisma.asset,
-    AppSetting: prisma.appSetting
-  };
-  const counts = Object.fromEntries(
-    await Promise.all(
-      Object.entries(emptyModels).map(async ([name, model]) => [name, await model.count()])
-    )
+  const tableRows = await prisma.$queryRawUnsafe(
+    "SELECT name FROM sqlite_master WHERE type = '\''table'\'' AND name NOT LIKE '\''sqlite_%'\'' AND name NOT IN ('\''User'\'', '\''_prisma_migrations'\'') ORDER BY name"
   );
+  const counts = {};
+  for (const { name } of tableRows) {
+    const [{ count }] = await prisma.$queryRawUnsafe(
+      `SELECT COUNT(*) AS count FROM "${String(name).replaceAll("\"", "\"\"")}"`
+    );
+    counts[name] = Number(count);
+  }
   const foreignKeyErrors = await prisma.$queryRawUnsafe("PRAGMA foreign_key_check");
   if (
     users.length !== 1 ||

@@ -41,5 +41,5 @@ export const PROMPT_BUILDER_DEFAULT_OUTPUT_RULES = [
 /** 用户候选发言专用输出规则。 */
 export const PROMPT_BUILDER_SUGGESTION_OUTPUT_RULES = [
   '只输出当前请求指定数量的 JSON 字符串数组，不要输出解释、Markdown、标题或角色回复。',
-  '每个候选都必须是 Persona 或用户视角可以直接发送的自然发言，并与最近对话保持连续。'
+  '每个候选都必须是用户（Persona）对 Character 说的、可以直接发送的自然发言，并承接最近对话；不得生成 Character 的回复、动作或旁白。'
 ] as const;

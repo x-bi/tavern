@@ -108,14 +108,16 @@ export function buildTavernPromptSections(
     60,
     'reserved'
   );
-  addCharacterSection(
-    add,
-    input.character.id,
-    'speech-style',
-    'character_rule',
-    input.character.speechStyle,
-    70
-  );
+  if (!suggestion) {
+    addCharacterSection(
+      add,
+      input.character.id,
+      'speech-style',
+      'character_rule',
+      input.character.speechStyle,
+      70
+    );
+  }
   if (firstTurn) {
     addCharacterSection(
       add,

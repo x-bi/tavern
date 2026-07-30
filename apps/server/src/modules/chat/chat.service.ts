@@ -812,8 +812,8 @@ export class ChatService {
       turnId: null,
       role: 'user',
       content: [
-        `请根据提供的上下文生成 ${count} 条下一轮可以直接发送的候选发言。`,
-        '每条 1 到 2 句话，使用自然口语。'
+        `站在用户（{{user}}）视角，生成 ${count} 条用户接下来会对 {{char}} 说的候选发言。`,
+        '每条 1 到 2 句话，使用自然口语；必须是用户本人会对 {{char}} 说的话，不要替 {{char}} 或任何角色代言，也不要写动作或旁白。'
       ].join('\n'),
       status: 'complete',
       metadataJson: this.stringifyNullable({

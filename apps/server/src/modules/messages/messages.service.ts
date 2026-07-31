@@ -296,29 +296,53 @@ export class MessagesService {
   }
 
   /**
-   * 校验消息是否可重新生成，三重条件：
-   * 1. 必须是 assistant 消息（重新生成的是角色回复）；
-   * 2. 必须是会话里最后一条消息（不能重生成历史消息）；
-   * 3. 前面必须有一条 user 消息（作为重新生成的输入）。
+   * 校验消息是否可重新生成：
+   * 1. 必须是 complete/edited assistant；
+   * 2. 必须是所属 turn 的 active assistant，且 user message 仍有效；
+   * 3. 必须是 canonical timeline 中最后一条消息。
    *
    * @param target 待校验的消息。
    * @returns 无返回值（仅校验，不通过则抛异常）。
    * @throws BadRequestException 上述任一条件不满足时抛 MESSAGE_REGENERATE_TARGET_INVALID。
    */
   private async assertRegenerateTarget(target: Message): Promise<void> {
-    // 校验1：必须是 assistant 消息
-    if (target.role !== 'assistant') {
+    // 仅已完成的 active assistant 可以作为重新生成基线；失败/停止的 attempt 不会成为 active。
+    if (
+      target.role !== 'assistant' ||
+      (target.status !== 'complete' && target.status !== 'edited') ||
+      !target.turnId
+    ) {
       throw new BadRequestException({
         code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
-        message: 'Only assistant messages can be regenerated.'
+        message: 'Only active completed assistant messages can be regenerated.'
       });
     }
 
-    // 取该会话所有活跃消息（按时间正序），用于定位目标位置
+    const turn = await this.prisma.conversationTurn.findFirst({
+      where: {
+        id: target.turnId,
+        conversationId: target.conversationId,
+        activeAssistantMessageId: target.id
+      },
+      include: { userMessage: true }
+    });
+    if (
+      !turn ||
+      turn.userMessage.deletedAt ||
+      (turn.userMessage.status !== 'complete' && turn.userMessage.status !== 'edited')
+    ) {
+      throw new BadRequestException({
+        code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
+        message: 'Regenerate must target the active assistant of a valid turn.'
+      });
+    }
+
+    // 失败/停止的生成 attempt 不属于 canonical timeline，不能挡住 active reply 的重新生成。
     const activeMessages = await this.prisma.message.findMany({
       where: {
         conversationId: target.conversationId,
-        deletedAt: null
+        deletedAt: null,
+        status: { in: ['complete', 'edited'] }
       },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }]
     });
@@ -329,19 +353,6 @@ export class MessagesService {
       throw new BadRequestException({
         code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
         message: 'Only the latest assistant reply can be regenerated.'
-      });
-    }
-
-    // 校验3：往前找最近一条 user 消息（重新生成需要 user 输入作为上下文）
-    const previousUserMessage = activeMessages
-      .slice(0, targetIndex)
-      .reverse()
-      .find((message) => message.role === 'user');
-
-    if (!previousUserMessage) {
-      throw new BadRequestException({
-        code: ERROR_CODES.MESSAGE_REGENERATE_TARGET_INVALID,
-        message: 'Regenerate requires a previous user message.'
       });
     }
   }

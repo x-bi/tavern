@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Inject, Injectable } from '@nestjs/common';
 import type { CompanionMessage, Message, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { canonicalSha256 } from '../../common/canonical-json';
@@ -19,7 +19,7 @@ type BeginInput = {
 
 @Injectable()
 export class GenerationLifecycleService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async beginConversation(
     conversationId: string,

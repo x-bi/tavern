@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { CompanionMessage, Message } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -55,7 +55,7 @@ export type ResolvedStorageTurn = {
 
 @Injectable()
 export class ConversationTimelineService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
   async resolve(
     conversationId: string,
     includeIncompleteUserMessages = false
@@ -83,7 +83,7 @@ export class ConversationTimelineService {
 
 @Injectable()
 export class CompanionTimelineService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
   async resolve(
     companionId: string,
     includeIncompleteUserMessages = false

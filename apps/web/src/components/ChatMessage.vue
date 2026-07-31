@@ -190,8 +190,7 @@ const canDelete = computed(
 const canRegenerate = computed(
   () =>
     props.message.role === 'assistant' &&
-    props.message.status !== 'generating' &&
-    props.message.status !== 'deleted' &&
+    (props.message.status === 'complete' || props.message.status === 'edited') &&
     !isLocalMessage.value
 );
 const canGenerateImage = computed(

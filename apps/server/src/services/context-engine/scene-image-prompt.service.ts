@@ -15,7 +15,7 @@ import {
   type ModelGatewayChatResult
 } from '../model-gateway';
 
-export const SCENE_IMAGE_PROMPT_VERSION = 'scene_image_prompt_v1';
+export const SCENE_IMAGE_PROMPT_VERSION = 'scene_image_prompt_v2';
 export const SCENE_IMAGE_COMPILER_VERSION = 'scene_image_compiler_v1';
 
 const STYLE_PROMPTS: Record<ConversationImageGenerationConfig['stylePreset'], string> = {
@@ -33,7 +33,9 @@ const SYSTEM_PROMPT = `你是视觉场景解析与生图描述编写器。你的
 
 当前内容覆盖历史内容，明确临时状态覆盖默认状态，世界书明确事实覆盖无来源推测。连续动作只保留回复结束时的最终状态。不得补充证据中不存在的人物、性别、年龄、发色、服装、身体特征、物品或剧情。不写风格预设、画面比例、模型参数、画质标签、聊天规则或解释文字。
 
-只返回 JSON：{"visualScene":{"scene":{"environment":[]},"characters":[],"objects":[],"composition":{},"atmosphere":{}},"positivePromptBody":"...","negativePrompt":""}。不要返回 source、evidence、style、消息 ID、Hash 或 Markdown。`;
+只返回 JSON：{"visualScene":{"scene":{"environment":[]},"characters":[],"objects":[],"composition":{},"atmosphere":{}},"positivePromptBody":"...","negativePrompt":""}。
+字段层级必须与示例完全一致：positivePromptBody 和 negativePrompt 只能位于根节点；characters、objects、composition、atmosphere 必须与 scene 同级；scene 内只能放场景环境字段。不要把这些字段放进 visualScene 或 scene。
+不要返回 source、evidence、style、消息 ID、Hash 或 Markdown。`;
 
 type ScenePromptResult = {
   sceneSnapshot: SceneImageSnapshot;
@@ -236,8 +238,9 @@ ${stylePrompt}
   }
 
   private validateModelOutput(value: Record<string, unknown>): ScenePromptModelOutput {
-    const visual = value.visualScene;
-    if (!this.isRecord(visual) || typeof value.positivePromptBody !== 'string') {
+    const normalized = this.normalizeModelOutput(value);
+    const visual = normalized.visualScene;
+    if (!this.isRecord(visual) || typeof normalized.positivePromptBody !== 'string') {
       throw new BadRequestException({
         code: 'IMAGE_SCENE_PROMPT_GENERATION_FAILED',
         message: 'Scene prompt model returned an invalid result.'
@@ -265,7 +268,7 @@ ${stylePrompt}
         message: 'Scene prompt model returned an invalid scene.'
       });
     }
-    const positivePromptBody = value.positivePromptBody.trim().slice(0, 12000);
+    const positivePromptBody = normalized.positivePromptBody.trim().slice(0, 12000);
     if (!positivePromptBody) {
       throw new BadRequestException({
         code: 'IMAGE_SCENE_PROMPT_GENERATION_FAILED',
@@ -275,10 +278,50 @@ ${stylePrompt}
     return {
       visualScene: visual as ScenePromptModelOutput['visualScene'],
       positivePromptBody,
-      ...(typeof value.negativePrompt === 'string'
-        ? { negativePrompt: value.negativePrompt.trim().slice(0, 2000) }
+      ...(typeof normalized.negativePrompt === 'string'
+        ? { negativePrompt: normalized.negativePrompt.trim().slice(0, 2000) }
         : {})
     };
+  }
+
+  /**
+   * 纠正常见的模型字段错位，只搬运契约中已知的视觉字段。
+   * 归一化后仍由 validateModelOutput 执行完整可信边界与必填校验。
+   */
+  private normalizeModelOutput(value: Record<string, unknown>): Record<string, unknown> {
+    const visual = value.visualScene;
+    if (!this.isRecord(visual)) return value;
+
+    const scene = visual.scene;
+    if (!this.isRecord(scene)) return value;
+
+    const normalized = { ...value };
+    const normalizedVisual = { ...visual };
+    const normalizedScene = { ...scene };
+    const visualKeys = ['characters', 'objects', 'composition', 'atmosphere'] as const;
+
+    for (const key of visualKeys) {
+      if (!(key in normalizedVisual) && key in normalizedScene) {
+        normalizedVisual[key] = normalizedScene[key];
+      }
+      delete normalizedScene[key];
+    }
+
+    if (
+      !('positivePromptBody' in normalized) &&
+      typeof normalizedVisual.positivePromptBody === 'string'
+    ) {
+      normalized.positivePromptBody = normalizedVisual.positivePromptBody;
+    }
+    if (!('negativePrompt' in normalized) && typeof normalizedVisual.negativePrompt === 'string') {
+      normalized.negativePrompt = normalizedVisual.negativePrompt;
+    }
+
+    delete normalizedVisual.positivePromptBody;
+    delete normalizedVisual.negativePrompt;
+    normalizedVisual.scene = normalizedScene;
+    normalized.visualScene = normalizedVisual;
+    return normalized;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

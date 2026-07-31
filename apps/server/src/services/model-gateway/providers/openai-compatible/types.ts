@@ -63,7 +63,7 @@ export type OpenAICompatibleProviderError = {
 export type OpenAICompatibleLogEntry = {
   providerName: string;
   modelName: string;
-  operation: 'testConnection' | 'chat' | 'streamChat';
+  operation: 'testConnection' | 'chat' | 'streamChat' | 'generateImage';
   requestSource: ModelGatewayRequestOptions['requestSource'];
   status: 'started' | 'succeeded' | 'failed';
   statusCode?: number | null;

@@ -74,35 +74,97 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const abortFromUpstream = (): void => controller.abort();
     input.signal?.addEventListener('abort', abortFromUpstream, { once: true });
+    const requestId = input.requestId ?? randomUUID();
     const baseUrl = input.baseUrl.replace(/\/+$/g, '');
     const url = baseUrl.endsWith('/images/generations') ? baseUrl : `${baseUrl}/images/generations`;
     const size = this.toImageSize(input.options?.aspectRatio);
     const providerOptions = input.options?.providerOptions ?? {};
+    const headers = {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {})
+    };
+    const requestBody = {
+      model: input.modelName,
+      prompt: input.prompt,
+      n: input.options?.imageCount ?? 1,
+      size,
+      response_format: 'b64_json',
+      ...(input.options?.quality ? { quality: input.options.quality } : {}),
+      ...(input.options?.style ? { style: input.options.style } : {}),
+      ...(input.options?.seed === undefined ? {} : { seed: input.options.seed }),
+      ...(input.options?.negativePrompt
+        ? { negative_prompt: input.options.negativePrompt }
+        : {}),
+      ...providerOptions
+    };
+    let responseReceived = false;
+    this.writeRawLog({
+      type: 'request',
+      requestId,
+      at: new Date().toISOString(),
+      operation: 'generateImage',
+      requestSource: input.requestSource,
+      providerName: input.providerName,
+      modelName: input.modelName,
+      stream: false,
+      method: 'POST',
+      url,
+      headers: this.sanitizeHeaders(headers, input.apiKey),
+      body: this.sanitizeLogValue(requestBody, input.apiKey)
+    });
+    this.recordCall({
+      providerName: input.providerName,
+      modelName: input.modelName,
+      operation: 'generateImage',
+      requestSource: input.requestSource,
+      status: 'started'
+    });
     try {
+      const startedAt = Date.now();
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-          ...(input.apiKey ? { Authorization: `Bearer ${input.apiKey}` } : {})
-        },
-        body: JSON.stringify({
-          model: input.modelName,
-          prompt: input.prompt,
-          n: input.options?.imageCount ?? 1,
-          size,
-          response_format: 'b64_json',
-          ...(input.options?.quality ? { quality: input.options.quality } : {}),
-          ...(input.options?.style ? { style: input.options.style } : {}),
-          ...(input.options?.seed === undefined ? {} : { seed: input.options.seed }),
-          ...(input.options?.negativePrompt
-            ? { negative_prompt: input.options.negativePrompt }
-            : {}),
-          ...providerOptions
-        }),
+        headers,
+        body: JSON.stringify(requestBody),
         signal: controller.signal
       });
+      responseReceived = true;
+      const latencyMs = Date.now() - startedAt;
+      this.recordCall({
+        providerName: input.providerName,
+        modelName: input.modelName,
+        operation: 'generateImage',
+        requestSource: input.requestSource,
+        status: response.ok ? 'succeeded' : 'failed',
+        statusCode: response.status,
+        latencyMs
+      });
+      this.writeRawLog({
+        type: 'response-start',
+        requestId,
+        at: new Date().toISOString(),
+        operation: 'generateImage',
+        requestSource: input.requestSource,
+        providerName: input.providerName,
+        modelName: input.modelName,
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        headers: this.headersToRecord(response.headers),
+        latencyMs
+      });
       const text = await response.text();
+      this.writeRawResponseBodyLog(
+        requestId,
+        input.requestSource,
+        this.toImageResponseLogText(text),
+        input.apiKey,
+        {
+          operation: 'generateImage',
+          providerName: input.providerName,
+          modelName: input.modelName
+        }
+      );
       if (!response.ok) {
         throw new ModelGatewayError(
           'IMAGE_PROVIDER_REJECTED',
@@ -140,8 +202,42 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
           'Image provider returned no usable images.'
         );
       }
+      this.writeRawLog({
+        type: 'response-result',
+        requestId,
+        at: new Date().toISOString(),
+        operation: 'generateImage',
+        requestSource: input.requestSource,
+        providerName: input.providerName,
+        modelName: input.modelName,
+        success: true,
+        imageCount: images.length,
+        usage: this.sanitizeLogValue(parsed.usage ?? null, input.apiKey)
+      });
       return { images, usage: parsed.usage };
     } catch (error) {
+      if (!responseReceived) {
+        this.recordCall({
+          providerName: input.providerName,
+          modelName: input.modelName,
+          operation: 'generateImage',
+          requestSource: input.requestSource,
+          status: 'failed'
+        });
+      }
+      this.writeRawLog({
+        type: 'request-error',
+        requestId,
+        at: new Date().toISOString(),
+        operation: 'generateImage',
+        requestSource: input.requestSource,
+        providerName: input.providerName,
+        modelName: input.modelName,
+        message: this.sanitizeProviderText(
+          error instanceof Error && error.message ? error.message : 'Image request failed.',
+          input.apiKey
+        )
+      });
       throw this.normalizeRequestError(error, timeoutMs);
     } finally {
       clearTimeout(timeout);
@@ -217,7 +313,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
           result.requestId,
           result.requestSource,
           responseText,
-          config.apiKey
+          config.apiKey,
+          {
+            operation: 'testConnection',
+            providerName: config.providerName,
+            modelName: config.modelName
+          }
         );
       } finally {
         result.cleanup();
@@ -288,7 +389,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         result.requestId,
         result.requestSource,
         responseText,
-        options.apiKey
+        options.apiKey,
+        {
+          operation: 'chat',
+          providerName: options.providerName,
+          modelName: options.modelName
+        }
       );
     } catch (error) {
       // 读取响应体失败：归一化错误后抛出
@@ -346,7 +452,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
         result.requestId,
         result.requestSource,
         responseText,
-        options.apiKey
+        options.apiKey,
+        {
+          operation: 'streamChat',
+          providerName: options.providerName,
+          modelName: options.modelName
+        }
       );
       yield this.toStreamErrorEvent(
         this.toRequestFailedError(response.status, responseText, options),
@@ -381,6 +492,8 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
       for await (const payload of this.readSseJsonPayloads(response.body, {
         requestId: result.requestId,
         requestSource: result.requestSource,
+        providerName: options.providerName,
+        modelName: options.modelName,
         apiKey: options.apiKey
       })) {
         // [DONE] 标记流结束
@@ -721,6 +834,8 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     logContext: {
       requestId: string;
       requestSource: ModelGatewayRequestOptions['requestSource'];
+      providerName: string;
+      modelName: string;
       apiKey?: string | null;
     }
   ): AsyncIterable<string> {
@@ -747,7 +862,12 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
           logContext.requestId,
           logContext.requestSource,
           decodedChunk,
-          logContext.apiKey
+          logContext.apiKey,
+          {
+            operation: 'streamChat',
+            providerName: logContext.providerName,
+            modelName: logContext.modelName
+          }
         );
 
         // 按空行分帧（SSE 帧以空行分隔）；pop 取出最后不完整的部分留 buffer
@@ -1072,12 +1192,14 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     requestId: string,
     requestSource: ModelGatewayRequestOptions['requestSource'],
     responseText: string,
-    apiKey: string | null | undefined
+    apiKey: string | null | undefined,
+    context: Pick<OpenAICompatibleLogEntry, 'operation' | 'providerName' | 'modelName'>
   ): void {
     this.writeRawLog({
       type: 'response-body',
       requestId,
       requestSource,
+      ...context,
       at: new Date().toISOString(),
       bodyText: this.truncateLogText(this.sanitizeProviderText(responseText, apiKey)),
       bodyLength: responseText.length
@@ -1089,16 +1211,41 @@ export class OpenAICompatibleProvider implements ModelProviderAdapter, OnModuleI
     requestId: string,
     requestSource: ModelGatewayRequestOptions['requestSource'],
     chunkText: string,
-    apiKey: string | null | undefined
+    apiKey: string | null | undefined,
+    context: Pick<OpenAICompatibleLogEntry, 'operation' | 'providerName' | 'modelName'>
   ): void {
     this.writeRawLog({
       type: 'response-chunk',
       requestId,
       requestSource,
+      ...context,
       at: new Date().toISOString(),
       chunkText: this.truncateLogText(this.sanitizeProviderText(chunkText, apiKey)),
       chunkLength: chunkText.length
     });
+  }
+
+  /** 图片响应日志移除大体积 Base64 与可能带凭据的临时 URL。 */
+  private toImageResponseLogText(responseText: string): string {
+    try {
+      const parsed = JSON.parse(responseText) as {
+        data?: Array<Record<string, unknown>>;
+        [key: string]: unknown;
+      };
+      if (!Array.isArray(parsed.data)) return responseText;
+      return JSON.stringify({
+        ...parsed,
+        data: parsed.data.map((item) => ({
+          ...item,
+          ...(typeof item.b64_json === 'string'
+            ? { b64_json: `[base64 image omitted: ${item.b64_json.length} chars]` }
+            : {}),
+          ...(typeof item.url === 'string' ? { url: '[remote image URL omitted]' } : {})
+        }))
+      });
+    } catch {
+      return responseText;
+    }
   }
 
   /**

@@ -20,6 +20,7 @@ usage() {
   personas              Persona；同时解除会话、AI 角色和世界书绑定
   prompt-presets        PromptPreset；同时解除会话和 AI 角色绑定
   shares                全部分享链接
+  qq-bridge             QQ 账号接入配置、好友绑定、入站事件和出站投递记录
   assets                全部素材记录和 uploads 文件；同时解除头像绑定
   settings              全部 AppSetting
   models                模型供应商、模型、模型链和候选项；同时解除运行时绑定
@@ -73,7 +74,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$module_name" in
-  tavern-conversations|characters|scene-images|companion-history|companions|world-books|personas|prompt-presets|shares|assets|settings|models)
+  tavern-conversations|characters|scene-images|companion-history|companions|world-books|personas|prompt-presets|shares|qq-bridge|assets|settings|models)
     ;;
   '')
     echo '错误：必须通过 --module 指定要清理的模块。' >&2
@@ -190,6 +191,10 @@ const expectedTables = [
   "ModelProvider",
   "PromptPreset",
   "ProviderModel",
+  "QqAccount",
+  "QqChatBinding",
+  "QqDelivery",
+  "QqInboundEvent",
   "ShareLink",
   "User",
   "UserPersona",
@@ -252,6 +257,12 @@ const expectedTables = [
     personas: async () => ({ UserPersona: await prisma.userPersona.count() }),
     "prompt-presets": async () => ({ PromptPreset: await prisma.promptPreset.count() }),
     shares: async () => ({ ShareLink: await prisma.shareLink.count() }),
+    "qq-bridge": async () => ({
+      QqAccount: await prisma.qqAccount.count(),
+      QqChatBinding: await prisma.qqChatBinding.count(),
+      QqInboundEvent: await prisma.qqInboundEvent.count(),
+      QqDelivery: await prisma.qqDelivery.count()
+    }),
     assets: async () => ({ Asset: await prisma.asset.count() }),
     settings: async () => ({ AppSetting: await prisma.appSetting.count() }),
     models: async () => ({
@@ -340,6 +351,13 @@ DELETE FROM "ConversationWorldBookActivationEvent";
 DELETE FROM "Message";
 DELETE FROM "ConversationTurn";
 DELETE FROM "ShareLink" WHERE "conversationId" IS NOT NULL;
+DELETE FROM "QqDelivery" WHERE "bindingId" IN (
+  SELECT "id" FROM "QqChatBinding" WHERE "conversationId" IS NOT NULL
+);
+DELETE FROM "QqInboundEvent" WHERE "bindingId" IN (
+  SELECT "id" FROM "QqChatBinding" WHERE "conversationId" IS NOT NULL
+);
+DELETE FROM "QqChatBinding" WHERE "conversationId" IS NOT NULL;
 DELETE FROM "WorldBookConversation";
 DELETE FROM "Conversation";
 SQL
@@ -404,6 +422,13 @@ SQL
     append_companion_history_cleanup
     cat >>"$sql_file" <<'SQL'
 DELETE FROM "ShareLink" WHERE "companionId" IS NOT NULL;
+DELETE FROM "QqDelivery" WHERE "bindingId" IN (
+  SELECT "id" FROM "QqChatBinding" WHERE "companionId" IS NOT NULL
+);
+DELETE FROM "QqInboundEvent" WHERE "bindingId" IN (
+  SELECT "id" FROM "QqChatBinding" WHERE "companionId" IS NOT NULL
+);
+DELETE FROM "QqChatBinding" WHERE "companionId" IS NOT NULL;
 DELETE FROM "WorldBookCompanion";
 DELETE FROM "CompanionMemory";
 DELETE FROM "Companion";
@@ -444,6 +469,14 @@ SQL
   shares)
     cat >>"$sql_file" <<'SQL'
 DELETE FROM "ShareLink";
+SQL
+    ;;
+  qq-bridge)
+    cat >>"$sql_file" <<'SQL'
+DELETE FROM "QqDelivery";
+DELETE FROM "QqInboundEvent";
+DELETE FROM "QqChatBinding";
+DELETE FROM "QqAccount";
 SQL
     ;;
   assets)
@@ -555,6 +588,12 @@ const moduleName = process.argv[1];
     personas: [prisma.userPersona, prisma.worldBookPersona],
     "prompt-presets": [prisma.promptPreset],
     shares: [prisma.shareLink],
+    "qq-bridge": [
+      prisma.qqDelivery,
+      prisma.qqInboundEvent,
+      prisma.qqChatBinding,
+      prisma.qqAccount
+    ],
     assets: [prisma.asset],
     settings: [prisma.appSetting],
     models: [

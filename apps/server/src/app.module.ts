@@ -23,6 +23,7 @@ import { ModelsModule } from './modules/models/models.module';
 import { PersonasModule } from './modules/personas/personas.module';
 import { PromptsModule } from './modules/prompts/prompts.module';
 import { PresetsModule } from './modules/presets/presets.module';
+import { QqBridgeModule } from './modules/qq-bridge/qq-bridge.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SharesModule } from './modules/shares/shares.module';
 import { WorldBooksModule } from './modules/world-books/world-books.module';
@@ -65,6 +66,7 @@ import { TargetEventsModule } from './services/target-events/target-events.modul
     PersonasModule,
     PromptsModule,
     PresetsModule,
+    QqBridgeModule,
     SettingsModule,
     SharesModule,
     WorldBooksModule,

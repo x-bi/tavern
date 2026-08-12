@@ -1,6 +1,6 @@
 # Tavern Lite 部署指南
 
-适用于已安装 **宝塔面板 + Docker** 的云服务器。采用「全 Docker Compose」部署,前后端各自容器,SQLite 单机持久化。
+适用于已安装 **宝塔面板 + Docker** 的云服务器。采用「全 Docker Compose」部署，主站、分享站、后端和可选 QQ 个人号接入均由 Compose 管理，SQLite 单机持久化。
 
 ## 架构
 
@@ -61,7 +61,7 @@ docker compose up -d --build
 首次构建会拉取基础镜像并编译,约 3~8 分钟。完成后:
 
 ```bash
-docker compose ps          # 两个服务都应是 running
+docker compose ps          # server、web、share-web、napcat 应为 running
 docker compose logs -f server   # 看后端启动日志,migrate deploy 应成功
 ```
 
@@ -81,6 +81,16 @@ http://<服务器IP>:8080
 
 默认用户名 `demo`(密码取决于 .env 配置)。
 
+### 7. 配置 QQ 个人号接入（可选）
+
+Compose 会启动 NapCat，但首次仍需人工扫码登录 QQ 并启用 OneBot 网络配置。完整步骤见 [QQ 个人号接入使用手册](qq-personal-account-bridge.md)。NapCat WebUI 默认只绑定服务器回环地址，通过 SSH 隧道后访问：
+
+```text
+http://127.0.0.1:6099/webui
+```
+
+公网部署时不要向互联网开放 6099；使用 `ssh -L 6099:127.0.0.1:6099 root@<服务器IP>` 建立隧道。
+
 ## 日常运维
 
 ### 更新代码
@@ -99,6 +109,7 @@ docker compose up -d --build
 docker compose logs -f           # 全部
 docker compose logs -f server    # 仅后端
 docker compose logs -f web       # 仅前端 nginx
+docker compose logs -f napcat    # QQ 登录和 OneBot 连接日志
 ```
 
 ### 备份与恢复
@@ -156,15 +167,15 @@ docker compose exec server pnpm db:seed
 
 ## 文件清单
 
-| 文件 | 作用 |
-| --- | --- |
-| `Dockerfile.server` | 后端镜像 |
-| `Dockerfile.web` | 前端镜像(多阶段,nginx 托管) |
-| `docker-compose.yml` | 编排 server + web |
-| `nginx.conf` | 前端 nginx 配置(含 SSE 反代) |
-| `docker-entrypoint.sh` | 后端启动脚本(migrate + start) |
-| `.dockerignore` | 构建上下文排除规则 |
-| `deploy/.env.example` | 环境变量模板 |
+| 文件                   | 作用                                   |
+| ---------------------- | -------------------------------------- |
+| `Dockerfile.server`    | 后端镜像                               |
+| `Dockerfile.web`       | 前端镜像(多阶段,nginx 托管)            |
+| `docker-compose.yml`   | 编排 server + web + share-web + NapCat |
+| `nginx.conf`           | 前端 nginx 配置(含 SSE 反代)           |
+| `docker-entrypoint.sh` | 后端启动脚本(migrate + start)          |
+| `.dockerignore`        | 构建上下文排除规则                     |
+| `deploy/.env.example`  | 环境变量模板                           |
 
 ## 常见问题
 
@@ -179,6 +190,7 @@ A: 若自行改过 nginx,确认 `/api/` 反代段保留 `proxy_buffering off;`([
 
 **Q: 端口 80 被占用?**
 A: 宝塔 nginx 在用。用 8080,或停掉宝塔 nginx 再改用 80(见上「端口说明」)。
+
 # 外部分享端口
 
 当前无域名部署使用端口区分：主站 `8080`，独立分享站 `8081`。在 `.env` 中显式设置：

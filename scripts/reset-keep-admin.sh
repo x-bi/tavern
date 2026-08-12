@@ -195,6 +195,10 @@ const expectedTables = [
   "ModelProvider",
   "PromptPreset",
   "ProviderModel",
+  "QqAccount",
+  "QqChatBinding",
+  "QqDelivery",
+  "QqInboundEvent",
   "ShareLink",
   "User",
   "UserPersona",
@@ -298,6 +302,10 @@ SELECT COUNT(*)
 FROM "__ResetAdminGuard";
 
 DELETE FROM "ShareLink";
+DELETE FROM "QqDelivery";
+DELETE FROM "QqInboundEvent";
+DELETE FROM "QqChatBinding";
+DELETE FROM "QqAccount";
 DELETE FROM "MessageImageLink";
 DELETE FROM "ImageGenerationLease";
 DELETE FROM "ImageAsset";

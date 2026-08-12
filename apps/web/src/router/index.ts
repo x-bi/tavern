@@ -28,6 +28,7 @@ import NotFoundView from '../views/NotFoundView.vue';
 import PersonaView from '../views/personas/PersonaView.vue';
 import PresetView from '../views/presets/PresetView.vue';
 import PromptPreviewView from '../views/prompts/PromptPreviewView.vue';
+import QqBridgeView from '../views/qq/QqBridgeView.vue';
 import SettingView from '../views/settings/SettingView.vue';
 import ShareManagementView from '../views/shares/ShareManagementView.vue';
 import WorldBookView from '../views/world-books/WorldBookView.vue';
@@ -200,6 +201,12 @@ export const router = createRouter({
           meta: {
             title: '分享管理'
           }
+        },
+        {
+          path: 'qq',
+          name: 'qq-bridge',
+          component: QqBridgeView,
+          meta: { title: 'QQ 接入' }
         },
         {
           path: 'settings',

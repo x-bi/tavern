@@ -225,6 +225,18 @@ export { PERSONA_FORMAT_VERSION } from './persona';
 export type { PersonaListResponse, PersonaPayload, PersonaResponse } from './persona';
 export type { ApplicationSettings, ApplicationSettingsPayload } from './settings';
 export type {
+  QqAccountItem,
+  QqAccountPayload,
+  QqAccountStatus,
+  QqBindingUpdatePayload,
+  QqChatBindingItem,
+  QqChatBindingPayload,
+  QqConnectionTestResult,
+  QqFriendItem,
+  QqTargetItem,
+  QqTargetType
+} from './qq-bridge';
+export type {
   CreateShareLinkPayload,
   PublicShareBootstrap,
   PublicShareMessage,

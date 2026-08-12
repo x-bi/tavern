@@ -158,6 +158,10 @@ const expectedTables = [
   "ModelProvider",
   "PromptPreset",
   "ProviderModel",
+  "QqAccount",
+  "QqChatBinding",
+  "QqDelivery",
+  "QqInboundEvent",
   "ShareLink",
   "User",
   "UserPersona",
@@ -323,6 +327,10 @@ DELETE FROM "ImageAsset";
 DELETE FROM "ImageGenerationBatch";
 DELETE FROM "Message";
 DELETE FROM "PromptPreset";
+DELETE FROM "QqDelivery";
+DELETE FROM "QqInboundEvent";
+DELETE FROM "QqChatBinding";
+DELETE FROM "QqAccount";
 DELETE FROM "ShareLink";
 DELETE FROM "UserPersona";
 DELETE FROM "WorldBook";
@@ -396,6 +404,10 @@ const prisma = new PrismaClient();
     Message: prisma.message,
     MessageImageLink: prisma.messageImageLink,
     PromptPreset: prisma.promptPreset,
+    QqAccount: prisma.qqAccount,
+    QqChatBinding: prisma.qqChatBinding,
+    QqDelivery: prisma.qqDelivery,
+    QqInboundEvent: prisma.qqInboundEvent,
     ShareLink: prisma.shareLink,
     UserPersona: prisma.userPersona,
     WorldBook: prisma.worldBook,

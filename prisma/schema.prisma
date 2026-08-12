@@ -31,6 +31,8 @@ model User {
   worldBooks             WorldBook[]
   imageGenerationBatches ImageGenerationBatch[]
   imageAssets            ImageAsset[]
+  qqAccounts             QqAccount[]
+  qqChatBindings         QqChatBinding[]
 
   @@index([isActive])
   @@index([deletedAt])
@@ -256,6 +258,7 @@ model Conversation {
   worldBookLinks            WorldBookConversation[]
   user                      User                                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   imageGenerationBatches    ImageGenerationBatch[]
+  qqChatBinding             QqChatBinding?
 
   @@index([userId, updatedAt])
   @@index([userId, usesSensitiveResource])
@@ -870,6 +873,7 @@ model Companion {
   runtimeState              CompanionRuntimeState?
   worldBookLinks            WorldBookCompanion[]
   shareLinks                ShareLink[]
+  qqChatBinding             QqChatBinding?
 
   @@index([userId, updatedAt])
   @@index([userId, isSensitive])
@@ -912,6 +916,108 @@ model ShareLink {
   @@index([conversationId, status])
   @@index([companionId, status])
   @@index([status, expiresAt])
+}
+
+model QqAccount {
+  id                    String    @id @default(cuid())
+  userId                String
+  label                 String
+  apiBaseUrl            String
+  webUiUrl              String?
+  accessTokenCiphertext String?
+  accessTokenMask       String?
+  qqUin                 String?   @unique
+  nickname              String?
+  status                String    @default("unknown")
+  isEnabled             Boolean   @default(true)
+  lastConnectedAt       DateTime?
+  lastErrorCode         String?
+  lastErrorMessage      String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bindings      QqChatBinding[]
+  inboundEvents QqInboundEvent[]
+
+  @@unique([userId, label])
+  @@index([userId, isEnabled])
+  @@index([status, updatedAt])
+}
+
+model QqChatBinding {
+  id               String    @id @default(cuid())
+  userId           String
+  qqAccountId      String
+  peerQqUin        String
+  peerNickname     String?
+  targetType       String
+  conversationId   String?   @unique
+  companionId      String?   @unique
+  isEnabled        Boolean   @default(true)
+  lastInboundAt    DateTime?
+  lastOutboundAt   DateTime?
+  lastErrorCode    String?
+  lastErrorMessage String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  qqAccount     QqAccount        @relation(fields: [qqAccountId], references: [id], onDelete: Cascade)
+  conversation  Conversation?    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  companion     Companion?       @relation(fields: [companionId], references: [id], onDelete: Cascade)
+  deliveries    QqDelivery[]
+  inboundEvents QqInboundEvent[]
+
+  @@unique([qqAccountId, peerQqUin])
+  @@index([userId, isEnabled])
+  @@index([targetType, updatedAt])
+}
+
+model QqInboundEvent {
+  id                String    @id @default(cuid())
+  qqAccountId       String
+  bindingId         String?
+  externalMessageId String
+  peerQqUin         String
+  content           String?
+  status            String    @default("pending")
+  attemptCount      Int       @default(0)
+  nextRetryAt       DateTime?
+  errorCode         String?
+  errorMessage      String?
+  receivedAt        DateTime  @default(now())
+  processedAt       DateTime?
+
+  qqAccount QqAccount      @relation(fields: [qqAccountId], references: [id], onDelete: Cascade)
+  binding   QqChatBinding? @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+
+  @@unique([qqAccountId, externalMessageId])
+  @@index([status, nextRetryAt, receivedAt])
+  @@index([bindingId, receivedAt])
+}
+
+model QqDelivery {
+  id                String    @id @default(cuid())
+  bindingId         String
+  sourceMessageKey  String    @unique
+  targetType        String
+  messageId         String
+  status            String    @default("pending")
+  sentChunkCount    Int       @default(0)
+  attemptCount      Int       @default(0)
+  nextRetryAt       DateTime?
+  externalMessageId String?
+  errorCode         String?
+  errorMessage      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  sentAt            DateTime?
+
+  binding QqChatBinding @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+
+  @@index([status, nextRetryAt, createdAt])
+  @@index([bindingId, createdAt])
 }
 
 model CompanionMessage {

@@ -117,20 +117,21 @@ bash scripts/reset-module-data.sh --module <模块名> --yes
 
 ### 3.1 模块名与清理边界
 
-| 模块名 | 删除内容 | 保留及联动边界 |
-| --- | --- | --- |
-| `tavern-conversations` | 全部酒馆会话、消息、turn、生成请求/追踪、会话世界书运行记录、会话分享和聊天场景生图 | 保留角色、世界书、Persona、PromptPreset、模型；清空 `uploads/generated-images/` |
-| `characters` | 全部酒馆角色及其全部酒馆会话、运行记录和聊天场景生图 | 角色是会话必需父级，因此酒馆会话同时删除；头像素材保留，生成图片清空 |
-| `scene-images` | 生图批次、租约、图片关联、`generated_image` 素材及生成文件 | 保留酒馆会话、消息、角色和模型配置；清空 `uploads/generated-images/` |
-| `companion-history` | AI 角色消息、turn、生成请求/追踪、长期记忆版本、运行状态、世界书运行记录 | 保留 AI 角色；保留长期记忆开关、总结模型链和更新频率，运行游标复位 |
-| `companions` | 全部 AI 角色、聊天、长期记忆、运行状态、AI 角色分享和世界书绑定 | 素材记录和文件保留 |
-| `world-books` | 世界书、条目、条目版本、所有绑定及酒馆/AI 角色世界书运行记录 | 保留角色、AI 角色和聊天主体；历史生成追踪中的世界书明细会删除 |
-| `personas` | 全部 Persona 和世界书 Persona 绑定 | 会话与 AI 角色的 `personaId` 置空 |
-| `prompt-presets` | 全部 PromptPreset | 会话与 AI 角色的 `promptPresetId` 置空 |
-| `shares` | 全部酒馆和 AI 角色分享链接 | 分享目标主体保留 |
-| `assets` | 全部素材、聊天场景生图记录和 `uploads/` | 角色与 AI 角色的 `avatarAssetId` 置空 |
-| `settings` | 全部 `AppSetting` | `.env` 不修改 |
-| `models` | 模型供应商、模型、模型链、候选项及依赖模型链的聊天场景生图 | 会话聊天链、生图链、AI 角色和长期记忆的模型链绑定置空；历史追踪中的模型 ID 文本保留 |
+| 模块名                 | 删除内容                                                                            | 保留及联动边界                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `tavern-conversations` | 全部酒馆会话、消息、turn、生成请求/追踪、会话世界书运行记录、会话分享和聊天场景生图 | 保留角色、世界书、Persona、PromptPreset、模型；清空 `uploads/generated-images/`     |
+| `characters`           | 全部酒馆角色及其全部酒馆会话、运行记录和聊天场景生图                                | 角色是会话必需父级，因此酒馆会话同时删除；头像素材保留，生成图片清空                |
+| `scene-images`         | 生图批次、租约、图片关联、`generated_image` 素材及生成文件                          | 保留酒馆会话、消息、角色和模型配置；清空 `uploads/generated-images/`                |
+| `companion-history`    | AI 角色消息、turn、生成请求/追踪、长期记忆版本、运行状态、世界书运行记录            | 保留 AI 角色；保留长期记忆开关、总结模型链和更新频率，运行游标复位                  |
+| `companions`           | 全部 AI 角色、聊天、长期记忆、运行状态、AI 角色分享和世界书绑定                     | 素材记录和文件保留                                                                  |
+| `world-books`          | 世界书、条目、条目版本、所有绑定及酒馆/AI 角色世界书运行记录                        | 保留角色、AI 角色和聊天主体；历史生成追踪中的世界书明细会删除                       |
+| `personas`             | 全部 Persona 和世界书 Persona 绑定                                                  | 会话与 AI 角色的 `personaId` 置空                                                   |
+| `prompt-presets`       | 全部 PromptPreset                                                                   | 会话与 AI 角色的 `promptPresetId` 置空                                              |
+| `shares`               | 全部酒馆和 AI 角色分享链接                                                          | 分享目标主体保留                                                                    |
+| `qq-bridge`            | QQ 账号接入配置、好友绑定、入站事件和出站投递记录                                   | 酒馆会话、AI 角色和聊天消息保留；不会删除 NapCat 容器中的 QQ 登录状态               |
+| `assets`               | 全部素材、聊天场景生图记录和 `uploads/`                                             | 角色与 AI 角色的 `avatarAssetId` 置空                                               |
+| `settings`             | 全部 `AppSetting`                                                                   | `.env` 不修改                                                                       |
+| `models`               | 模型供应商、模型、模型链、候选项及依赖模型链的聊天场景生图                          | 会话聊天链、生图链、AI 角色和长期记忆的模型链绑定置空；历史追踪中的模型 ID 文本保留 |
 
 账号不提供独立模块清理。`User` 是几乎全部业务数据的父级，而且登录会根据 `AUTH_PRESET_USERS_JSON` 同步账号；需要收缩账号时使用第 2 节的 `reset-keep-admin.sh`。
 
@@ -197,6 +198,13 @@ bash scripts/reset-module-data.sh --module prompt-presets
 ```bash
 bash scripts/reset-module-data.sh --module shares --check
 bash scripts/reset-module-data.sh --module shares
+```
+
+清理 QQ 接入配置和同步记录：
+
+```bash
+bash scripts/reset-module-data.sh --module qq-bridge --check
+bash scripts/reset-module-data.sh --module qq-bridge
 ```
 
 清理素材和上传文件：

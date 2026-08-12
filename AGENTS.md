@@ -35,13 +35,13 @@ Tavern Lite 是一个轻量级 AI 酒馆 / 角色对话 Web MVP，面向个人�
 - 通信：REST API + `fetch` 读取 `ReadableStream`。
 - 流式格式：服务端输出 `text/event-stream` 帧，前端自行解析。
 - 模型接入：OpenAI-compatible Chat Completions 优先，通过后端 Model Gateway 适配。
-- 部署目标：单机 Web 服务，已提供 Docker Compose（`server` / `web` / `share-web` 三容器 + nginx 反代），见 [docs/deploy.md](docs/deploy.md)。
+- 部署目标：单机 Web 服务，已提供 Docker Compose（`server` / `web` / `share-web` + 可选 `napcat`），见 [docs/deploy.md](docs/deploy.md)。
 
 未经明确任务要求，不引入以下内容：
 
 - Redis、队列系统、向量数据库、全文检索引擎、embedding、RAG。
 - 支付、公开市场、创作者收益、多租户 SaaS。
-- 机器人平台、TTS。
+- 官方机器人平台、群聊机器人、TTS。普通 QQ 个人号私聊同步是已实现的可选外部入口。
 - 桌面端、小程序、移动 App、浏览器插件。
 - 大型状态机、微服务、插件市场、复杂后台权限系统。
 
@@ -150,6 +150,7 @@ flowchart LR
 - `views/content-packs`：内容包导入。
 - `views/ai-imports`：AI 智能导入；强制经用户选择的共享模型链转换，结果确定性校验后复用目标模块原导入接口。
 - `views/shares`：成员管理自己的全部分享；管理员审计并撤销其他成员的分享。
+- `views/qq`：普通 QQ 个人号接入、连接测试、好友读取，以及好友与酒馆会话/AI 角色的一对一绑定切换。
 - `views/admin`：成员管理（`requiresAdmin` 路由）。
 - `views/settings`：本地设置、备份恢复入口。
 - `components/ShareManager`：酒馆与 AI 角色共用的认证态分享链接管理。
@@ -204,6 +205,7 @@ flowchart LR
 - `settings`：本地配置。
 - `health`：健康检查。
 - `shares`：认证态分享管理、公共 token 守卫、公共聊天入口与目标级 SSE 同步。
+- `qq-bridge`：NapCat OneBot 11 个人号接入、好友与目标一对一绑定、入站幂等处理及出站可靠投递；聊天仍复用 `chat` / `companion-chat`。
 - `companions`：Companion CRUD、头像、fork。
 - `companion-chat`：`POST /api/companions/:companionId/chat/stream` 编排与 SSE 输出、Companion Prompt 预览。
 - `companion-messages`：Companion 消息写入、编辑、删除、重新生成。
@@ -245,7 +247,7 @@ flowchart LR
 - 本地文件系统：头像、导入文件、备份文件。
 - Prisma migration：数据库结构演进。
 
-关键实体（`prisma/schema.prisma`）：`User`、`Character`、`Asset`（头像与文件资产，按 `kind` 区分；`Character` / `Companion` 经 `avatarAssetId` 关联）、`ModelProvider`、`ProviderModel`、`ModelFallbackGroup`、`ModelFallbackCandidate`、`PromptPreset`、`UserPersona`、`Conversation`、`Message`、`ConversationTurn`、`ConversationGenerationRequest`、`ConversationGenerationAttempt`、`ConversationMessageGenerationTrace`、`ConversationMessagePromptSectionTrace`、`WorldBook`、`WorldBookEntry`、`WorldBookEntryRevision`、`WorldBookCharacter` / `WorldBookPersona` / `WorldBookConversation` / `WorldBookCompanion`（关联表）、`ConversationWorldBookActivationState` / `Event`、`ConversationIncludedWorldBookTrace`、`ShareLink`、`AppSetting`，以及独立 AI 角色的 `Companion`、`CompanionRuntimeState`、`CompanionMessage`、`CompanionTurn`、`CompanionGenerationRequest`、`CompanionGenerationAttempt`、`CompanionMessageGenerationTrace`、`CompanionMessagePromptSectionTrace`、`CompanionWorldBookActivationState` / `Event`、`CompanionIncludedWorldBookTrace`、`CompanionMemory`、`CompanionMemoryRevision`。所有业务实体为用户级（直接或经 `Companion` 归属 `userId`）。数据结构只通过 migration 演进，不应手工改表。
+关键实体（`prisma/schema.prisma`）：`User`、`Character`、`Asset`（头像与文件资产，按 `kind` 区分；`Character` / `Companion` 经 `avatarAssetId` 关联）、`ModelProvider`、`ProviderModel`、`ModelFallbackGroup`、`ModelFallbackCandidate`、`PromptPreset`、`UserPersona`、`Conversation`、`Message`、`ConversationTurn`、`ConversationGenerationRequest`、`ConversationGenerationAttempt`、`ConversationMessageGenerationTrace`、`ConversationMessagePromptSectionTrace`、`WorldBook`、`WorldBookEntry`、`WorldBookEntryRevision`、`WorldBookCharacter` / `WorldBookPersona` / `WorldBookConversation` / `WorldBookCompanion`（关联表）、`ConversationWorldBookActivationState` / `Event`、`ConversationIncludedWorldBookTrace`、`ShareLink`、`AppSetting`、`QqAccount`、`QqChatBinding`、`QqInboundEvent`、`QqDelivery`，以及独立 AI 角色的 `Companion`、`CompanionRuntimeState`、`CompanionMessage`、`CompanionTurn`、`CompanionGenerationRequest`、`CompanionGenerationAttempt`、`CompanionMessageGenerationTrace`、`CompanionMessagePromptSectionTrace`、`CompanionWorldBookActivationState` / `Event`、`CompanionIncludedWorldBookTrace`、`CompanionMemory`、`CompanionMemoryRevision`。所有业务实体为用户级（直接或经 `Companion` 归属 `userId`）。数据结构只通过 migration 演进，不应手工改表。
 
 SQLite 与 Prisma 约束：
 
@@ -455,6 +457,7 @@ data: {"code":"...","message":"..."}
 - `settings`：本地设置。
 - `content-packs`：内容包导入。
 - `ai-imports`：AI 智能导入转换与校验；不直接创建业务数据。
+- `qq-bridge`：普通 QQ 个人号私聊同步与一对一绑定。
 - `health`：健康检查。
 
 基础设施服务：`services/context-engine`（Prompt section 构建与编译、生成生命周期、世界书运行时）、`services/prompt-builder`（酒馆 Prompt 共享类型与 token 工具）、`services/model-gateway`（模型供应商适配）、`services/target-events`（目标级 SSE 分发）、`prisma`（唯一数据库访问入口）。

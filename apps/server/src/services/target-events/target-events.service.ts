@@ -3,11 +3,14 @@ import { Injectable } from '@nestjs/common';
 export type TargetType = 'conversation' | 'companion';
 export type TargetEvent = { event: string; data: Record<string, unknown> };
 type Listener = (event: TargetEvent) => void;
+export type AnyTargetEvent = TargetEvent & { targetType: TargetType; targetId: string };
+type AnyListener = (event: AnyTargetEvent) => void;
 
 /** 单实例目标级事件发布器。SQLite 仍是事实源，事件仅用于提示客户端重新同步。 */
 @Injectable()
 export class TargetEventsService {
   private readonly listeners = new Map<string, Set<Listener>>();
+  private readonly anyListeners = new Set<AnyListener>();
 
   subscribe(targetType: TargetType, targetId: string, listener: Listener): () => void {
     const key = this.key(targetType, targetId);
@@ -20,6 +23,12 @@ export class TargetEventsService {
     };
   }
 
+  /** 订阅全部目标事件，供桥接/审计等基础设施按目标自行过滤。 */
+  subscribeAll(listener: AnyListener): () => void {
+    this.anyListeners.add(listener);
+    return () => this.anyListeners.delete(listener);
+  }
+
   emit(
     targetType: TargetType,
     targetId: string,
@@ -28,6 +37,9 @@ export class TargetEventsService {
   ) {
     for (const listener of this.listeners.get(this.key(targetType, targetId)) ?? []) {
       listener({ event, data });
+    }
+    for (const listener of this.anyListeners) {
+      listener({ targetType, targetId, event, data });
     }
   }
 

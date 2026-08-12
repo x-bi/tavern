@@ -11,9 +11,7 @@ const keepAdminScript = readFileSync(resolve(root, 'scripts/reset-keep-admin.sh'
 const moduleScript = readFileSync(resolve(root, 'scripts/reset-module-data.sh'), 'utf8');
 const usageDocument = readFileSync(resolve(root, 'docs/server-data-cleanup.md'), 'utf8');
 
-const schemaModels = [...schema.matchAll(/^model\s+(\w+)\s*\{/gm)]
-  .map((match) => match[1])
-  .sort();
+const schemaModels = [...schema.matchAll(/^model\s+(\w+)\s*\{/gm)].map((match) => match[1]).sort();
 
 function parseExpectedTables(script, scriptName) {
   const match = script.match(/const expectedTables = \[([\s\S]*?)\]\.sort\(\);/);
@@ -66,9 +64,7 @@ assertSameTables(
   'reset-keep-admin.sh 删除表'
 );
 
-const allowlistMatch = moduleScript.match(
-  /case "\$module_name" in\s+([a-z-|]+)\)\s+;;/
-);
+const allowlistMatch = moduleScript.match(/case "\$module_name" in\s+([a-z-|]+)\)\s+;;/);
 if (!allowlistMatch) {
   throw new Error('reset-module-data.sh 缺少可解析的模块白名单。');
 }
@@ -91,6 +87,19 @@ const requiredSceneImageFragments = [
 for (const fragment of requiredSceneImageFragments) {
   if (!moduleScript.includes(fragment)) {
     throw new Error(`模块清理脚本缺少场景生图边界：${fragment}`);
+  }
+}
+
+const requiredQqBridgeFragments = [
+  'qq-bridge)',
+  'DELETE FROM "QqDelivery";',
+  'DELETE FROM "QqInboundEvent";',
+  'DELETE FROM "QqChatBinding";',
+  'DELETE FROM "QqAccount";'
+];
+for (const fragment of requiredQqBridgeFragments) {
+  if (!moduleScript.includes(fragment)) {
+    throw new Error(`模块清理脚本缺少 QQ 接入边界：${fragment}`);
   }
 }
 

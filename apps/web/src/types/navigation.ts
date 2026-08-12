@@ -57,6 +57,10 @@ export const navigationItems: NavigationItem[] = [
     label: '分享管理'
   },
   {
+    path: '/qq',
+    label: 'QQ 接入'
+  },
+  {
     path: '/settings',
     label: '设置'
   },

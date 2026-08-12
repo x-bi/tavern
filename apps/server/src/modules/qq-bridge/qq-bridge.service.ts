@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -18,6 +19,7 @@ import {
   randomBytes,
   timingSafeEqual
 } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
@@ -53,6 +55,13 @@ type QqConnectionTestResult = {
   ok: boolean;
   qqUin: string | null;
   nickname: string | null;
+  message: string;
+};
+type QqLoginStatus = {
+  state: 'waiting' | 'online';
+  account: QqAccountItem | null;
+  qrCodeDataUrl: string | null;
+  qrCodeUpdatedAt: string | null;
   message: string;
 };
 type QqTargetItem = {
@@ -125,6 +134,36 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
   onModuleDestroy(): void {
     this.unsubscribeEvents?.();
     if (this.retryTimer) clearInterval(this.retryTimer);
+  }
+
+  async getAutoLoginStatus(user: CurrentUser): Promise<QqLoginStatus> {
+    this.assertAdmin(user);
+    const apiBaseUrl = this.normalizeHttpUrl(
+      this.config.get<string>('QQ_AUTO_NAPCAT_API_BASE_URL') ?? 'http://127.0.0.1:3000'
+    );
+    let loginInfo: { qqUin: string; nickname: string | null };
+    try {
+      loginInfo = await this.napcat.getLoginInfo(apiBaseUrl, null);
+    } catch {
+      const qrCode = await this.readLoginQrCode();
+      return {
+        state: 'waiting',
+        account: null,
+        qrCodeDataUrl: qrCode?.dataUrl ?? null,
+        qrCodeUpdatedAt: qrCode?.updatedAt ?? null,
+        message: qrCode
+          ? '请使用手机 QQ 扫描二维码并确认登录，成功后账号会自动创建。'
+          : 'NapCat 正在启动或等待生成登录二维码，请稍后刷新。'
+      };
+    }
+    const account = await this.upsertAutoAccount(user, apiBaseUrl, loginInfo);
+    return {
+      state: 'online',
+      account: this.toAccountItem(account),
+      qrCodeDataUrl: null,
+      qrCodeUpdatedAt: null,
+      message: `QQ ${loginInfo.qqUin} 已登录并完成接入。`
+    };
   }
 
   async listAccounts(user: CurrentUser) {
@@ -364,6 +403,19 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
         message: 'Invalid QQ event token.'
       });
     }
+    return this.acceptAccountEvent(account, payload);
+  }
+
+  async acceptAutoWebhook(payload: unknown) {
+    if (!isPrivateFriendMessage(payload)) return { accepted: false, reason: 'ignored_event' };
+    const account = await this.prisma.qqAccount.findFirst({
+      where: { qqUin: String(payload.self_id), isEnabled: true }
+    });
+    if (!account) return { accepted: false, reason: 'unregistered_account' };
+    return this.acceptAccountEvent(account, payload);
+  }
+
+  private async acceptAccountEvent(account: QqAccount, payload: unknown) {
     if (!isPrivateFriendMessage(payload)) return { accepted: false, reason: 'ignored_event' };
     if (account.qqUin && String(payload.self_id) !== account.qqUin)
       return { accepted: false, reason: 'account_mismatch' };
@@ -390,6 +442,92 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
       if (this.isUniqueConflict(error)) return { accepted: true, duplicate: true };
       throw error;
     }
+  }
+
+  private async upsertAutoAccount(
+    user: CurrentUser,
+    apiBaseUrl: string,
+    loginInfo: { qqUin: string; nickname: string | null }
+  ): Promise<QqAccount> {
+    const existing = await this.prisma.qqAccount.findUnique({
+      where: { qqUin: loginInfo.qqUin }
+    });
+    if (existing && existing.userId !== user.id)
+      throw new ConflictException({
+        code: ERROR_CODES.QQ_ACCOUNT_QQ_ALREADY_USED,
+        message: '该 QQ 已由另一个 Tavern 账号接入。'
+      });
+    if (existing) {
+      const recentlyConfirmed =
+        existing.status === 'online' &&
+        existing.nickname === loginInfo.nickname &&
+        existing.isEnabled &&
+        existing.apiBaseUrl === apiBaseUrl &&
+        existing.accessTokenCiphertext === null &&
+        existing.lastConnectedAt !== null &&
+        Date.now() - existing.lastConnectedAt.getTime() < 60_000;
+      if (recentlyConfirmed) return existing;
+      return this.prisma.qqAccount.update({
+        where: { id: existing.id },
+        data: {
+          apiBaseUrl,
+          webUiUrl: null,
+          accessTokenCiphertext: null,
+          accessTokenMask: null,
+          nickname: loginInfo.nickname,
+          status: 'online',
+          isEnabled: true,
+          lastConnectedAt: new Date(),
+          lastErrorCode: null,
+          lastErrorMessage: null
+        }
+      });
+    }
+    try {
+      return await this.prisma.qqAccount.create({
+        data: {
+          userId: user.id,
+          label: `QQ ${loginInfo.qqUin}`,
+          apiBaseUrl,
+          qqUin: loginInfo.qqUin,
+          nickname: loginInfo.nickname,
+          status: 'online',
+          isEnabled: true,
+          lastConnectedAt: new Date()
+        }
+      });
+    } catch (error) {
+      this.throwAccountUnique(error);
+      throw error;
+    }
+  }
+
+  private async readLoginQrCode(): Promise<{ dataUrl: string; updatedAt: string } | null> {
+    const path = this.config.get<string>('QQ_LOGIN_QR_PATH') ?? 'data/napcat/cache/qrcode.png';
+    try {
+      const [content, metadata] = await Promise.all([readFile(path), stat(path)]);
+      const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+      if (
+        content.length < pngSignature.length ||
+        content.length > 1024 * 1024 ||
+        !content.subarray(0, pngSignature.length).equals(pngSignature)
+      )
+        return null;
+      return {
+        dataUrl: `data:image/png;base64,${content.toString('base64')}`,
+        updatedAt: metadata.mtime.toISOString()
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private assertAdmin(user: CurrentUser): void {
+    if (user.role !== 'admin')
+      throw new ForbiddenException({
+        code: ERROR_CODES.ADMIN_ROLE_REQUIRED,
+        message: '只有管理员可以登录和配置服务器 QQ 账号。'
+      });
   }
 
   private enqueueInbound(eventId: string, bindingId: string): void {

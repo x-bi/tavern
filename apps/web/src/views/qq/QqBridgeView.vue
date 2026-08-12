@@ -5,7 +5,7 @@
         <h2>QQ 接入</h2>
         <p>使用普通 QQ 小号接入 NapCat；QQ 好友与系统聊天目标严格一对一并实时共用消息。</p>
       </div>
-      <n-button type="primary" @click="openAccountModal()">添加 QQ 账号</n-button>
+      <n-button secondary @click="openAccountModal()">手动添加（高级）</n-button>
     </header>
 
     <n-alert type="warning" :bordered="false">
@@ -16,8 +16,45 @@
     <n-card :bordered="false" class="page-panel">
       <div class="section-head">
         <div>
-          <h3>1. QQ 账号连接</h3>
-          <p>先在 NapCat WebUI 扫码登录，再配置 HTTP 服务和下方事件回调。</p>
+          <h3>1. 扫码登录</h3>
+          <p>二维码直接显示在 Tavern 主站；扫码成功后自动创建 QQ 接入账号。</p>
+        </div>
+        <n-button secondary :loading="loginLoading" @click="refreshLoginStatus(false)"
+          >刷新登录状态</n-button
+        >
+      </div>
+      <div class="login-panel">
+        <n-result
+          v-if="loginStatus?.state === 'online'"
+          status="success"
+          title="QQ 已接入"
+          :description="loginStatus.message"
+        />
+        <template v-else-if="loginStatus?.qrCodeDataUrl">
+          <img class="login-qr" :src="loginStatus.qrCodeDataUrl" alt="QQ 登录二维码" />
+          <div>
+            <strong>使用手机 QQ 扫码并确认登录</strong>
+            <p>{{ loginStatus.message }}</p>
+            <small v-if="loginStatus.qrCodeUpdatedAt"
+              >二维码更新时间：{{ formatTime(loginStatus.qrCodeUpdatedAt) }}</small
+            >
+          </div>
+        </template>
+        <n-spin v-else :show="loginLoading">
+          <n-result
+            status="info"
+            title="正在获取登录二维码"
+            :description="loginStatus?.message || 'NapCat 启动后会自动生成二维码。'"
+          />
+        </n-spin>
+      </div>
+    </n-card>
+
+    <n-card :bordered="false" class="page-panel">
+      <div class="section-head">
+        <div>
+          <h3>2. QQ 账号连接</h3>
+          <p>扫码成功后系统会自动识别 QQ 号、创建账号并启用消息回调。</p>
         </div>
         <n-button secondary :loading="loading" @click="loadAll">刷新</n-button>
       </div>
@@ -48,22 +85,7 @@
                 account.lastErrorMessage
               }}</span>
             </div>
-            <div class="callback-box">
-              <span>NapCat「HTTP 客户端」事件上报 URL</span>
-              <code>{{ account.callbackUrl }}</code>
-              <n-button size="small" secondary @click="copyText(account.callbackUrl)"
-                >复制回调地址</n-button
-              >
-            </div>
             <div class="actions">
-              <n-button
-                v-if="account.webUiUrl"
-                size="small"
-                tag="a"
-                :href="account.webUiUrl"
-                target="_blank"
-                >打开 NapCat 登录页</n-button
-              >
               <n-button
                 size="small"
                 :loading="testingId === account.id"
@@ -71,7 +93,12 @@
                 >测试连接</n-button
               >
               <n-button size="small" secondary @click="openAccountModal(account)">编辑</n-button>
-              <n-button size="small" type="error" secondary @click="removeAccount(account)"
+              <n-button
+                v-if="loginStatus?.account?.id !== account.id"
+                size="small"
+                type="error"
+                secondary
+                @click="removeAccount(account)"
                 >删除</n-button
               >
             </div>
@@ -81,7 +108,7 @@
           v-else
           status="info"
           title="还没有 QQ 账号"
-          description="添加 NapCat 的 OneBot HTTP 地址后即可读取好友并建立绑定。"
+          description="请先在上方扫描二维码；登录成功后账号会自动出现在这里。"
         />
       </n-spin>
     </n-card>
@@ -89,7 +116,7 @@
     <n-card :bordered="false" class="page-panel">
       <div class="section-head">
         <div>
-          <h3>2. 创建一对一绑定</h3>
+          <h3>3. 创建一对一绑定</h3>
           <p>一个好友只能绑定一个聊天目标，一个聊天目标也只能绑定一个好友；已有绑定可切换。</p>
         </div>
       </div>
@@ -139,7 +166,7 @@
     <n-card :bordered="false" class="page-panel">
       <div class="section-head">
         <div>
-          <h3>3. 当前绑定</h3>
+          <h3>4. 当前绑定</h3>
           <p>切换只改变后续消息路由，不移动或合并原会话历史。</p>
         </div>
       </div>
@@ -191,11 +218,6 @@
           ><n-input
             v-model:value="accountForm.apiBaseUrl"
             placeholder="Docker： http://napcat:3000"
-        /></n-form-item>
-        <n-form-item label="NapCat WebUI"
-          ><n-input
-            v-model:value="accountForm.webUiUrl"
-            placeholder="例如：http://服务器IP:6099/webui"
         /></n-form-item>
         <n-form-item
           :label="
@@ -250,15 +272,17 @@ import type {
   QqAccountStatus,
   QqChatBindingItem,
   QqFriendItem,
+  QqLoginStatus,
   QqTargetType
 } from '@tavern/shared';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue';
 import { useDialog, useMessage } from 'naive-ui';
 import {
   createQqAccount,
   createQqBinding,
   deleteQqAccount,
   deleteQqBinding,
+  getQqLoginStatus,
   listQqAccounts,
   listQqBindings,
   listQqFriends,
@@ -274,7 +298,9 @@ const accounts = ref<QqAccountItem[]>([]);
 const bindings = ref<QqChatBindingItem[]>([]);
 const targets = ref<Awaited<ReturnType<typeof listQqTargets>>['items']>([]);
 const friends = ref<QqFriendItem[]>([]);
+const loginStatus = ref<QqLoginStatus | null>(null);
 const loading = ref(false);
+const loginLoading = ref(false);
 const friendsLoading = ref(false);
 const savingAccount = ref(false);
 const savingBinding = ref(false);
@@ -284,11 +310,11 @@ const editingAccount = ref<QqAccountItem | null>(null);
 const showSwitchModal = ref(false);
 const switching = ref(false);
 const switchingBinding = ref<QqChatBindingItem | null>(null);
+let loginTimer: ReturnType<typeof setInterval> | null = null;
 
 const accountForm = reactive({
   label: '',
   apiBaseUrl: 'http://napcat:3000',
-  webUiUrl: defaultWebUiUrl(),
   accessToken: ''
 });
 const bindingForm = reactive<{
@@ -325,7 +351,37 @@ const canCreateBinding = computed(() =>
   Boolean(bindingForm.qqAccountId && bindingForm.peerQqUin && bindingForm.targetId)
 );
 
-onMounted(loadAll);
+onMounted(async () => {
+  await loadAll();
+  await refreshLoginStatus(false);
+  loginTimer = setInterval(() => void refreshLoginStatus(true), 4_000);
+});
+onBeforeUnmount(() => {
+  if (loginTimer) clearInterval(loginTimer);
+});
+
+async function refreshLoginStatus(silent: boolean) {
+  if (loginLoading.value) return;
+  loginLoading.value = true;
+  try {
+    const previousAccountId = loginStatus.value?.account?.id ?? null;
+    loginStatus.value = await getQqLoginStatus();
+    const account = loginStatus.value.account;
+    if (account && (!accounts.value.some((item) => item.id === account.id) || !previousAccountId)) {
+      await loadAll();
+    }
+    if (account && !bindingForm.qqAccountId) {
+      bindingForm.qqAccountId = account.id;
+      await loadFriends(account.id);
+    }
+    if (account && previousAccountId !== account.id && !silent)
+      message.success(loginStatus.value.message);
+  } catch (error) {
+    if (!silent) message.error(messageOf(error));
+  } finally {
+    loginLoading.value = false;
+  }
+}
 
 async function loadAll() {
   loading.value = true;
@@ -349,7 +405,6 @@ function openAccountModal(account?: QqAccountItem) {
   editingAccount.value = account ?? null;
   accountForm.label = account?.label ?? '';
   accountForm.apiBaseUrl = account?.apiBaseUrl ?? 'http://napcat:3000';
-  accountForm.webUiUrl = account?.webUiUrl ?? defaultWebUiUrl();
   accountForm.accessToken = '';
   showAccountModal.value = true;
 }
@@ -362,7 +417,6 @@ async function saveAccount() {
     const payload = {
       label: accountForm.label.trim(),
       apiBaseUrl: accountForm.apiBaseUrl.trim(),
-      webUiUrl: accountForm.webUiUrl.trim() || null,
       ...(accountForm.accessToken ? { accessToken: accountForm.accessToken } : {})
     };
     if (editingAccount.value) await updateQqAccount(editingAccount.value.id, payload);
@@ -495,14 +549,6 @@ function targetOptions(type: QqTargetType, allowBindingId: string | null) {
       value: item.targetId
     }));
 }
-async function copyText(value: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    message.success('已复制。');
-  } catch {
-    message.warning('浏览器禁止复制，请手动选择。');
-  }
-}
 function statusLabel(status: QqAccountStatus) {
   return ({ online: '在线', offline: '离线', error: '异常', unknown: '未检测' } as const)[status];
 }
@@ -511,9 +557,6 @@ function formatTime(value: string | null) {
 }
 function messageOf(error: unknown) {
   return error instanceof Error ? error.message : 'QQ 接入操作失败。';
-}
-function defaultWebUiUrl() {
-  return 'http://127.0.0.1:6099/webui';
 }
 </script>
 
@@ -551,6 +594,32 @@ function defaultWebUiUrl() {
   gap: 14px;
   margin-top: 16px;
 }
+.login-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  min-height: 240px;
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid var(--line-subtle);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.login-panel p {
+  margin: 8px 0;
+  color: var(--text-muted);
+}
+.login-panel small {
+  color: var(--text-muted);
+}
+.login-qr {
+  width: min(280px, 60vw);
+  height: auto;
+  border: 12px solid #fff;
+  border-radius: 8px;
+  image-rendering: pixelated;
+}
 .account-card,
 .binding-row {
   padding: 16px;
@@ -563,19 +632,6 @@ function defaultWebUiUrl() {
   gap: 5px;
   margin-top: 12px;
   color: var(--text-muted);
-  font-size: 12px;
-}
-.callback-box {
-  display: grid;
-  gap: 8px;
-  margin: 14px 0;
-  padding: 12px;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.16);
-}
-.callback-box code {
-  overflow-wrap: anywhere;
-  color: var(--text-strong);
   font-size: 12px;
 }
 .actions {
@@ -636,6 +692,7 @@ function defaultWebUiUrl() {
 @media (max-width: 720px) {
   .qq-header,
   .section-head,
+  .login-panel,
   .binding-form,
   .binding-row {
     display: grid;

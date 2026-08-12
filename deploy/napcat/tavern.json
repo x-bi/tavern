@@ -1,0 +1,33 @@
+{
+  "network": {
+    "httpServers": [
+      {
+        "name": "tavern-api",
+        "enable": true,
+        "port": 3000,
+        "host": "0.0.0.0",
+        "enableCors": false,
+        "enableWebsocket": false,
+        "messagePostFormat": "array",
+        "token": "",
+        "debug": false
+      }
+    ],
+    "httpClients": [
+      {
+        "name": "tavern-events",
+        "enable": true,
+        "url": "http://server:3100/api/qq/events/auto",
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "",
+        "debug": false
+      }
+    ],
+    "websocketServers": [],
+    "websocketClients": []
+  },
+  "musicSignUrl": "",
+  "enableLocalFile2Url": false,
+  "parseMultMsg": false
+}

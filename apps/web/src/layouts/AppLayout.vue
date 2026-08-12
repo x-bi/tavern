@@ -63,10 +63,13 @@ const isChatRoute = computed(
   () =>
     route.name === 'chat' || route.name === 'chat-conversation' || route.name === 'companion-chat'
 );
+const visibleNavigationItems = computed(() =>
+  navigationItems.filter((item) => !item.requiresAdmin || currentUser.value?.role === 'admin')
+);
 
 const menuOptions = computed<MenuOption[]>(() =>
   [
-    ...navigationItems,
+    ...visibleNavigationItems.value,
     ...(currentUser.value?.role === 'admin'
       ? [
           { path: '/admin/users', label: '成员管理' },
@@ -89,7 +92,7 @@ onMounted(async () => {
 
 const activeMenuKey = computed(() => {
   const currentPath = route.path;
-  const activeItem = navigationItems.find((item) => currentPath.startsWith(item.path));
+  const activeItem = visibleNavigationItems.value.find((item) => currentPath.startsWith(item.path));
 
   return activeItem?.path ?? currentPath;
 });

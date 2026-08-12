@@ -83,3 +83,11 @@ export type QqConnectionTestResult = {
   nickname: string | null;
   message: string;
 };
+
+export type QqLoginStatus = {
+  state: 'waiting' | 'online';
+  account: QqAccountItem | null;
+  qrCodeDataUrl: string | null;
+  qrCodeUpdatedAt: string | null;
+  message: string;
+};

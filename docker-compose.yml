@@ -31,9 +31,13 @@ services:
       SHARE_PUBLIC_BASE_URL: ${SHARE_PUBLIC_BASE_URL:?SHARE_PUBLIC_BASE_URL 必须在 .env 中设置}
       # NapCat 容器访问 Tavern 事件回调使用容器内地址。
       QQ_EVENT_CALLBACK_BASE_URL: ${QQ_EVENT_CALLBACK_BASE_URL:-http://server:3100/api}
+      # 主站 QQ 页面从容器内读取登录状态和二维码，不公开 NapCat 管理端口。
+      QQ_AUTO_NAPCAT_API_BASE_URL: ${QQ_AUTO_NAPCAT_API_BASE_URL:-http://napcat:3000}
+      QQ_LOGIN_QR_PATH: ${QQ_LOGIN_QR_PATH:-/app/napcat-cache/qrcode.png}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
+      - ./data/napcat/cache:/app/napcat-cache:ro
 
   web:
     build:
@@ -66,11 +70,14 @@ services:
     image: mlikiowa/napcat-docker:latest
     container_name: tavern-napcat
     restart: unless-stopped
-    ports:
-      - '127.0.0.1:6099:6099'
+    environment:
+      # 官方镜像启动时把 /app/templates/tavern.json 写入 onebot11.json。
+      MODE: tavern
     expose:
       - '3000'
     volumes:
       - ./data/napcat/qq:/app/.config/QQ
       - ./data/napcat/config:/app/napcat/config
       - ./data/napcat/plugins:/app/napcat/plugins
+      - ./data/napcat/cache:/app/napcat/cache
+      - ./deploy/napcat/tavern.json:/app/templates/tavern.json:ro

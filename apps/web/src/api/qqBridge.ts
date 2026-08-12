@@ -6,6 +6,7 @@ import type {
   QqChatBindingPayload,
   QqConnectionTestResult,
   QqFriendItem,
+  QqLoginStatus,
   QqTargetItem
 } from '@tavern/shared';
 import { requestJson } from './http';
@@ -19,6 +20,9 @@ function unwrap<T>(response: Awaited<ReturnType<typeof requestJson<T>>>): T {
 
 export async function listQqAccounts() {
   return unwrap(await requestJson<ListResult<QqAccountItem>>('/qq/accounts'));
+}
+export async function getQqLoginStatus() {
+  return unwrap(await requestJson<QqLoginStatus>('/qq/login/status'));
 }
 export async function createQqAccount(payload: QqAccountPayload) {
   return unwrap(

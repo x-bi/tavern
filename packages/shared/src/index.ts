@@ -233,6 +233,7 @@ export type {
   QqChatBindingPayload,
   QqConnectionTestResult,
   QqFriendItem,
+  QqLoginStatus,
   QqTargetItem,
   QqTargetType
 } from './qq-bridge';

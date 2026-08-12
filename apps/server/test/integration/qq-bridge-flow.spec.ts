@@ -13,12 +13,40 @@ import { TargetEventsService } from '../../src/services/target-events/target-eve
 import { TestDatabase } from '../helpers/test-database';
 
 describe('QQ bridge message flow', () => {
+  it('automatically creates the logged-in QQ account once and returns it to the admin', async () => {
+    const database = await TestDatabase.create();
+    const targetEvents = new TargetEventsService();
+    const fixture = await createConversationFixture(database.client);
+    const napcat = {
+      getLoginInfo: vi.fn(async () => ({ qqUin: '90001', nickname: '自动接入小号' }))
+    } as unknown as QqNapcatClient;
+    const service = createService(database.client, targetEvents, napcat, {
+      streamInternal: vi.fn()
+    } as unknown as ChatService);
+
+    try {
+      const first = await service.getAutoLoginStatus(fixture.owner);
+      const second = await service.getAutoLoginStatus(fixture.owner);
+
+      expect(first).toMatchObject({
+        state: 'online',
+        account: { qqUin: '90001', nickname: '自动接入小号', status: 'online' }
+      });
+      expect(second.account?.id).toBe(first.account?.id);
+      expect(await database.client.qqAccount.count()).toBe(1);
+    } finally {
+      service.onModuleDestroy();
+      await database.close();
+    }
+  });
+
   it('routes an inbound friend message to the bound thread and sends the generated reply', async () => {
     const database = await TestDatabase.create();
     const targetEvents = new TargetEventsService();
     const sentTexts: string[] = [];
     const fixture = await createConversationFixture(database.client);
     const napcat = {
+      getLoginInfo: vi.fn(async () => ({ qqUin: '90001', nickname: 'QQ 小号' })),
       sendPrivateMessage: vi.fn(async (_url, _token, _peer, text: string) => {
         sentTexts.push(text);
         return `qq-message-${sentTexts.length}`;
@@ -46,10 +74,8 @@ describe('QQ bridge message flow', () => {
 
     try {
       await service.onModuleInit();
-      const account = await service.createAccount(fixture.owner, {
-        label: 'QQ 小号',
-        apiBaseUrl: 'http://napcat:3000'
-      });
+      const loginStatus = await service.getAutoLoginStatus(fixture.owner);
+      const account = loginStatus.account!;
       await service.createBinding(fixture.owner, {
         qqAccountId: account.id,
         peerQqUin: '10001',
@@ -58,7 +84,7 @@ describe('QQ bridge message flow', () => {
         targetId: fixture.conversationA.id
       });
 
-      const accepted = await service.acceptWebhook(account.id, callbackToken(account.callbackUrl), {
+      const accepted = await service.acceptAutoWebhook({
         post_type: 'message',
         message_type: 'private',
         sub_type: 'friend',
@@ -154,7 +180,9 @@ function createService(
     prisma as unknown as PrismaService,
     new ConfigService({
       AUTH_TOKEN_SECRET: 'qq-bridge-test-secret',
-      QQ_EVENT_CALLBACK_BASE_URL: 'http://server:3100/api'
+      QQ_EVENT_CALLBACK_BASE_URL: 'http://server:3100/api',
+      QQ_AUTO_NAPCAT_API_BASE_URL: 'http://napcat:3000',
+      QQ_LOGIN_QR_PATH: 'missing-qq-login-qr.png'
     }),
     napcat,
     chat,
@@ -185,10 +213,4 @@ async function createConversationFixture(prisma: PrismaClient) {
     role: 'admin'
   };
   return { owner, conversationA, conversationB };
-}
-
-function callbackToken(callbackUrl: string): string {
-  const token = new URL(callbackUrl).searchParams.get('token');
-  if (!token) throw new Error('Missing callback token in test fixture.');
-  return token;
 }

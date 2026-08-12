@@ -206,7 +206,7 @@ export const router = createRouter({
           path: 'qq',
           name: 'qq-bridge',
           component: QqBridgeView,
-          meta: { title: 'QQ 接入' }
+          meta: { title: 'QQ 接入', requiresAdmin: true }
         },
         {
           path: 'settings',

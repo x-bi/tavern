@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Inject,
   Param,
   Post,
@@ -22,6 +23,12 @@ import { QqBridgeService } from './qq-bridge.service';
 @UseGuards(AuthGuard)
 export class QqBridgeController {
   constructor(@Inject(QqBridgeService) private readonly service: QqBridgeService) {}
+
+  @Get('login/status')
+  @Header('Cache-Control', 'no-store')
+  getLoginStatus(@CurrentUser() user: CurrentUserType) {
+    return this.service.getAutoLoginStatus(user);
+  }
 
   @Get('accounts')
   listAccounts(@CurrentUser() user: CurrentUserType) {
@@ -96,6 +103,11 @@ export class QqBridgeController {
 @Controller('qq/events')
 export class QqEventController {
   constructor(@Inject(QqBridgeService) private readonly service: QqBridgeService) {}
+
+  @Post('auto')
+  receiveAuto(@Body() payload: unknown) {
+    return this.service.acceptAutoWebhook(payload);
+  }
 
   @Post(':accountId')
   receive(

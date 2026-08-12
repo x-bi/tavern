@@ -4,6 +4,8 @@ export type NavigationItem = {
   path: string;
   /** 菜单显示文本。 */
   label: string;
+  /** 仅管理员可见。 */
+  requiresAdmin?: boolean;
 };
 
 /** 侧边栏导航项列表，AppLayout 据此渲染 n-menu。 */
@@ -58,7 +60,8 @@ export const navigationItems: NavigationItem[] = [
   },
   {
     path: '/qq',
-    label: 'QQ 接入'
+    label: 'QQ 接入',
+    requiresAdmin: true
   },
   {
     path: '/settings',

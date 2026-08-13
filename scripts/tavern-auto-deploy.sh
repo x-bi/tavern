@@ -35,8 +35,8 @@ LOW_MEMORY_MODE="${LOW_MEMORY_MODE:-1}"
 # 当前生产机为 2GiB：至少要求 2GB swap，避免 OOM 导致整机失联。
 MIN_SWAP_MB="${MIN_SWAP_MB:-2048}"
 
-# 停服后可用内存与空闲 swap 合计至少需要达到该值。
-MIN_BUILD_HEADROOM_MB="${MIN_BUILD_HEADROOM_MB:-3072}"
+# 当前 2GiB 实例停服后实测约 2972MB；保留约 170MB 浮动余量后放行。
+MIN_BUILD_HEADROOM_MB="${MIN_BUILD_HEADROOM_MB:-2800}"
 
 # 每个容器启动后等待几秒再启动下一个，降低瞬时内存峰值。
 STARTUP_SETTLE_SECONDS="${STARTUP_SETTLE_SECONDS:-8}"

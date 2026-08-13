@@ -93,6 +93,8 @@ NapCat 的 3000、6099 端口均不映射到宿主机；公网只开放 Tavern �
 
 `scripts/tavern-auto-deploy.sh` 默认启用低内存模式：低内存预检通过后，先逐个停止现有容器，再逐个构建镜像，最后按 `server → web → share-web → napcat` 逐个重建启动。构建阶段失败或被中断时，会尝试逐个恢复停服前仍在运行的旧容器。
 
+当前 2GiB 生产实例的构建余量阈值为 2800MB（`MemAvailable + SwapFree`）；实测停服后约 2972MB，可以进入构建，同时仍保留阈值保护。
+
 物理内存不足 3GB 时，脚本要求至少 2GB swap。当前 2GiB 服务器建议先确认根分区至少还有 8GB 可用空间，再创建 2GB swap：
 
 ```bash

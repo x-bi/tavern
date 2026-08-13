@@ -19,7 +19,8 @@ import {
   randomBytes,
   timingSafeEqual
 } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readdir, readFile, rm, stat } from 'node:fs/promises';
+import { dirname, join, parse, resolve } from 'node:path';
 import { ERROR_CODES } from '../../common/dto/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TargetEventsService } from '../../services/target-events/target-events.service';
@@ -99,6 +100,8 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
   private readonly deliveryTasks = new Set<string>();
   private unsubscribeEvents: (() => void) | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private suppressedAutoLoginQqUin: string | null = null;
+  private ignoreQrBeforeMs = 0;
 
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -145,6 +148,7 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
     try {
       loginInfo = await this.napcat.getLoginInfo(apiBaseUrl, null);
     } catch {
+      this.suppressedAutoLoginQqUin = null;
       const qrCode = await this.readLoginQrCode();
       return {
         state: 'waiting',
@@ -156,6 +160,16 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
           : 'NapCat 正在启动或等待生成登录二维码，请稍后刷新。'
       };
     }
+    if (loginInfo.qqUin === this.suppressedAutoLoginQqUin) {
+      return {
+        state: 'waiting',
+        account: null,
+        qrCodeDataUrl: null,
+        qrCodeUpdatedAt: null,
+        message: `QQ ${loginInfo.qqUin} 正在退出，请稍后等待新的登录二维码。`
+      };
+    }
+    this.suppressedAutoLoginQqUin = null;
     const account = await this.upsertAutoAccount(user, apiBaseUrl, loginInfo);
     return {
       state: 'online',
@@ -272,6 +286,51 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
       });
       return { ok: false, qqUin: null, nickname: null, message };
     }
+  }
+
+  async logoutAccount(user: CurrentUser, id: string) {
+    this.assertAdmin(user);
+    const account = await this.findOwnedAccount(user, id);
+    if (!account.qqUin)
+      throw new BadRequestException({
+        code: ERROR_CODES.QQ_ACCOUNT_NOT_CONNECTED,
+        message: '该账号尚未识别 QQ 号，无法执行退出。'
+      });
+
+    const apiBaseUrl = this.normalizeHttpUrl(
+      this.config.get<string>('QQ_AUTO_NAPCAT_API_BASE_URL') ?? 'http://127.0.0.1:3000'
+    );
+    const loginInfo = await this.napcat.getLoginInfo(apiBaseUrl, null);
+    if (loginInfo.qqUin !== account.qqUin)
+      throw new ConflictException({
+        code: ERROR_CODES.QQ_ACCOUNT_MISMATCH,
+        message: `NapCat 当前登录的是 QQ ${loginInfo.qqUin}，不是要退出的 QQ ${account.qqUin}。`
+      });
+
+    this.suppressedAutoLoginQqUin = account.qqUin;
+    this.ignoreQrBeforeMs = Date.now();
+    try {
+      await this.clearPersistedLoginData();
+      await this.prisma.qqAccount.update({
+        where: { id: account.id },
+        data: {
+          status: 'offline',
+          isEnabled: false,
+          lastErrorCode: null,
+          lastErrorMessage: null
+        }
+      });
+      await this.napcat.exitBot(apiBaseUrl, null);
+    } catch (error) {
+      this.suppressedAutoLoginQqUin = null;
+      throw error;
+    }
+
+    return {
+      accountId: account.id,
+      qqUin: account.qqUin,
+      message: 'QQ 已退出，原账号和好友绑定已保留。请等待新二维码后扫描其他 QQ。'
+    };
   }
 
   async listFriends(user: CurrentUser, id: string) {
@@ -508,6 +567,7 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
       const [content, metadata] = await Promise.all([readFile(path), stat(path)]);
       const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
       if (
+        metadata.mtimeMs < this.ignoreQrBeforeMs ||
         content.length < pngSignature.length ||
         content.length > 1024 * 1024 ||
         !content.subarray(0, pngSignature.length).equals(pngSignature)
@@ -520,6 +580,26 @@ export class QqBridgeService implements OnModuleInit, OnModuleDestroy {
     } catch {
       return null;
     }
+  }
+
+  private async clearPersistedLoginData(): Promise<void> {
+    const configuredPath = this.config.get<string>('QQ_LOGIN_DATA_PATH') ?? 'data/napcat/qq';
+    const loginDataPath = resolve(configuredPath);
+    const filesystemRoot = parse(loginDataPath).root;
+    if (
+      loginDataPath === filesystemRoot ||
+      dirname(loginDataPath) === filesystemRoot ||
+      loginDataPath === resolve(process.cwd())
+    ) {
+      throw new Error('QQ_LOGIN_DATA_PATH points to an unsafe directory.');
+    }
+    const entries = await readdir(loginDataPath, { withFileTypes: true }).catch((error) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
+    await Promise.all(
+      entries.map((entry) => rm(join(loginDataPath, entry.name), { recursive: true, force: true }))
+    );
   }
 
   private assertAdmin(user: CurrentUser): void {

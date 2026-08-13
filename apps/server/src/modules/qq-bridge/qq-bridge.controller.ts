@@ -62,6 +62,11 @@ export class QqBridgeController {
     return this.service.testAccount(user, id);
   }
 
+  @Post('accounts/:id/logout')
+  logoutAccount(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
+    return this.service.logoutAccount(user, id);
+  }
+
   @Get('accounts/:id/friends')
   listFriends(@CurrentUser() user: CurrentUserType, @Param('id') id: string) {
     return this.service.listFriends(user, id);

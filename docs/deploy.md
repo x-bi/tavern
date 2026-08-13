@@ -85,6 +85,8 @@ http://<服务器IP>:8080
 
 Compose 会启动 NapCat 并自动下发 OneBot HTTP Server 与事件上报配置。首次登录时使用管理员进入主站“QQ 接入”，直接扫描页面二维码；扫码成功后系统会自动创建 QQ 接入账号，无需访问 NapCat WebUI。完整步骤见 [QQ 个人号接入使用手册](qq-personal-account-bridge.md)。
 
+需要切换 QQ 时直接在主站“QQ 接入”点击“退出并切换 QQ”。Compose 已把专用登录目录以可写方式挂载给 server，系统会保留原账号和绑定并生成新的扫码入口。
+
 NapCat 的 3000、6099 端口均不映射到宿主机；公网只开放 Tavern 主站端口即可。
 
 ## 日常运维

@@ -48,6 +48,28 @@ export class QqNapcatClient {
     });
   }
 
+  async exitBot(baseUrl: string, accessToken: string | null): Promise<void> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetch(`${baseUrl.replace(/\/+$/, '')}/bot_exit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+        },
+        body: '{}',
+        signal: controller.signal
+      });
+      if (!response.ok) throw new Error(`NapCat request failed with HTTP ${response.status}.`);
+    } catch (error) {
+      // bot_exit 可能在 HTTP 响应完成前结束进程；调用前已确认连接在线，此时断连即视为退出成功。
+      if (error instanceof Error && error.message.startsWith('NapCat request failed')) throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async sendPrivateMessage(
     baseUrl: string,
     accessToken: string | null,

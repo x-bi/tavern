@@ -29,7 +29,13 @@
           status="success"
           title="QQ 已接入"
           :description="loginStatus.message"
-        />
+        >
+          <template #footer>
+            <n-button type="warning" secondary :loading="loggingOut" @click="confirmLogout">
+              退出并切换 QQ
+            </n-button>
+          </template>
+        </n-result>
         <template v-else-if="loginStatus?.qrCodeDataUrl">
           <img class="login-qr" :src="loginStatus.qrCodeDataUrl" alt="QQ 登录二维码" />
           <div>
@@ -287,6 +293,7 @@ import {
   listQqBindings,
   listQqFriends,
   listQqTargets,
+  logoutQqAccount,
   switchQqBinding,
   testQqAccount,
   updateQqAccount
@@ -301,6 +308,7 @@ const friends = ref<QqFriendItem[]>([]);
 const loginStatus = ref<QqLoginStatus | null>(null);
 const loading = ref(false);
 const loginLoading = ref(false);
+const loggingOut = ref(false);
 const friendsLoading = ref(false);
 const savingAccount = ref(false);
 const savingBinding = ref(false);
@@ -332,10 +340,12 @@ const targetTypeOptions = [
   { label: 'AI 角色', value: 'companion' }
 ];
 const accountOptions = computed(() =>
-  accounts.value.map((item) => ({
-    label: `${item.label}${item.qqUin ? `（${item.qqUin}）` : ''}`,
-    value: item.id
-  }))
+  accounts.value
+    .filter((item) => item.isEnabled)
+    .map((item) => ({
+      label: `${item.label}${item.qqUin ? `（${item.qqUin}）` : ''}`,
+      value: item.id
+    }))
 );
 const friendOptions = computed(() =>
   friends.value.map((item) => ({
@@ -380,6 +390,42 @@ async function refreshLoginStatus(silent: boolean) {
     if (!silent) message.error(messageOf(error));
   } finally {
     loginLoading.value = false;
+  }
+}
+
+function confirmLogout() {
+  const account = loginStatus.value?.account;
+  if (!account) return;
+  dialog.warning({
+    title: '退出并切换 QQ',
+    content: `将退出 QQ ${account.qqUin || ''}。原账号、好友绑定和聊天历史都会保留，但在重新登录该 QQ 前不会继续同步消息。`,
+    positiveText: '确认退出',
+    negativeText: '取消',
+    onPositiveClick: () => logoutCurrentAccount(account)
+  });
+}
+
+async function logoutCurrentAccount(account: QqAccountItem) {
+  loggingOut.value = true;
+  try {
+    const result = await logoutQqAccount(account.id);
+    loginStatus.value = {
+      state: 'waiting',
+      account: null,
+      qrCodeDataUrl: null,
+      qrCodeUpdatedAt: null,
+      message: 'QQ 已退出，正在生成新的登录二维码。'
+    };
+    bindingForm.qqAccountId = null;
+    bindingForm.peerQqUin = null;
+    friends.value = [];
+    await loadAll();
+    message.success(result.message);
+    window.setTimeout(() => void refreshLoginStatus(true), 1_500);
+  } catch (error) {
+    message.error(messageOf(error));
+  } finally {
+    loggingOut.value = false;
   }
 }
 

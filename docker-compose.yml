@@ -36,10 +36,13 @@ services:
       # 主站 QQ 页面从容器内读取登录状态和二维码，不公开 NapCat 管理端口。
       QQ_AUTO_NAPCAT_API_BASE_URL: ${QQ_AUTO_NAPCAT_API_BASE_URL:-http://napcat:3000}
       QQ_LOGIN_QR_PATH: ${QQ_LOGIN_QR_PATH:-/app/napcat-cache/qrcode.png}
+      # 退出切换 QQ 时仅清理此专用登录数据目录。
+      QQ_LOGIN_DATA_PATH: ${QQ_LOGIN_DATA_PATH:-/app/napcat-qq-data}
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
       - ./data/napcat/cache:/app/napcat-cache:ro
+      - ./data/napcat/qq:/app/napcat-qq-data
 
   web:
     build:

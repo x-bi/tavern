@@ -234,6 +234,7 @@ export type {
   QqConnectionTestResult,
   QqFriendItem,
   QqLoginStatus,
+  QqLogoutResult,
   QqTargetItem,
   QqTargetType
 } from './qq-bridge';

@@ -205,7 +205,7 @@ flowchart LR
 - `settings`：本地配置。
 - `health`：健康检查。
 - `shares`：认证态分享管理、公共 token 守卫、公共聊天入口与目标级 SSE 同步。
-- `qq-bridge`：NapCat OneBot 11 个人号接入；管理员在主站受控读取登录二维码，扫码成功后按 QQ 号自动创建账号；好友与目标一对一绑定、入站幂等处理及出站可靠投递；聊天仍复用 `chat` / `companion-chat`。
+- `qq-bridge`：NapCat OneBot 11 个人号接入；管理员在主站受控读取登录二维码，扫码成功后按 QQ 号自动创建账号，也可退出当前登录并保留旧账号及绑定后切换 QQ；好友与目标一对一绑定、入站幂等处理及出站可靠投递；聊天仍复用 `chat` / `companion-chat`。
 - `companions`：Companion CRUD、头像、fork。
 - `companion-chat`：`POST /api/companions/:companionId/chat/stream` 编排与 SSE 输出、Companion Prompt 预览。
 - `companion-messages`：Companion 消息写入、编辑、删除、重新生成。

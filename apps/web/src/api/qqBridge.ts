@@ -7,6 +7,7 @@ import type {
   QqConnectionTestResult,
   QqFriendItem,
   QqLoginStatus,
+  QqLogoutResult,
   QqTargetItem
 } from '@tavern/shared';
 import { requestJson } from './http';
@@ -43,6 +44,9 @@ export async function testQqAccount(id: string) {
   return unwrap(
     await requestJson<QqConnectionTestResult>(`/qq/accounts/${id}/test`, { method: 'POST' })
   );
+}
+export async function logoutQqAccount(id: string) {
+  return unwrap(await requestJson<QqLogoutResult>(`/qq/accounts/${id}/logout`, { method: 'POST' }));
 }
 export async function listQqFriends(id: string) {
   return unwrap(await requestJson<ListResult<QqFriendItem>>(`/qq/accounts/${id}/friends`));

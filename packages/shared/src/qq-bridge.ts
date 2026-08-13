@@ -91,3 +91,9 @@ export type QqLoginStatus = {
   qrCodeUpdatedAt: string | null;
   message: string;
 };
+
+export type QqLogoutResult = {
+  accountId: string;
+  qqUin: string;
+  message: string;
+};

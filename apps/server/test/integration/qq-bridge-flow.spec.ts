@@ -1,5 +1,8 @@
 import { ConfigService } from '@nestjs/config';
 import type { PrismaClient } from '@prisma/client';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { CurrentUser } from '../../src/modules/users/user.types';
@@ -37,6 +40,55 @@ describe('QQ bridge message flow', () => {
     } finally {
       service.onModuleDestroy();
       await database.close();
+    }
+  });
+
+  it('logs out the active QQ, clears only its persisted login data and retains the account', async () => {
+    const database = await TestDatabase.create();
+    const targetEvents = new TargetEventsService();
+    const fixture = await createConversationFixture(database.client);
+    const loginDataPath = await mkdtemp(join(tmpdir(), 'tavern-qq-login-'));
+    await writeFile(join(loginDataPath, 'quick-login.json'), '{}');
+    const napcat = {
+      getLoginInfo: vi.fn(async () => ({ qqUin: '90001', nickname: '切换前小号' })),
+      exitBot: vi.fn(async () => undefined)
+    } as unknown as QqNapcatClient;
+    const service = createService(
+      database.client,
+      targetEvents,
+      napcat,
+      { streamInternal: vi.fn() } as unknown as ChatService,
+      { QQ_LOGIN_DATA_PATH: loginDataPath }
+    );
+
+    try {
+      const account = (await service.getAutoLoginStatus(fixture.owner)).account!;
+      const binding = await service.createBinding(fixture.owner, {
+        qqAccountId: account.id,
+        peerQqUin: '10001',
+        peerNickname: '保留绑定好友',
+        targetType: 'conversation',
+        targetId: fixture.conversationA.id
+      });
+      const result = await service.logoutAccount(fixture.owner, account.id);
+
+      expect(result).toMatchObject({ accountId: account.id, qqUin: '90001' });
+      expect(napcat.exitBot).toHaveBeenCalledWith('http://napcat:3000', null);
+      expect(await readdir(loginDataPath)).toEqual([]);
+      expect(
+        await database.client.qqAccount.findUniqueOrThrow({ where: { id: account.id } })
+      ).toMatchObject({ status: 'offline', isEnabled: false });
+      expect(
+        await database.client.qqChatBinding.findUniqueOrThrow({ where: { id: binding.id } })
+      ).toMatchObject({ isEnabled: true, qqAccountId: account.id });
+      expect(await service.getAutoLoginStatus(fixture.owner)).toMatchObject({
+        state: 'waiting',
+        account: null
+      });
+    } finally {
+      service.onModuleDestroy();
+      await database.close();
+      await rm(loginDataPath, { recursive: true, force: true });
     }
   });
 
@@ -174,7 +226,8 @@ function createService(
   prisma: PrismaClient,
   targetEvents: TargetEventsService,
   napcat: QqNapcatClient,
-  chat: ChatService
+  chat: ChatService,
+  configOverrides: Record<string, string> = {}
 ): QqBridgeService {
   return new QqBridgeService(
     prisma as unknown as PrismaService,
@@ -182,7 +235,9 @@ function createService(
       AUTH_TOKEN_SECRET: 'qq-bridge-test-secret',
       QQ_EVENT_CALLBACK_BASE_URL: 'http://server:3100/api',
       QQ_AUTO_NAPCAT_API_BASE_URL: 'http://napcat:3000',
-      QQ_LOGIN_QR_PATH: 'missing-qq-login-qr.png'
+      QQ_LOGIN_QR_PATH: 'missing-qq-login-qr.png',
+      QQ_LOGIN_DATA_PATH: 'missing-qq-login-data',
+      ...configOverrides
     }),
     napcat,
     chat,

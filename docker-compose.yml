@@ -9,6 +9,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.server
+      args:
+        NODE_BUILD_MAX_OLD_SPACE_MB: ${NODE_BUILD_MAX_OLD_SPACE_MB:-768}
     image: tavern-server:latest
     container_name: tavern-server
     restart: unless-stopped
@@ -43,6 +45,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        NODE_BUILD_MAX_OLD_SPACE_MB: ${NODE_BUILD_MAX_OLD_SPACE_MB:-768}
     image: tavern-web:latest
     container_name: tavern-web
     restart: unless-stopped
@@ -58,6 +62,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.share-web
+      args:
+        NODE_BUILD_MAX_OLD_SPACE_MB: ${NODE_BUILD_MAX_OLD_SPACE_MB:-768}
     image: tavern-share-web:latest
     container_name: tavern-share-web
     restart: unless-stopped

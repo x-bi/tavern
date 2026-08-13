@@ -89,6 +89,35 @@ NapCat 的 3000、6099 端口均不映射到宿主机；公网只开放 Tavern �
 
 ## 日常运维
 
+### 低内存服务器自动部署
+
+`scripts/tavern-auto-deploy.sh` 默认启用低内存模式：低内存预检通过后，先逐个停止现有容器，再逐个构建镜像，最后按 `server → web → share-web → napcat` 逐个重建启动。构建阶段失败或被中断时，会尝试逐个恢复停服前仍在运行的旧容器。
+
+物理内存不足 3GB 时，脚本要求至少 2GB swap。当前 2GiB 服务器建议先确认根分区至少还有 8GB 可用空间，再创建 2GB swap：
+
+```bash
+df -h /
+fallocate -l 2G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+printf '/swapfile none swap sw 0 0\n' >> /etc/fstab
+free -h
+swapon --show
+```
+
+Docker 构建中的 Node heap 默认限制为 768MB。若日志明确出现 `JavaScript heap out of memory`，可在 `.env` 中调整为：
+
+```text
+NODE_BUILD_MAX_OLD_SPACE_MB=1024
+```
+
+内存充足且不希望构建期间停服时，可显式关闭低内存模式：
+
+```bash
+LOW_MEMORY_MODE=0 bash scripts/tavern-auto-deploy.sh
+```
+
 ### 更新代码
 
 ```bash

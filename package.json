@@ -28,6 +28,7 @@
     "verify:field-alignment": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.field-alignment.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-field-alignment.ts",
     "verify:companion-memory": "pnpm --filter @tavern/server exec tsc -p ../../scripts/tsconfig.companion-memory.json && pnpm --filter @tavern/server exec tsx ../../scripts/verify-companion-memory.ts",
     "verify:data-cleanup": "node scripts/verify-data-cleanup-scripts.mjs",
+    "verify:low-memory-deploy": "node scripts/verify-low-memory-deploy.mjs",
     "test": "vitest run",
     "test:unit": "vitest run --project server-unit --project web --project share-web",
     "test:integration": "vitest run --project server-integration",

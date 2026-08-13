@@ -29,8 +29,23 @@ RUNTIME_SERVICES=(
     "napcat"
 )
 
+# 低内存模式默认启用：构建前停止现有容器，构建完成后逐个重建启动。
+LOW_MEMORY_MODE="${LOW_MEMORY_MODE:-1}"
+
+# 当前生产机为 2GiB：至少要求 2GB swap，避免 OOM 导致整机失联。
+MIN_SWAP_MB="${MIN_SWAP_MB:-2048}"
+
+# 停服后可用内存与空闲 swap 合计至少需要达到该值。
+MIN_BUILD_HEADROOM_MB="${MIN_BUILD_HEADROOM_MB:-3072}"
+
+# 每个容器启动后等待几秒再启动下一个，降低瞬时内存峰值。
+STARTUP_SETTLE_SECONDS="${STARTUP_SETTLE_SECONDS:-8}"
+
+# 记录低内存停服前实际运行的服务；构建失败时用于恢复旧容器。
+RUNNING_BEFORE_STOP=()
+CAN_RESTORE_STOPPED_CONTAINERS=0
+
 # 固定宝塔计划任务运行环境
-export HOME="/root"
 export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 export DOCKER_CONFIG="/root/.docker"
 
@@ -55,9 +70,40 @@ echo "============================================================"
 
 # ==================== 错误处理 ====================
 
+restore_stopped_containers() {
+    if [ "$CAN_RESTORE_STOPPED_CONTAINERS" -ne 1 ] ||
+       [ "${#RUNNING_BEFORE_STOP[@]}" -eq 0 ]; then
+        return 0
+    fi
+
+    echo
+    echo "Build did not complete. Restarting the previously running containers..."
+
+    local restore_failed=0
+
+    for service in "${RUNTIME_SERVICES[@]}"; do
+        if printf '%s\n' "${RUNNING_BEFORE_STOP[@]}" | grep -Fxq "$service"; then
+            echo "Restarting previous service: $service"
+            docker compose start "$service" || restore_failed=1
+            sleep 2
+        fi
+    done
+
+    if [ "$restore_failed" -eq 0 ]; then
+        echo "Previous containers were restarted."
+        return 0
+    fi
+
+    echo "Warning: failed to restart one or more previous containers."
+    docker compose ps --all || true
+}
+
 on_error() {
     local exit_code=$?
     local line_number="${1:-unknown}"
+
+    trap - ERR INT TERM
+    set +e
 
     echo
     echo "============================================================"
@@ -67,10 +113,27 @@ on_error() {
     echo "Error line: $line_number"
     echo "============================================================"
 
+    restore_stopped_containers
+
     exit "$exit_code"
 }
 
 trap 'on_error $LINENO' ERR
+
+on_signal() {
+    local signal_name="$1"
+
+    trap - ERR INT TERM
+    set +e
+
+    echo
+    echo "Deploy interrupted by signal: $signal_name"
+    restore_stopped_containers
+    exit 130
+}
+
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
 
 # ==================== 防止重复执行 ====================
 
@@ -121,7 +184,6 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 echo "User: $(whoami)"
-echo "HOME: $HOME"
 echo "PATH: $PATH"
 echo "Project directory: $(pwd)"
 echo "Current branch: $(git branch --show-current)"
@@ -130,6 +192,9 @@ echo "Docker path: $(command -v docker)"
 echo "Docker version: $(docker --version)"
 echo "Compose version: $(docker compose version)"
 echo "Compose parallel limit: $COMPOSE_PARALLEL_LIMIT"
+echo "Low memory mode: $LOW_MEMORY_MODE"
+echo "Minimum swap for low-RAM host: ${MIN_SWAP_MB}MB"
+echo "Minimum build headroom: ${MIN_BUILD_HEADROOM_MB}MB"
 
 echo
 echo "Current memory status:"
@@ -223,6 +288,83 @@ for service in "${RUNTIME_SERVICES[@]}"; do
     fi
 done
 
+# ==================== 低内存构建准备 ====================
+
+meminfo_mb() {
+    local field="$1"
+
+    awk -v field="$field" '$1 == field ":" { print int($2 / 1024); found=1 } END { if (!found) print 0 }' /proc/meminfo
+}
+
+if [ "$LOW_MEMORY_MODE" != "0" ] && [ "$LOW_MEMORY_MODE" != "1" ]; then
+    echo "LOW_MEMORY_MODE must be 0 or 1."
+    exit 1
+fi
+
+for numeric_setting in MIN_SWAP_MB MIN_BUILD_HEADROOM_MB STARTUP_SETTLE_SECONDS; do
+    numeric_value="${!numeric_setting}"
+
+    if ! [[ "$numeric_value" =~ ^[1-9][0-9]*$ ]]; then
+        echo "$numeric_setting must be a positive integer."
+        exit 1
+    fi
+done
+
+if [ "$LOW_MEMORY_MODE" -eq 1 ]; then
+    TOTAL_RAM_MB="$(meminfo_mb MemTotal)"
+    TOTAL_SWAP_MB="$(meminfo_mb SwapTotal)"
+
+    echo
+    echo "Low memory preflight: RAM=${TOTAL_RAM_MB}MB, swap=${TOTAL_SWAP_MB}MB"
+
+    if [ "$TOTAL_RAM_MB" -lt 3072 ] && [ "$TOTAL_SWAP_MB" -lt "$MIN_SWAP_MB" ]; then
+        echo
+        echo "Deployment stopped before containers were changed."
+        echo "This host has less than 3GB RAM and insufficient swap."
+        echo "Required swap: at least ${MIN_SWAP_MB}MB; current swap: ${TOTAL_SWAP_MB}MB."
+        echo "Create swap once, then run this deployment script again."
+        exit 1
+    fi
+
+    mapfile -t RUNNING_BEFORE_STOP < <(docker compose ps --status running --services)
+
+    if [ "${#RUNNING_BEFORE_STOP[@]}" -gt 0 ]; then
+        echo
+        echo "Stopping running containers before build to release memory..."
+
+        # 从第一项停止前就启用恢复标记；中途失败也会恢复已经停止的容器。
+        CAN_RESTORE_STOPPED_CONTAINERS=1
+
+        # 按资源占用从高到低逐个停止，避免 Compose 同时操作多个容器。
+        for service in "napcat" "server" "share-web" "web"; do
+            if printf '%s\n' "${RUNNING_BEFORE_STOP[@]}" | grep -Fxq "$service"; then
+                echo "Stopping service: $service"
+                docker compose stop --timeout 30 "$service"
+            fi
+        done
+
+    else
+        echo
+        echo "No running Tavern containers need to be stopped before build."
+    fi
+
+    AVAILABLE_RAM_MB="$(meminfo_mb MemAvailable)"
+    FREE_SWAP_MB="$(meminfo_mb SwapFree)"
+    BUILD_HEADROOM_MB="$((AVAILABLE_RAM_MB + FREE_SWAP_MB))"
+
+    echo
+    echo "Memory after stopping containers:"
+    free -h || true
+    echo "Build headroom: ${BUILD_HEADROOM_MB}MB (RAM available + swap free)"
+
+    if [ "$BUILD_HEADROOM_MB" -lt "$MIN_BUILD_HEADROOM_MB" ]; then
+        echo
+        echo "Insufficient memory headroom for a safe Docker build."
+        echo "Required: ${MIN_BUILD_HEADROOM_MB}MB; current: ${BUILD_HEADROOM_MB}MB."
+        false
+    fi
+fi
+
 # ==================== Docker 构建函数 ====================
 
 build_service() {
@@ -314,15 +456,46 @@ echo "All Docker images were built successfully."
 # ==================== 启动容器 ====================
 
 echo
-echo "Recreating containers with newly built images..."
+echo "Recreating containers one by one with newly built images..."
+
+# 从这里开始旧容器会被逐个替换，不能再保证完整恢复旧版本。
+CAN_RESTORE_STOPPED_CONTAINERS=0
 
 # 使用 --no-build，确保这里不会再次构建自建镜像。
-# NapCat 是外部镜像；本地不存在时 Compose 会自动拉取。
-docker compose up \
-    -d \
-    --no-build \
-    --force-recreate \
-    --remove-orphans
+# --no-deps 避免 Compose 顺带并发启动依赖服务。
+for service in "${RUNTIME_SERVICES[@]}"; do
+    echo
+    echo "Starting service: $service"
+
+    docker compose up \
+        -d \
+        --no-build \
+        --no-deps \
+        --force-recreate \
+        --remove-orphans \
+        "$service"
+
+    sleep "$STARTUP_SETTLE_SECONDS"
+
+    CONTAINER_ID="$(docker compose ps -q "$service")"
+    CONTAINER_STATE=""
+
+    if [ -n "$CONTAINER_ID" ]; then
+        CONTAINER_STATE="$(
+            docker inspect \
+                --format '{{.State.Status}}' \
+                "$CONTAINER_ID" 2>/dev/null || true
+        )"
+    fi
+
+    echo "Service $service state after startup: ${CONTAINER_STATE:-unknown}"
+
+    if [ "$CONTAINER_STATE" != "running" ]; then
+        echo "Service failed during sequential startup: $service"
+        docker compose logs --tail=150 "$service" || true
+        false
+    fi
+done
 
 echo
 echo "Docker Compose deployment command completed."

@@ -7,6 +7,7 @@ import {
   PROMPT_BUILDER_SUGGESTION_PLATFORM_RULES
 } from '../prompt-builder/prompt-builder.constants';
 import type { BuildPromptInput, ChatMessageLike } from '../prompt-builder/types';
+import { buildCurrentTimeSection } from './current-time-section';
 import type { GenerationPurpose } from './generation-lifecycle.types';
 import { mergePresetOutputRules } from './preset-rule-compiler';
 import type { PromptSectionV2 } from './prompt-section.types';
@@ -14,7 +15,8 @@ import type { PromptSectionV2 } from './prompt-section.types';
 /** Directly builds provider-neutral atomic sections from structured Tavern sources. */
 export function buildTavernPromptSections(
   input: BuildPromptInput,
-  purpose: GenerationPurpose
+  purpose: GenerationPurpose,
+  now: Date = new Date()
 ): PromptSectionV2[] {
   const sections: PromptSectionV2[] = [];
   const variables = {
@@ -50,6 +52,7 @@ export function buildTavernPromptSections(
     sortOrder: 0,
     truncationPolicy: 'never'
   });
+  add(buildCurrentTimeSection(purpose, now));
   add({
     id: `character:${input.character.id}:core`,
     kind: 'character_core',

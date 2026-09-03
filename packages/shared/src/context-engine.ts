@@ -10,6 +10,7 @@ export type GenerationPurpose =
 export type ExecutionMode = 'commit' | 'dry_run';
 export type PromptSectionKindV2 =
   | 'platform_policy'
+  | 'runtime_context'
   | 'mode_policy'
   | 'preset_instruction'
   | 'preset_output_rule'

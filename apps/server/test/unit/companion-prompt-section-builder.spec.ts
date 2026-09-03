@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { buildCompanionPromptSections } from '../../src/services/context-engine/companion-prompt-section-builder';
 
 describe('Companion atomic prompt section builder', () => {
+  it('injects the current Beijing time for normal and proactive chat', () => {
+    const fixedNow = new Date('2026-09-03T17:35:00.000Z');
+    const baseInput = {
+      name: '伙伴',
+      coreIdentity: '身份',
+      history: [],
+      userInput: '还不睡吗'
+    };
+
+    for (const purpose of ['chat_reply', 'proactive_chat'] as const) {
+      const section = buildCompanionPromptSections(baseInput, purpose, fixedNow).find(
+        (item) => item.kind === 'runtime_context'
+      );
+      expect(section).toMatchObject({
+        sourceType: 'system_runtime_time',
+        content: expect.stringContaining('2026-09-04 星期五 01:35'),
+        generationPurposes: [purpose]
+      });
+    }
+  });
+
   it('keeps identity, persona, runtime state and active memory revisions separately traceable', () => {
     const sections = buildCompanionPromptSections(
       {

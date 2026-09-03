@@ -54,6 +54,22 @@ function input(): BuildPromptInput {
 }
 
 describe('Tavern atomic prompt section builder', () => {
+  it('injects the current Beijing time as required runtime context', () => {
+    const sections = buildTavernPromptSections(
+      input(),
+      'chat_reply',
+      new Date('2026-09-03T17:35:00.000Z')
+    );
+
+    expect(sections.find((section) => section.kind === 'runtime_context')).toMatchObject({
+      id: 'runtime:current-time',
+      sourceType: 'system_runtime_time',
+      content: expect.stringContaining('2026-09-04 星期五 01:35'),
+      importance: 'required',
+      truncationPolicy: 'never'
+    });
+  });
+
   it('keeps profile fields and preset operations as individually traceable sections', () => {
     const sections = buildTavernPromptSections(input(), 'chat_reply');
     expect(

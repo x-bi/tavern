@@ -5,6 +5,7 @@ import {
   MEMORY_CONTEXT_RULE,
   type CompanionPromptInput
 } from './companion-prompt-contract';
+import { buildCurrentTimeSection } from './current-time-section';
 import type { GenerationPurpose } from './generation-lifecycle.types';
 import type { PromptSectionV2 } from './prompt-section.types';
 import { mergePresetOutputRules } from './preset-rule-compiler';
@@ -12,7 +13,8 @@ import { mergePresetOutputRules } from './preset-rule-compiler';
 /** Builds atomic Companion sections directly from structured sources. */
 export function buildCompanionPromptSections(
   input: CompanionPromptInput,
-  purpose: GenerationPurpose
+  purpose: GenerationPurpose,
+  now: Date = new Date()
 ): PromptSectionV2[] {
   const sections: PromptSectionV2[] = [];
   const add = (section: Omit<PromptSectionV2, 'generationPurposes'>) => {
@@ -31,6 +33,7 @@ export function buildCompanionPromptSections(
     sortOrder: 0,
     truncationPolicy: 'never'
   });
+  add(buildCurrentTimeSection(purpose, now));
   addAtomic(
     add,
     companionId,

@@ -1056,7 +1056,7 @@ model CompanionTurn {
   companionId              String
   sequence                 Int
   completedOrdinal         Int?
-  userMessageId            String    @unique
+  userMessageId            String?   @unique
   activeAssistantMessageId String?   @unique
   status                   String
   createdAt                DateTime  @default(now())
@@ -1065,7 +1065,7 @@ model CompanionTurn {
   activeAssistant    CompanionMessage?                 @relation("CompanionTurnActiveAssistant", fields: [activeAssistantMessageId], references: [id], onDelete: SetNull)
   companion          Companion                         @relation(fields: [companionId], references: [id], onDelete: Cascade)
   messages           CompanionMessage[]                @relation("CompanionTurnMessages")
-  userMessage        CompanionMessage                  @relation("CompanionTurnUserMessage", fields: [userMessageId], references: [id], onDelete: Restrict)
+  userMessage        CompanionMessage?                 @relation("CompanionTurnUserMessage", fields: [userMessageId], references: [id], onDelete: Restrict)
   generationRequests CompanionGenerationRequest[]
   generationTraces   CompanionMessageGenerationTrace[]
 
@@ -1124,11 +1124,11 @@ model CompanionMessageGenerationTrace {
   messageId                String   @unique
   generationRequestId      String   @unique
   turnId                   String
-  requestUserMessageId     String
+  requestUserMessageId     String?
   generationPurpose        String
   modelId                  String
   compilerVersion          String
-  rootUserMessageId        String
+  rootUserMessageId        String?
   memoryRevisionIdUsed     String?
   promptSnapshotJson       String
   promptSnapshotHash       String
@@ -1138,8 +1138,8 @@ model CompanionMessageGenerationTrace {
 
   generationRequest  CompanionGenerationRequest           @relation(fields: [generationRequestId], references: [id], onDelete: Restrict)
   message            CompanionMessage                     @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  requestUserMessage CompanionMessage                     @relation("CompanionTraceRequestUser", fields: [requestUserMessageId], references: [id], onDelete: Restrict)
-  rootUserMessage    CompanionMessage                     @relation("CompanionTraceRootUser", fields: [rootUserMessageId], references: [id], onDelete: Restrict)
+  requestUserMessage CompanionMessage?                    @relation("CompanionTraceRequestUser", fields: [requestUserMessageId], references: [id], onDelete: Restrict)
+  rootUserMessage    CompanionMessage?                    @relation("CompanionTraceRootUser", fields: [rootUserMessageId], references: [id], onDelete: Restrict)
   turn               CompanionTurn                        @relation(fields: [turnId], references: [id], onDelete: Restrict)
   sectionTraces      CompanionMessagePromptSectionTrace[]
   includedWorldBooks CompanionIncludedWorldBookTrace[]

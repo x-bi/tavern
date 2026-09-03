@@ -84,6 +84,17 @@ export class CompanionMessagesService {
         code: 'COMPANION_MESSAGE_REGENERATE_INVALID',
         message: 'Only latest assistant message can be regenerated.'
       });
+    const turn = message.turnId
+      ? await this.prisma.companionTurn.findUnique({
+          where: { id: message.turnId },
+          select: { userMessageId: true }
+        })
+      : null;
+    if (!turn?.userMessageId)
+      throw new NotFoundException({
+        code: 'COMPANION_MESSAGE_REGENERATE_INVALID',
+        message: 'Proactive messages cannot be regenerated.'
+      });
     return {
       id,
       companionId: message.companionId,

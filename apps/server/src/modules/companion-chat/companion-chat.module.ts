@@ -7,6 +7,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { WorldBooksModule } from '../world-books/world-books.module';
 import { CompanionChatController } from './companion-chat.controller';
 import { CompanionChatService } from './companion-chat.service';
+import { CompanionProactiveService } from './companion-proactive.service';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { CompanionChatService } from './companion-chat.service';
     WorldBooksModule
   ],
   controllers: [CompanionChatController],
-  providers: [CompanionChatService],
+  providers: [CompanionChatService, CompanionProactiveService],
   exports: [CompanionChatService]
 })
 export class CompanionChatModule {}

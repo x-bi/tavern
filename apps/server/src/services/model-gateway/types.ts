@@ -31,6 +31,7 @@ export type ModelGatewayProviderOptions = {
 export type ModelGatewayRequestSource =
   | 'tavern_chat'
   | 'companion_chat'
+  | 'companion_proactive'
   | 'companion_memory'
   | 'chat_suggestion'
   | 'ai_import_transform'

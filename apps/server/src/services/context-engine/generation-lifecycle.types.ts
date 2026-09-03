@@ -4,6 +4,7 @@ export type GenerationPurpose =
   | 'chat_reply'
   | 'regenerate'
   | 'continue'
+  | 'proactive_chat'
   | 'user_suggestions'
   | 'memory_summary';
 
@@ -20,6 +21,20 @@ export type PreparedGeneration<TMessage extends Message | CompanionMessage> =
       purpose: GenerationPurpose;
       userMessage: TMessage;
       assistantMessage: TMessage;
+    };
+
+export type PreparedProactiveGeneration =
+  | {
+      state: 'idempotent_complete';
+      messageId: string;
+    }
+  | {
+      state: 'started';
+      requestDatabaseId: string;
+      turnId: string;
+      expectedVersion: number;
+      purpose: 'proactive_chat';
+      assistantMessage: CompanionMessage;
     };
 
 export type ProposedPromptSectionTrace = {
@@ -65,8 +80,8 @@ export type ProposedContextCommit = {
 };
 
 export type ProposedGenerationTrace = {
-  requestUserMessageId: string;
-  rootUserMessageId: string;
+  requestUserMessageId: string | null;
+  rootUserMessageId: string | null;
   modelId: string;
   compilerVersion: string;
   promptSnapshotJson: string;

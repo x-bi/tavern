@@ -208,6 +208,7 @@ flowchart LR
 - `qq-bridge`：NapCat OneBot 11 个人号接入；管理员在主站受控读取登录二维码，扫码成功后按 QQ 号自动创建账号，也可退出当前登录并保留旧账号及绑定后切换 QQ；好友与目标一对一绑定、入站幂等处理及出站可靠投递；聊天仍复用 `chat` / `companion-chat`。
 - `companions`：Companion CRUD、头像、fork。
 - `companion-chat`：`POST /api/companions/:companionId/chat/stream` 编排与 SSE 输出、Companion Prompt 预览。
+- `companion-chat` 同时负责 Companion 主动聊天：长期记忆已开启、未暂停并存在有效 revision 的角色，可在北京时间正常时段、用户长时间未回复时生成一次 `proactive_chat` assistant 消息；该路径无伪造 user 消息、不运行世界书，并在用户回复前禁止连续追发。
 - `companion-messages`：Companion 消息写入、编辑、删除、重新生成。
 - `companion-memory`：长期记忆 revision、状态机、分块重建。
 
@@ -474,6 +475,7 @@ AI 角色是酒馆之外的独立 AI 女友 / 长期陪伴产品区。一个 `Co
 
 - AI 角色不复用酒馆的 `Conversation` / `Character` / `Message` / 酒馆 section builder / `POST /api/chat/stream`；使用 `Companion`、`CompanionMessage`、`CompanionMemory`、独立 `/api/companions/:companionId/chat/stream` 与前端 `/companion`。
 - AI 角色 Prompt 构建走 `services/context-engine/companion-prompt-section-builder.ts` 的 `buildCompanionPromptSections()` + 同一个 `compilePromptSections()`（与酒馆共享编译器，但 section 集合不同）；它包含受管的 `companion_style`、条件 `companion_memory` 与 `companion_runtime_state` 等 section，酒馆 builder 永远不含这些。
+- Companion 主动聊天使用独立生成目的 `proactive_chat`，读取固定身份、Persona、Prompt 预设、有效长期记忆与最近消息，不读取或推进世界书状态；主动 turn 允许没有 user 消息，禁止为兼容普通回复链路而写入隐藏或伪造 user 消息。
 - 长期记忆仅按 `Companion.id` 隔离、显式开启；不会写回酒馆角色卡、Persona、世界书或酒馆会话。
 - 共享 Companion 只作为固定管理员内容库中的可复制模板；成员 fork 后获得新的 Companion、依赖副本、空消息线程和空长期记忆，不能直接使用或修改管理员主数据。
 

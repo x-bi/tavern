@@ -19,7 +19,7 @@ export type TimelineTurn = {
   sequence: number;
   completedOrdinal: number | null;
   status: TimelineTurnStatus | string;
-  userMessageId: string;
+  userMessageId: string | null;
   activeAssistantMessageId: string | null;
   messages: TimelineMessage[];
 };
@@ -35,7 +35,7 @@ export type ResolvedTurn = {
   sequence: number;
   completedOrdinal: number | null;
   status: TimelineTurnStatus | string;
-  user: ResolvedTimelineMessage;
+  user: ResolvedTimelineMessage | null;
   activeAssistant: ResolvedTimelineMessage | null;
   includedInPrompt: boolean;
   advancesDynamicState: boolean;
@@ -67,14 +67,16 @@ export function resolveTimelineTurns(
       const messages = turn.messages.filter(
         (message) => !message.deletedAt && !EXCLUDED_STATUSES.has(message.status)
       );
-      const userMessage = messages.find((message) => message.id === turn.userMessageId);
-      if (!userMessage || userMessage.role !== 'user') {
+      const userMessage = turn.userMessageId
+        ? messages.find((message) => message.id === turn.userMessageId)
+        : undefined;
+      if (turn.userMessageId && (!userMessage || userMessage.role !== 'user')) {
         return null;
       }
       const assistantMessage = turn.activeAssistantMessageId
         ? messages.find((message) => message.id === turn.activeAssistantMessageId)
         : undefined;
-      const user = toResolvedMessage(userMessage);
+      const user = userMessage ? toResolvedMessage(userMessage) : null;
       const activeAssistant =
         assistantMessage?.role === 'assistant' ? toResolvedMessage(assistantMessage) : null;
       const advancesDynamicState =

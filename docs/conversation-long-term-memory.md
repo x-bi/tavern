@@ -93,6 +93,12 @@ POST                  /api/companions/:id/memory/restore/:revisionId
 
 AI 角色只接受 `tavern-lite.companion.v2`：支持下载同格式导入模板、预览后导入和导出，不再接收普通角色卡或任何旧字段别名。模型链、Persona、头像和记忆配置属于当前用户本地资源，不随导入导出迁移。聊天页复用酒馆消息操作语义：复制、编辑 user 消息、软删除和仅最新 assistant 消息重新生成。
 
+### 6.1 主动发起聊天
+
+主动聊天是 Companion 后端能力，不增加用户可见设置，也不复用世界书运行时。长期记忆已开启、未暂停、存在有效 revision 且已有正常完整回复的 Companion，在北京时间 `08:00-23:00` 内距离最新正常 assistant 回复满 8 小时后，可以基于固定身份、Persona、Prompt 预设、有效长期记忆和最近消息主动发出一条短消息。
+
+主动消息直接写入原 `CompanionMessage` 时间线，但对应 turn 不创建或伪造 user 消息；生成目的固定为 `proactive_chat`。主动消息完成后，必须等待用户真实回复才允许再次触发，避免连续追发。该路径复用 Companion 生成租约、模型链回退、Prompt 编译、attempt/trace 和记忆更新，但不调用世界书匹配或状态推进。主动生成失败时保留内部请求状态，不向消息列表暴露空白失败占位。
+
 记忆 API 契约：
 
 - `GET /memory` 返回当前记忆和最近保留的 revision，供用户查看并选择恢复。

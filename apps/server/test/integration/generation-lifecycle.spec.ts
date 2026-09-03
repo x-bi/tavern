@@ -102,6 +102,50 @@ describe('generation lifecycle idempotency and lease', () => {
     }
   });
 
+  it('commits an assistant-only proactive Companion turn without a user message', async () => {
+    const database = await TestDatabase.create();
+    try {
+      const lifecycle = new GenerationLifecycleService(database.client as unknown as PrismaService);
+      const user = await database.client.user.create({
+        data: { username: 'companion-proactive', displayName: 'Owner' }
+      });
+      const companion = await database.client.companion.create({
+        data: { userId: user.id, name: 'Companion' }
+      });
+      const started = await lifecycle.beginCompanionProactive(
+        companion.id,
+        'proactive:assistant-source'
+      );
+      expect(started.state).toBe('started');
+      if (started.state !== 'started') return;
+      expect(
+        (await database.client.companionTurn.findUnique({ where: { id: started.turnId } }))
+          ?.userMessageId
+      ).toBeNull();
+      await lifecycle.completeCompanion({
+        companionId: companion.id,
+        requestDatabaseId: started.requestDatabaseId,
+        turnId: started.turnId,
+        assistantMessageId: started.assistantMessage.id,
+        expectedVersion: started.expectedVersion,
+        content: '主动问候',
+        tokenCount: 1,
+        purpose: started.purpose,
+        trace: trace(null)
+      });
+      const savedTrace = await database.client.companionMessageGenerationTrace.findUnique({
+        where: { messageId: started.assistantMessage.id }
+      });
+      expect(savedTrace).toMatchObject({
+        generationPurpose: 'proactive_chat',
+        requestUserMessageId: null,
+        rootUserMessageId: null
+      });
+    } finally {
+      await database.close();
+    }
+  });
+
   it('commits evaluator-proposed WorldBook state exactly and only after success', async () => {
     const database = await TestDatabase.create();
     try {
@@ -305,7 +349,7 @@ describe('generation lifecycle idempotency and lease', () => {
   });
 });
 
-function trace(userMessageId: string): ProposedGenerationTrace {
+function trace(userMessageId: string | null): ProposedGenerationTrace {
   return {
     requestUserMessageId: userMessageId,
     rootUserMessageId: userMessageId,

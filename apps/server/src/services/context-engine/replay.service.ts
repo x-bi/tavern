@@ -36,15 +36,15 @@ export class ConversationReplayService {
             message.status === 'complete' &&
             message.generationTrace
         );
-        if (user && active) completedOrdinal += 1;
+        const complete = Boolean(active && (user || turn.userMessageId === null));
+        if (complete) completedOrdinal += 1;
         await tx.conversationTurn.update({
           where: { id: turn.id },
           data: {
             activeAssistantMessageId: active?.id ?? null,
-            completedOrdinal: user && active ? completedOrdinal : null,
-            status: user && active ? 'complete' : user ? 'pending' : 'invalid',
-            completedAt:
-              user && active ? (turn.completedAt ?? active.generationTrace!.createdAt) : null
+            completedOrdinal: complete ? completedOrdinal : null,
+            status: complete ? 'complete' : user ? 'pending' : 'invalid',
+            completedAt: complete ? (turn.completedAt ?? active!.generationTrace!.createdAt) : null
           }
         });
         const trace = active?.generationTrace;

@@ -64,4 +64,38 @@ describe('Companion atomic prompt section builder', () => {
     );
     expect(sections.some((section) => section.kind === 'companion_memory')).toBe(false);
   });
+
+  it('builds a proactive prompt from memory and history without a runtime user message', () => {
+    const sections = buildCompanionPromptSections(
+      {
+        name: '伙伴',
+        coreIdentity: '身份',
+        memory: {
+          isEnabled: true,
+          status: 'ready',
+          revisionId: 'memory-revision',
+          relationshipState: '稳定关系',
+          currentArc: '最近没有回复'
+        },
+        preset: {
+          id: 'preset',
+          instructions: ['保持自然'],
+          generationPurposes: ['chat_reply']
+        },
+        history: [{ id: 'assistant-last', role: 'assistant', content: '上次消息' }],
+        userInput: ''
+      },
+      'proactive_chat'
+    );
+
+    expect(sections.some((section) => section.sourceType === 'runtime_user_message')).toBe(false);
+    expect(
+      sections.find((section) => section.sourceType === 'managed_proactive_chat')
+    ).toMatchObject({
+      kind: 'generation_hint',
+      conversationRole: 'user'
+    });
+    expect(sections.some((section) => section.kind === 'companion_memory')).toBe(true);
+    expect(sections.some((section) => section.sourceId === 'preset')).toBe(true);
+  });
 });

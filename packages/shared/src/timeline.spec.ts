@@ -23,7 +23,7 @@ describe('resolveTimelineTurns', () => {
 
     const result = resolveTimelineTurns(turns);
     expect(result).toHaveLength(1);
-    expect(result[0]?.user.source).toBe('edited_user');
+    expect(result[0]?.user?.source).toBe('edited_user');
     expect(result[0]?.activeAssistant?.id).toBe('assistant-active');
     expect(result[0]?.advancesDynamicState).toBe(true);
   });

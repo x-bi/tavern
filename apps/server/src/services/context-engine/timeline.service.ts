@@ -15,7 +15,7 @@ type StorageTurn<TMessage extends StorageMessage> = {
   sequence: number;
   completedOrdinal: number | null;
   status: string;
-  userMessageId: string;
+  userMessageId: string | null;
   activeAssistantMessageId: string | null;
   messages: TMessage[];
 };
@@ -39,7 +39,7 @@ export type ResolvedStorageTurn = {
     content: string;
     status: string;
     source: 'user' | 'edited_user';
-  };
+  } | null;
   activeAssistant: {
     id: string;
     role: string;
@@ -144,10 +144,10 @@ export function resolveRows<TMessage extends StorageMessage>(
     const valid = turn.messages.filter(
       (message) => !message.deletedAt && !excluded.has(message.status)
     );
-    const user = valid.find(
-      (message) => message.id === turn.userMessageId && message.role === 'user'
-    );
-    if (!user) return [];
+    const user = turn.userMessageId
+      ? valid.find((message) => message.id === turn.userMessageId && message.role === 'user')
+      : undefined;
+    if (turn.userMessageId && !user) return [];
     const assistant = valid.find(
       (message) => message.id === turn.activeAssistantMessageId && message.role === 'assistant'
     );
@@ -160,13 +160,15 @@ export function resolveRows<TMessage extends StorageMessage>(
         sequence: turn.sequence,
         completedOrdinal: turn.completedOrdinal,
         status: turn.status,
-        user: {
-          id: user.id,
-          role: user.role,
-          content: user.content,
-          status: user.status,
-          source: user.status === 'edited' ? 'edited_user' : 'user'
-        },
+        user: user
+          ? {
+              id: user.id,
+              role: user.role,
+              content: user.content,
+              status: user.status,
+              source: user.status === 'edited' ? 'edited_user' : 'user'
+            }
+          : null,
         activeAssistant: assistant
           ? {
               id: assistant.id,
@@ -197,7 +199,7 @@ export function selectTimelineMessages<TMessage extends StorageMessage>(
   );
   const messages = resolved.flatMap((turn) => {
     if (!turn.includedInPrompt) return [];
-    const user = messageById.get(turn.user.id);
+    const user = turn.user ? messageById.get(turn.user.id) : undefined;
     const assistant = turn.activeAssistant ? messageById.get(turn.activeAssistant.id) : undefined;
     const memorySafeAssistant =
       assistant?.status === 'edited' && query.allowImportedEditedAssistant === false

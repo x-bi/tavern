@@ -1,5 +1,6 @@
 import {
   COMPANION_PLATFORM_RULES,
+  COMPANION_PROACTIVE_CHAT_RULE,
   COMPANION_STYLE_RULE,
   MEMORY_CONTEXT_RULE,
   type CompanionPromptInput
@@ -80,7 +81,10 @@ export function buildCompanionPromptSections(
   const presetPurposes = input.preset?.generationPurposes?.length
     ? input.preset.generationPurposes
     : ['chat_reply', 'regenerate', 'continue'];
-  if (input.preset && presetPurposes.includes(purpose)) {
+  const presetApplies =
+    presetPurposes.includes(purpose) ||
+    (purpose === 'proactive_chat' && presetPurposes.includes('chat_reply'));
+  if (input.preset && presetApplies) {
     (input.preset.instructions ?? []).forEach((content, index) =>
       add({
         id: `companion-preset:${input.preset!.id ?? 'bound'}:instruction:${index}`,
@@ -114,7 +118,7 @@ export function buildCompanionPromptSections(
       })
     );
   }
-  if (!input.preset || !presetPurposes.includes(purpose)) {
+  if (!input.preset || !presetApplies) {
     add({
       id: 'companion-output-rule:companion_style',
       kind: 'companion_style',
@@ -183,18 +187,33 @@ export function buildCompanionPromptSections(
       conversationRole: message.role
     })
   );
-  add({
-    id: 'companion:current-user',
-    kind: 'current_user',
-    sourceType: 'runtime_user_message',
-    content: input.userInput,
-    placement: 'current_user',
-    importance: 'required',
-    budgetPriority: 1100,
-    sortOrder: 2000,
-    truncationPolicy: 'never',
-    conversationRole: 'user'
-  });
+  add(
+    purpose === 'proactive_chat'
+      ? {
+          id: 'companion:proactive-chat',
+          kind: 'generation_hint',
+          sourceType: 'managed_proactive_chat',
+          content: COMPANION_PROACTIVE_CHAT_RULE,
+          placement: 'current_user',
+          importance: 'required',
+          budgetPriority: 1100,
+          sortOrder: 2000,
+          truncationPolicy: 'never',
+          conversationRole: 'user'
+        }
+      : {
+          id: 'companion:current-user',
+          kind: 'current_user',
+          sourceType: 'runtime_user_message',
+          content: input.userInput,
+          placement: 'current_user',
+          importance: 'required',
+          budgetPriority: 1100,
+          sortOrder: 2000,
+          truncationPolicy: 'never',
+          conversationRole: 'user'
+        }
+  );
   return sections;
 }
 

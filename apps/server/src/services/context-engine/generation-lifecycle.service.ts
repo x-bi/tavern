@@ -6,6 +6,7 @@ import { canonicalSha256 } from '../../common/canonical-json';
 import type {
   GenerationPurpose,
   PreparedGeneration,
+  PreparedProactiveGeneration,
   ProposedGenerationTrace
 } from './generation-lifecycle.types';
 
@@ -70,7 +71,7 @@ export class GenerationLifecycleService {
           },
           include: { userMessage: true }
         });
-        if (!turn)
+        if (!turn || !turn.userMessage)
           this.conflict(
             'GENERATION_TURN_INVALID',
             'Regenerate must target the active assistant of the supplied turn.'
@@ -190,7 +191,7 @@ export class GenerationLifecycleService {
           },
           include: { userMessage: true }
         });
-        if (!turn)
+        if (!turn || !turn.userMessage)
           this.conflict(
             'GENERATION_TURN_INVALID',
             'Regenerate must target the active assistant of the supplied turn.'
@@ -260,6 +261,88 @@ export class GenerationLifecycleService {
         expectedVersion,
         purpose,
         userMessage,
+        assistantMessage
+      };
+    });
+  }
+
+  /** Starts an assistant-only Companion turn without fabricating a user message. */
+  async beginCompanionProactive(
+    companionId: string,
+    requestId: string
+  ): Promise<PreparedProactiveGeneration> {
+    const purpose = 'proactive_chat' as const;
+    const requestHash = canonicalSha256({
+      target: { type: 'companion', id: companionId },
+      purpose
+    });
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.companionGenerationRequest.findUnique({
+        where: { companionId_requestId: { companionId, requestId } }
+      });
+      if (existing)
+        return this.resolveExisting<CompanionMessage>(
+          existing,
+          requestHash
+        ) as PreparedProactiveGeneration;
+      const companion = await tx.companion.findUniqueOrThrow({
+        where: { id: companionId },
+        select: { version: true, activeGenerationLeaseId: true }
+      });
+      if (companion.activeGenerationLeaseId) this.inProgress();
+      const ids = {
+        request: randomUUID(),
+        turn: randomUUID(),
+        assistant: randomUUID()
+      };
+      const expectedVersion = companion.version + 1;
+      const leased = await tx.companion.updateMany({
+        where: { id: companionId, version: companion.version, activeGenerationLeaseId: null },
+        data: { version: { increment: 1 }, activeGenerationLeaseId: ids.request }
+      });
+      if (leased.count !== 1) this.inProgress();
+      const last = await tx.companionTurn.aggregate({
+        where: { companionId },
+        _max: { sequence: true }
+      });
+      await tx.companionTurn.create({
+        data: {
+          id: ids.turn,
+          companionId,
+          sequence: (last._max.sequence ?? 0) + 1,
+          userMessageId: null,
+          status: 'generating'
+        }
+      });
+      const assistantMessage = await tx.companionMessage.create({
+        data: {
+          id: ids.assistant,
+          companionId,
+          turnId: ids.turn,
+          role: 'assistant',
+          content: '',
+          status: 'generating',
+          metadataJson: JSON.stringify({ requestId, origin: 'proactive' })
+        }
+      });
+      await tx.companionGenerationRequest.create({
+        data: {
+          id: ids.request,
+          requestId,
+          requestHash,
+          companionId,
+          turnId: ids.turn,
+          purpose,
+          status: 'generating',
+          baseVersion: companion.version
+        }
+      });
+      return {
+        state: 'started',
+        requestDatabaseId: ids.request,
+        turnId: ids.turn,
+        expectedVersion,
+        purpose,
         assistantMessage
       };
     });
@@ -608,11 +691,11 @@ export class GenerationLifecycleService {
         messageId: input.assistantMessageId,
         generationRequestId: input.requestDatabaseId,
         turnId: input.turnId,
-        requestUserMessageId: input.trace.requestUserMessageId,
+        requestUserMessageId: input.trace.requestUserMessageId!,
         generationPurpose: input.purpose,
         modelId: input.trace.modelId,
         compilerVersion: input.trace.compilerVersion,
-        rootUserMessageId: input.trace.rootUserMessageId,
+        rootUserMessageId: input.trace.rootUserMessageId!,
         promptSnapshotJson: input.trace.promptSnapshotJson,
         promptSnapshotHash: input.trace.promptSnapshotHash,
         capabilitiesSnapshotJson: input.trace.capabilitiesSnapshotJson,

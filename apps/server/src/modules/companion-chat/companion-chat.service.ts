@@ -47,6 +47,14 @@ import { WorldBooksService } from '../world-books/world-books.service';
 
 type OwnedCompanion = Awaited<ReturnType<CompanionChatService['findOwned']>>;
 const COMPANION_HISTORY_LIMIT = 20;
+const EMPTY_WORLD_BOOK_RUNTIME: WorldBookRuntimeResult = {
+  sections: [],
+  includedWorldBooks: [],
+  stateChanges: [],
+  decisions: [],
+  scannedMessageIds: [],
+  scanDepth: 0
+};
 
 @Injectable()
 export class CompanionChatService {
@@ -81,6 +89,183 @@ export class CompanionChatService {
     if (!task) return false;
     task.abort();
     return true;
+  }
+
+  /** Generates one assistant-only message for the background proactive scheduler. */
+  async generateProactive(
+    user: CurrentUser,
+    companionId: string,
+    requestId: string
+  ): Promise<boolean> {
+    const companion = await this.findOwned(user, companionId);
+    if (
+      !companion.memory?.isEnabled ||
+      companion.memory.isPaused ||
+      companion.memory.status === 'stale' ||
+      !companion.memory.activeRevisionId ||
+      this.tasks.has(companionId)
+    )
+      return false;
+
+    const abort = new AbortController();
+    this.tasks.set(companionId, abort);
+    let assistant: CompanionMessage | null = null;
+    let generation: Extract<
+      Awaited<ReturnType<GenerationLifecycleService['beginCompanionProactive']>>,
+      { state: 'started' }
+    > | null = null;
+    let content = '';
+    try {
+      const prepared = await this.lifecycle.beginCompanionProactive(companionId, requestId);
+      if (prepared.state === 'idempotent_complete') return false;
+      generation = prepared;
+      assistant = prepared.assistantMessage;
+      const history = await this.listHistory(companionId, COMPANION_HISTORY_LIMIT, [assistant.id]);
+      const candidates = await this.models.getGatewayCandidates({
+        currentUser: user,
+        capability: 'chat',
+        modelFallbackGroupId: companion.modelFallbackGroupId ?? undefined
+      });
+      if (!candidates.length)
+        throw new BadRequestException({
+          code: 'MODEL_FALLBACK_GROUP_NOT_READY',
+          message: 'No callable model candidate.'
+        });
+
+      let finishReason: string | null = null;
+      let succeeded = false;
+      let successfulTrace: ProposedGenerationTrace | null = null;
+      for (const [candidateIndex, candidate] of candidates.entries()) {
+        let emitted = false;
+        let attemptErrorCode: string | undefined;
+        const attempt = await this.lifecycle.createCompanionAttempt(
+          generation.requestDatabaseId,
+          candidateIndex,
+          candidate.providerModelId ?? candidate.modelName
+        );
+        try {
+          const promptInput = this.toPromptInput(
+            companion,
+            history,
+            '',
+            this.promptBudget(candidate, companion.promptPreset)
+          );
+          const compiled = compilePromptSections({
+            sections: buildCompanionPromptSections(promptInput, generation.purpose),
+            purpose: generation.purpose,
+            capabilities: candidate.capabilities,
+            maxPromptTokens: promptInput.maxPromptTokens ?? 8000
+          });
+          const parameters = {
+            ...candidate.params,
+            ...(promptInput.preset?.parameters ?? {})
+          };
+          successfulTrace = this.toGenerationTrace(
+            compiled,
+            candidate,
+            parameters,
+            null,
+            companion.memory.activeRevisionId,
+            EMPTY_WORLD_BOOK_RUNTIME
+          );
+          await this.lifecycle.updateCompanionAttemptSnapshot(attempt.id, {
+            hash: successfulTrace.promptSnapshotHash,
+            capabilities: candidate.capabilities,
+            parameters
+          });
+          for await (const event of this.gateway.streamChat(compiled.messages, {
+            providerName: candidate.providerName,
+            baseUrl: candidate.baseUrl,
+            modelName: candidate.modelName,
+            apiKey: candidate.apiKey,
+            requestSource: 'companion_proactive',
+            ...parameters,
+            signal: abort.signal
+          })) {
+            if (event.type === 'delta') {
+              emitted = true;
+              content += event.text;
+            }
+            if (event.type === 'done') {
+              finishReason = event.result.finishReason ?? null;
+              succeeded = true;
+            }
+            if (event.type === 'error') {
+              attemptErrorCode = event.code;
+              if (emitted) throw Object.assign(new Error(event.message), { code: event.code });
+              break;
+            }
+          }
+        } catch (error) {
+          attemptErrorCode = this.errorCode(error, abort.signal.aborted);
+          await this.lifecycle.finishCompanionAttempt(
+            attempt.id,
+            abort.signal.aborted ? 'stopped' : 'failed',
+            emitted,
+            attemptErrorCode
+          );
+          if (
+            !shouldTryNextModelCandidate({
+              emittedDelta: emitted,
+              accumulatedContent: content,
+              hasNextCandidate: candidateIndex < candidates.length - 1,
+              aborted: abort.signal.aborted
+            })
+          )
+            throw error;
+          content = '';
+          continue;
+        }
+        if (succeeded) {
+          await this.lifecycle.finishCompanionAttempt(attempt.id, 'succeeded', emitted);
+          break;
+        }
+        await this.lifecycle.finishCompanionAttempt(
+          attempt.id,
+          'failed',
+          emitted,
+          attemptErrorCode ?? 'MODEL_CANDIDATE_FAILED'
+        );
+      }
+      if (!succeeded) throw new Error('All model candidates failed.');
+      if (!successfulTrace) throw new Error('Generation trace was not prepared.');
+      await this.lifecycle.completeCompanion({
+        companionId,
+        requestDatabaseId: generation.requestDatabaseId,
+        turnId: generation.turnId,
+        assistantMessageId: assistant.id,
+        expectedVersion: generation.expectedVersion,
+        content,
+        tokenCount: this.estimateTokens(content),
+        purpose: generation.purpose,
+        trace: successfulTrace
+      });
+      this.targetEvents.emit('companion', companionId, 'proactive_message_created', {
+        messageId: assistant.id,
+        finishReason
+      });
+      void this.memoryService.maybeScheduleUpdate(user, companionId);
+      return true;
+    } catch (error) {
+      if (assistant && generation) {
+        await this.lifecycle.failCompanion({
+          companionId,
+          requestDatabaseId: generation.requestDatabaseId,
+          turnId: generation.turnId,
+          assistantMessageId: assistant.id,
+          content,
+          status: abort.signal.aborted ? 'stopped' : 'failed',
+          errorCode: this.errorCode(error, abort.signal.aborted)
+        });
+        await this.prisma.companionMessage.update({
+          where: { id: assistant.id },
+          data: { deletedAt: new Date() }
+        });
+      }
+      throw error;
+    } finally {
+      if (this.tasks.get(companionId) === abort) this.tasks.delete(companionId);
+    }
   }
 
   async preview(user: CurrentUser, companionId: string, userInput: string) {
@@ -539,7 +724,7 @@ export class CompanionChatService {
     compiled: CompiledPrompt,
     candidate: ModelGatewayConfig,
     parameters: CompanionPromptParameters,
-    userMessageId: string,
+    userMessageId: string | null,
     memoryRevisionIdUsed: string | null,
     worldBookRuntime: WorldBookRuntimeResult
   ): ProposedGenerationTrace {

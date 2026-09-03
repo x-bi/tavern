@@ -4,6 +4,7 @@ export type GenerationPurpose =
   | 'chat_reply'
   | 'regenerate'
   | 'continue'
+  | 'proactive_chat'
   | 'user_suggestions'
   | 'memory_summary';
 export type ExecutionMode = 'commit' | 'dry_run';
